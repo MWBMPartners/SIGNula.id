@@ -418,3 +418,100 @@ FodyWeavers.xsd
 *.msp
 ProjectBrief_Chat.gpt
 .DS_Store
+
+# ============================================================================
+# 🔐 SIGNula Specific Files
+# ============================================================================
+
+# 🚫 NEVER commit these files - they contain sensitive credentials
+_private/auth.php
+_private/keys/*
+_private/backups/*
+*.pem
+*.key
+*.crt
+*.p12
+
+# 📝 Log files
+_private/logs/*.log
+*.log
+
+# 🗄️ Database backups
+*.sql.gz
+*.sql.zip
+*_backup.sql
+
+# ⚙️ Environment configuration
+.env
+.env.*
+!.env.example
+
+# 📦 Uploaded files
+public_html/uploads/*
+!public_html/uploads/.gitkeep
+
+# 🔧 IDE and Editor files
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+*.swp
+*.swo
+*~
+
+# 🖥️ OS Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# 📦 Dependency directories
+vendor/
+node_modules/
+bower_components/
+
+# 🏗️ Build outputs
+dist/
+build/
+*.min.js
+*.min.css
+
+# 📊 Composer
+composer.phar
+composer.lock
+
+# 📝 npm
+package-lock.json
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# 🧪 Testing
+phpunit.xml
+.phpunit.result.cache
+coverage/
+.phpunit.cache/
+
+# 🔄 Cache files
+*.cache
+cache/
+tmp/
+temp/
+
+# 📸 Media files (optional - uncomment if needed)
+# *.jpg
+# *.jpeg
+# *.png
+# *.gif
+# *.svg
+# *.ico
+# *.mp4
+# *.webm
+
+# 📄 Documentation builds
+docs/_build/
+site/
