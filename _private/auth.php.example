@@ -1,0 +1,153 @@
+<?php
+/**
+ * ============================================================================
+ * 🔐 SIGNula - Database Authentication Configuration
+ * ============================================================================
+ *
+ * IMPORTANT SECURITY NOTES:
+ * 1. This file contains sensitive database credentials
+ * 2. NEVER commit this file to version control (use .gitignore)
+ * 3. Keep this file outside web-accessible directories
+ * 4. Set file permissions to 600 (readable only by owner)
+ * 5. Rename this file to auth.php and update with your credentials
+ *
+ * For production environments, consider using environment variables instead.
+ *
+ * @package    SIGNula
+ * @subpackage Configuration
+ * @version    1.0.0
+ * ============================================================================
+ */
+
+// 🚫 Prevent direct access
+if (!defined('SIGNULA_INIT') && !defined('DB_CONFIG_INIT')) {
+    http_response_code(403);
+    die('Direct access not permitted');
+}
+
+// ============================================================================
+// 📡 DATABASE CONNECTION SETTINGS
+// ============================================================================
+
+/**
+ * 🖥️ Database Host
+ * Default: localhost (or 127.0.0.1 for TCP/IP)
+ * For Dreamhost: usually 'mysql.yourdomain.com'
+ */
+define('DB_HOST', 'localhost');
+
+/**
+ * 👤 Database Username
+ * The MySQL/MariaDB username with access to your database
+ */
+define('DB_USER', 'your_database_username');
+
+/**
+ * 🔑 Database Password
+ * The password for the database user
+ * SECURITY: Use a strong, unique password
+ */
+define('DB_PASS', 'your_secure_database_password');
+
+/**
+ * 🗄️ Database Name
+ * The name of your SIGNula database
+ */
+define('DB_NAME', 'signula_db');
+
+/**
+ * 🔌 Database Port (Optional)
+ * Default MySQL port is 3306
+ * Usually not needed unless using non-standard port
+ */
+define('DB_PORT', 3306);
+
+/**
+ * 🔤 Database Character Set
+ * Default: utf8mb4 (full Unicode support including emojis)
+ * DO NOT CHANGE unless you have a specific reason
+ */
+define('DB_CHARSET', 'utf8mb4');
+
+/**
+ * 🔧 Database Socket (Optional)
+ * Unix socket path for local connections
+ * Leave as null to use TCP/IP connection
+ * Example: '/var/lib/mysql/mysql.sock'
+ */
+define('DB_SOCKET', null);
+
+// ============================================================================
+// 🔐 ENCRYPTION SETTINGS
+// ============================================================================
+
+/**
+ * 🔑 Encryption Key
+ * 32-byte (256-bit) key for AES-256 encryption
+ * SECURITY: Generate using: openssl_random_pseudo_bytes(32)
+ * Store this securely and NEVER change it after data is encrypted
+ */
+define('ENCRYPTION_KEY', 'YOUR_32_BYTE_ENCRYPTION_KEY_HERE_CHANGE_THIS');
+
+/**
+ * 🧂 Encryption Salt
+ * Additional salt for encryption operations
+ * SECURITY: Should be unique and never changed after initial setup
+ */
+define('ENCRYPTION_SALT', 'YOUR_UNIQUE_SALT_HERE_CHANGE_THIS');
+
+// ============================================================================
+// 🌐 APPLICATION SETTINGS (Optional fallbacks)
+// ============================================================================
+
+/**
+ * 🔗 Base URL
+ * The base URL of your SIGNula installation
+ * No trailing slash
+ */
+define('BASE_URL', 'https://signulo.id');
+
+/**
+ * 🏠 Public Site URL
+ * The public-facing marketing website
+ */
+define('PUBLIC_SITE_URL', 'https://signulo.com');
+
+/**
+ * 📧 System Email Address
+ * Default email address for system notifications
+ */
+define('SYSTEM_EMAIL', 'noreply@signulo.id');
+
+/**
+ * 🔧 Environment
+ * Options: 'development', 'staging', 'production'
+ */
+define('ENVIRONMENT', 'production');
+
+// ============================================================================
+// ⚠️ GENERATION INSTRUCTIONS
+// ============================================================================
+
+/*
+ * 📝 To generate secure encryption keys in PHP:
+ *
+ * ```php
+ * // Generate 32-byte encryption key (base64 encoded for easy storage)
+ * echo base64_encode(openssl_random_pseudo_bytes(32));
+ *
+ * // Generate salt
+ * echo bin2hex(openssl_random_pseudo_bytes(16));
+ * ```
+ *
+ * Or use command line:
+ * ```bash
+ * # Generate encryption key
+ * openssl rand -base64 32
+ *
+ * # Generate salt
+ * openssl rand -hex 16
+ * ```
+ */
+
+// ✅ Configuration loaded successfully
