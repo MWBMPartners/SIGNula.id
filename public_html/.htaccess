@@ -1,0 +1,236 @@
+# ============================================================================
+# 🔐 SIGNula - Apache Configuration
+# ============================================================================
+#
+# Purpose: Clean URLs, security hardening, and performance optimization
+# Server: Apache 2.4+ with mod_rewrite
+#
+# Features:
+# - Clean URLs (removes .php extensions)
+# - HTTPS enforcement (production only)
+# - Security headers
+# - Directory protection
+# - Performance optimization
+#
+# ============================================================================
+
+# 🚀 Enable Rewrite Engine
+<IfModule mod_rewrite.c>
+RewriteEngine On
+RewriteBase /
+
+# ----------------------------------------------------------------------------
+# 🔒 SECURITY: Force HTTPS (uncomment for production)
+# ----------------------------------------------------------------------------
+# RewriteCond %{HTTPS} off
+# RewriteCond %{HTTP:X-Forwarded-Proto} !https
+# RewriteRule ^(.*)$ https://%{HTTP_HOST}/$1 [R=301,L]
+
+# ----------------------------------------------------------------------------
+# 🔒 SECURITY: Redirect www to non-www (or vice versa)
+# ----------------------------------------------------------------------------
+# Uncomment ONE of the following sections:
+
+# Option 1: Redirect www to non-www
+# RewriteCond %{HTTP_HOST} ^www\.(.+)$ [NC]
+# RewriteRule ^(.*)$ https://%1/$1 [R=301,L]
+
+# Option 2: Redirect non-www to www
+# RewriteCond %{HTTP_HOST} !^www\. [NC]
+# RewriteCond %{HTTP_HOST} !^localhost [NC]
+# RewriteRule ^(.*)$ https://www.%{HTTP_HOST}/$1 [R=301,L]
+
+# ----------------------------------------------------------------------------
+# 🚫 SECURITY: Block access to sensitive files and directories
+# ----------------------------------------------------------------------------
+
+# Block access to hidden files (except .well-known for SSL)
+RewriteCond %{REQUEST_URI} "!(^|/)\.well-known/([^./]+\.php)$" [NC]
+RewriteCond %{SCRIPT_FILENAME} -d [OR]
+RewriteCond %{SCRIPT_FILENAME} -f
+RewriteRule "(^|/)\." - [F]
+
+# Block access to version control directories
+RewriteRule "^\.git" - [F,L]
+RewriteRule "^\.svn" - [F,L]
+
+# Block access to composer files
+RewriteRule "^composer\.(json|lock)$" - [F,L]
+
+# Block access to config files
+RewriteRule "^_config/" - [F,L]
+RewriteRule "^_includes/" - [F,L]
+RewriteRule "^_private/" - [F,L]
+RewriteRule "^_sql/" - [F,L]
+RewriteRule "^_logs/" - [F,L]
+
+# Block access to sensitive files
+RewriteRule "^(README|LICENSE|CHANGELOG|\.env|\.htaccess|\.htpasswd)" - [F,L]
+
+# ----------------------------------------------------------------------------
+# 🔧 CLEAN URLs: Remove .php extension
+# ----------------------------------------------------------------------------
+
+# Skip if file is a real directory
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+
+# Skip if accessing assets (images, css, js, etc.)
+RewriteCond %{REQUEST_URI} \.(css|js|jpg|jpeg|png|gif|ico|svg|woff|woff2|ttf|eot|pdf|zip|mp4|webm|map)$ [NC]
+RewriteRule ^ - [L]
+
+# Skip if accessing _includes directory (for organization nav component)
+RewriteCond %{REQUEST_URI} ^/_includes/ [NC]
+RewriteRule ^ - [L]
+
+# Remove trailing slash (except for root)
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{REQUEST_URI} (.+)/$
+RewriteRule ^ %1 [R=301,L]
+
+# Add .php extension if file exists
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME}.php -f
+RewriteRule ^(.+?)/?$ $1.php [L]
+
+# Handle organization subdirectory
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_URI} ^/organization/(.+)$
+RewriteCond %{DOCUMENT_ROOT}/organization/%1.php -f
+RewriteRule ^organization/(.+?)/?$ organization/$1.php [L]
+
+# ----------------------------------------------------------------------------
+# 🔧 ERROR PAGES
+# ----------------------------------------------------------------------------
+ErrorDocument 403 /error/403.php
+ErrorDocument 404 /error/404.php
+ErrorDocument 500 /error/500.php
+
+</IfModule>
+
+# ============================================================================
+# 🔒 SECURITY HEADERS
+# ============================================================================
+
+<IfModule mod_headers.c>
+    # Prevent clickjacking
+    Header always set X-Frame-Options "SAMEORIGIN"
+
+    # Prevent MIME sniffing
+    Header always set X-Content-Type-Options "nosniff"
+
+    # Enable XSS protection
+    Header always set X-XSS-Protection "1; mode=block"
+
+    # Referrer policy
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+
+    # Content Security Policy (adjust as needed)
+    # Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; font-src 'self' https://cdnjs.cloudflare.com; img-src 'self' data: https:; connect-src 'self'"
+
+    # Permissions Policy (formerly Feature Policy)
+    Header always set Permissions-Policy "geolocation=(), microphone=(), camera=()"
+
+    # Remove X-Powered-By header (hide PHP version)
+    Header unset X-Powered-By
+</IfModule>
+
+# ============================================================================
+# ⚡ PERFORMANCE OPTIMIZATION
+# ============================================================================
+
+# Enable compression
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/plain text/xml text/css text/javascript application/javascript application/json
+</IfModule>
+
+# Browser caching
+<IfModule mod_expires.c>
+    ExpiresActive On
+
+    # Images
+    ExpiresByType image/jpg "access plus 1 year"
+    ExpiresByType image/jpeg "access plus 1 year"
+    ExpiresByType image/png "access plus 1 year"
+    ExpiresByType image/gif "access plus 1 year"
+    ExpiresByType image/svg+xml "access plus 1 year"
+    ExpiresByType image/webp "access plus 1 year"
+    ExpiresByType image/x-icon "access plus 1 year"
+
+    # CSS and JavaScript
+    ExpiresByType text/css "access plus 1 month"
+    ExpiresByType application/javascript "access plus 1 month"
+    ExpiresByType text/javascript "access plus 1 month"
+
+    # Fonts
+    ExpiresByType font/woff "access plus 1 year"
+    ExpiresByType font/woff2 "access plus 1 year"
+    ExpiresByType application/font-woff "access plus 1 year"
+    ExpiresByType application/font-woff2 "access plus 1 year"
+
+    # HTML and PHP
+    ExpiresByType text/html "access plus 0 seconds"
+    ExpiresByType application/x-httpd-php "access plus 0 seconds"
+</IfModule>
+
+# ============================================================================
+# 🔒 ADDITIONAL SECURITY
+# ============================================================================
+
+# Disable directory browsing
+Options -Indexes
+
+# Disable server signature
+ServerSignature Off
+
+# Limit request methods
+<LimitExcept GET POST HEAD>
+    Order Allow,Deny
+    Deny from all
+</LimitExcept>
+
+# Protect against SQL injection
+<IfModule mod_rewrite.c>
+    RewriteCond %{QUERY_STRING} (\<|%3C).*script.*(\>|%3E) [NC,OR]
+    RewriteCond %{QUERY_STRING} GLOBALS(=|\[|\%[0-9A-Z]{0,2}) [OR]
+    RewriteCond %{QUERY_STRING} _REQUEST(=|\[|\%[0-9A-Z]{0,2}) [OR]
+    RewriteCond %{QUERY_STRING} (\.\.//?)+ [OR]
+    RewriteCond %{QUERY_STRING} (<|%3C)([^s]*s)+cript.*(>|%3E) [NC,OR]
+    RewriteCond %{QUERY_STRING} (\<|%3C).*iframe.*(\>|%3E) [NC,OR]
+    RewriteCond %{QUERY_STRING} (<|%3C)([^e]*e)+mbed.*(>|%3E) [NC]
+    RewriteRule ^(.*)$ - [F,L]
+</IfModule>
+
+# Protect wp-config.php (if WordPress is used alongside)
+<Files wp-config.php>
+    Order Allow,Deny
+    Deny from all
+</Files>
+
+# Protect .htaccess and .htpasswd
+<Files ~ "^\.ht">
+    Order Allow,Deny
+    Deny from all
+</Files>
+
+# ============================================================================
+# 📝 PHP SETTINGS (if supported by host)
+# ============================================================================
+
+<IfModule mod_php8.c>
+    # Hide PHP version
+    php_flag expose_php Off
+
+    # Session security
+    php_value session.cookie_httponly 1
+    php_value session.cookie_secure 1
+    php_value session.use_only_cookies 1
+
+    # File upload limits
+    php_value upload_max_filesize 10M
+    php_value post_max_size 10M
+
+    # Error handling (disable in production)
+    # php_flag display_errors Off
+    # php_flag display_startup_errors Off
+</IfModule>

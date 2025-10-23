@@ -126,6 +126,31 @@ class Auth
             // 🆔 Generate UUID for user
             $userUUID = self::generateUUID();
 
+            // 🏢 Check for organization by email domain
+            $organizationID = null;
+            $autoEnrolled = false;
+            try {
+                $orgData = Organization::findByEmailDomain($email);
+                if ($orgData) {
+                    // Check if auto-enrollment is enabled for this domain
+                    $domain = substr(strrchr($email, '@'), 1);
+                    $domainData = Database::fetchOne(
+                        "SELECT autoEnroll FROM tblOrganizationDomains
+                         WHERE domain = ? AND organizationID = ? AND isVerified = TRUE",
+                        [$domain, $orgData['organizationID']],
+                        'si'
+                    );
+
+                    if ($domainData && $domainData['autoEnroll']) {
+                        $organizationID = $orgData['organizationID'];
+                        $autoEnrolled = true;
+                    }
+                }
+            } catch (Exception $e) {
+                // Log but don't fail registration
+                ErrorLogger::logError('Warning', 'Organization detection failed: ' . $e->getMessage(), __FILE__, __LINE__);
+            }
+
             // 🗄️ Begin transaction
             Database::beginTransaction();
 
@@ -134,8 +159,8 @@ class Auth
                 INSERT INTO tblUsers (
                     userUUID, username, email, passwordHash,
                     firstName, lastName, displayName,
-                    accountStatus, accountTier, createdAt
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', 'free', NOW())
+                    organizationID, accountStatus, accountTier, createdAt
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', 'free', NOW())
             ";
 
             Database::query($query, [
@@ -146,9 +171,23 @@ class Auth
                 $additionalData['firstName'] ?? null,
                 $additionalData['lastName'] ?? null,
                 $additionalData['displayName'] ?? $username,
-            ], 'sssssss');
+                $organizationID
+            ], 'sssssssi');
 
             $userID = Database::getLastInsertId();
+
+            // 🏢 Add to organization members if auto-enrolled
+            if ($organizationID && $autoEnrolled) {
+                Database::query(
+                    "INSERT INTO tblOrganizationMembers (organizationID, userID, role, joinedAt)
+                     VALUES (?, ?, 'member', NOW())",
+                    [$organizationID, $userID],
+                    'ii'
+                );
+
+                ActivityLogger::log($userID, 'organization_auto_enrolled', 'organization', 'info',
+                    'User auto-enrolled in organization', ['organization_id' => $organizationID]);
+            }
 
             // 📧 Generate email verification token
             $verificationToken = SecurityUtils::generateToken();
