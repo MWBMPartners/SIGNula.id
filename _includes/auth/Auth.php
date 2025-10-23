@@ -44,7 +44,7 @@ class Auth
     /**
      * @var array|null Currently authenticated user data
      */
-    private static ?array $currentUser = null;
+    public static ?array $currentUser = null;
 
     // ========================================================================
     // 👤 USER REGISTRATION
@@ -153,12 +153,13 @@ class Auth
             // 📧 Generate email verification token
             $verificationToken = SecurityUtils::generateToken();
             $verificationCode = SecurityUtils::generateNumericCode(6);
+            $expiryDays = getSetting('email_verification.token_lifetime_days', 7);
 
             $tokenQuery = "
                 INSERT INTO tblVerificationTokens (
                     userID, token, tokenType, email, code,
                     ipAddress, userAgent, expiresAt
-                ) VALUES (?, ?, 'email_verification', ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL 24 HOUR))
+                ) VALUES (?, ?, 'email_verification', ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL ? DAY))
             ";
 
             Database::query($tokenQuery, [
@@ -167,8 +168,9 @@ class Auth
                 $email,
                 $verificationCode,
                 getClientIP(),
-                getUserAgent()
-            ], 'isssss');
+                getUserAgent(),
+                $expiryDays
+            ], 'isssssi');
 
             // 📝 Log activity
             ActivityLogger::log($userID, 'registration', 'auth', 'info', 'New user registered', [
@@ -291,14 +293,8 @@ class Auth
                 ];
             }
 
-            if ($user['accountStatus'] === 'pending' && !$user['emailVerified']) {
-                return [
-                    'success' => false,
-                    'userID' => null,
-                    'message' => 'Please verify your email address before logging in.',
-                    'requiresMFA' => false
-                ];
-            }
+            // Note: Email verification is now checked after login via requireAuth()
+            // Users can login but cannot access features until verified
 
             // ✅ Verify password
             if (empty($user['passwordHash']) || !SecurityUtils::verifyPassword($password, $user['passwordHash'])) {
@@ -658,10 +654,12 @@ class Auth
      * 🔄 Require Authentication
      *
      * Redirects to login if not authenticated.
+     * Also enforces email verification if required.
      *
      * @param string $redirectTo URL to redirect after login
+     * @param bool $skipVerificationCheck Skip email verification check
      */
-    public static function requireAuth(string $redirectTo = ''): void
+    public static function requireAuth(string $redirectTo = '', bool $skipVerificationCheck = false): void
     {
         if (!self::isAuthenticated()) {
             $loginURL = '/login';
@@ -675,6 +673,42 @@ class Auth
 
             redirect($loginURL);
         }
+
+        // 📧 Check email verification requirement
+        if (!$skipVerificationCheck && self::requiresEmailVerification()) {
+            redirect('/verify-required');
+        }
+    }
+
+    /**
+     * 📧 Check if Current User Requires Email Verification
+     *
+     * @return bool True if verification is required
+     */
+    public static function requiresEmailVerification(): bool
+    {
+        $user = self::getCurrentUser();
+
+        if (!$user) {
+            return false;
+        }
+
+        // Already verified
+        if ($user['emailVerified']) {
+            return false;
+        }
+
+        // Check if email verification is required
+        $requireVerification = getSetting('email_verification.required', true);
+
+        if (!$requireVerification) {
+            return false;
+        }
+
+        // Check if user can use system while unverified
+        $allowLoginUnverified = getSetting('email_verification.allow_login_unverified', true);
+
+        return !$allowLoginUnverified;
     }
 
     // ========================================================================
