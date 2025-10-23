@@ -42,9 +42,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Redirect to MFA verification page
                 redirect('/verify-mfa');
             } else {
-                // Successful login
-                $redirectTo = $_GET['redirect'] ?? '/dashboard';
-                redirect($redirectTo);
+                // Successful login - check if email verification is required
+                if (Auth::requiresEmailVerification()) {
+                    // Redirect to verification required page
+                    redirect('/verify-required?just_logged_in=1');
+                } else {
+                    // Successful login with verified email
+                    $redirectTo = $_GET['redirect'] ?? '/dashboard';
+                    redirect($redirectTo);
+                }
             }
         } else {
             $error = $result['message'];
