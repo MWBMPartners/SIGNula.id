@@ -37,12 +37,12 @@ try {
 
         <div class="sidebar-nav-divider">Organization</div>
 
-        <a href="/organization/dashboard.php" class="sidebar-nav-item <?php echo $currentPage === 'dashboard.php' ? 'active' : ''; ?>">
+        <a href="/organization/dashboard" class="sidebar-nav-item <?php echo $currentPage === 'dashboard.php' ? 'active' : ''; ?>">
             <i class="fas fa-building"></i>
             <span>Overview</span>
         </a>
 
-        <a href="/organization/members.php" class="sidebar-nav-item <?php echo $currentPage === 'members.php' ? 'active' : ''; ?>">
+        <a href="/organization/members" class="sidebar-nav-item <?php echo $currentPage === 'members.php' ? 'active' : ''; ?>">
             <i class="fas fa-users"></i>
             <span>Members</span>
             <?php if ($pendingInvitations > 0): ?>
@@ -50,18 +50,18 @@ try {
             <?php endif; ?>
         </a>
 
-        <a href="/organization/domains.php" class="sidebar-nav-item <?php echo $currentPage === 'domains.php' ? 'active' : ''; ?>">
+        <a href="/organization/domains" class="sidebar-nav-item <?php echo $currentPage === 'domains.php' ? 'active' : ''; ?>">
             <i class="fas fa-globe"></i>
             <span>Domains</span>
         </a>
 
         <?php if ($isAdmin ?? false): ?>
-        <a href="/organization/oauth-policies.php" class="sidebar-nav-item <?php echo $currentPage === 'oauth-policies.php' ? 'active' : ''; ?>">
+        <a href="/organization/oauth-policies" class="sidebar-nav-item <?php echo $currentPage === 'oauth-policies.php' ? 'active' : ''; ?>">
             <i class="fas fa-key"></i>
             <span>OAuth Policies</span>
         </a>
 
-        <a href="/organization/settings.php" class="sidebar-nav-item <?php echo $currentPage === 'settings.php' ? 'active' : ''; ?>">
+        <a href="/organization/settings" class="sidebar-nav-item <?php echo $currentPage === 'settings.php' ? 'active' : ''; ?>">
             <i class="fas fa-cog"></i>
             <span>Settings</span>
         </a>
