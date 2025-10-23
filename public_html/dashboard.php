@@ -21,6 +21,29 @@ Auth::requireAuth();
 // 👤 Get current user data
 $user = Auth::getCurrentUser();
 
+// 🏢 Check for organization membership
+$organization = null;
+$organizationRole = null;
+if ($user['organizationID']) {
+    try {
+        $organization = Database::fetchOne(
+            "SELECT * FROM tblOrganizations WHERE organizationID = ?",
+            [$user['organizationID']],
+            'i'
+        );
+
+        $membership = Database::fetchOne(
+            "SELECT role FROM tblOrganizationMembers WHERE organizationID = ? AND userID = ?",
+            [$user['organizationID'], $user['userID']],
+            'ii'
+        );
+
+        $organizationRole = $membership['role'] ?? 'member';
+    } catch (Exception $e) {
+        ErrorLogger::logError('Exception', $e->getMessage(), $e->getFile(), $e->getLine());
+    }
+}
+
 // 📊 Get user statistics
 $stats = [
     'activeSessions' => 0,
@@ -182,6 +205,40 @@ $pageTitle = 'Dashboard - SIGNula';
                     </div>
                 </div>
             </div>
+
+            <!-- 🏢 Organization Membership -->
+            <?php if ($organization): ?>
+            <div class="card" style="margin-top: 2rem;">
+                <div class="card-header">
+                    <h2><i class="fas fa-building"></i> Organization</h2>
+                </div>
+                <div class="card-body">
+                    <div style="display: flex; justify-content: space-between; align-items: start; gap: 2rem;">
+                        <div style="flex: 1;">
+                            <h3 style="margin: 0 0 0.5rem; font-size: 1.5rem;">
+                                <?php echo htmlspecialchars($organization['name']); ?>
+                            </h3>
+                            <p style="color: var(--text-secondary); margin-bottom: 1rem;">
+                                <?php echo htmlspecialchars($organization['description'] ?? 'No description'); ?>
+                            </p>
+                            <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+                                <span class="badge badge-lg badge-primary">
+                                    <i class="fas fa-user-tag"></i> <?php echo ucfirst($organizationRole); ?>
+                                </span>
+                                <span class="badge badge-lg badge-<?php echo $organization['accountStatus'] === 'active' ? 'success' : 'secondary'; ?>">
+                                    <?php echo ucfirst($organization['accountStatus']); ?>
+                                </span>
+                            </div>
+                        </div>
+                        <div>
+                            <a href="/organization/dashboard" class="btn btn-primary">
+                                <i class="fas fa-building"></i> View Organization
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <?php endif; ?>
 
             <!-- 🔐 Security Status -->
             <div class="card mb-4">
