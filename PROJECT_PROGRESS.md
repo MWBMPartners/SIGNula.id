@@ -1,4 +1,4 @@
-# SIGNula Development Progress
+# SIGNula.ID Development Progress
 
 **Last Updated:** 2026-02-02
 **Current Version:** 1.5.0-beta

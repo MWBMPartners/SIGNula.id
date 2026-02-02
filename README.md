@@ -1,4 +1,4 @@
-# SIGNula - Universal Login System
+# SIGNula.ID - Universal Login System
 
 ![Version](https://img.shields.io/badge/version-1.5.0-blue)
 ![PHP](https://img.shields.io/badge/PHP-8.3%2B-777BB4?logo=php)
