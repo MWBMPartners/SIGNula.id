@@ -93,8 +93,11 @@ class EmailService
      * @param string|null $replyTo Reply-to email
      * @param int|null $userID User ID
      * @param int|null $templateID Template ID
-     * @param int $priority Priority
+     * @param int $priority Priority (1=highest, 10=lowest)
      * @param \DateTime|null $scheduledFor Scheduled send time
+     * @param array $cc CC recipients (array of email addresses)
+     * @param array $bcc BCC recipients (array of email addresses)
+     * @param array $attachments Attachments (array of attachment data)
      * @return bool Success status
      */
     public static function queueEmail(
@@ -108,19 +111,28 @@ class EmailService
         ?int $userID = null,
         ?int $templateID = null,
         int $priority = 5,
-        ?\DateTime $scheduledFor = null
+        ?\DateTime $scheduledFor = null,
+        array $cc = [],
+        array $bcc = [],
+        array $attachments = []
     ): bool {
         try {
             $fromEmail = $fromEmail ?? getSetting('email.from.address', 'noreply@signulo.id');
             $fromName = $fromName ?? getSetting('email.from.name', 'SIGNula');
 
+            // 📋 Encode arrays as JSON
+            $ccJson = !empty($cc) ? json_encode($cc) : null;
+            $bccJson = !empty($bcc) ? json_encode($bcc) : null;
+            $attachmentsJson = !empty($attachments) ? json_encode($attachments) : null;
+
             $query = "
                 INSERT INTO tblEmailQueue (
                     userID, templateID, recipientEmail, recipientName,
                     subject, bodyHTML, bodyText,
-                    fromEmail, fromName, replyTo,
-                    priority, status, scheduledFor
-                ) VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+                    fromEmail, fromName, replyToEmail,
+                    ccRecipients, bccRecipients, attachments,
+                    priority, status, scheduledAt
+                ) VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
             ";
 
             Database::query($query, [
@@ -133,9 +145,12 @@ class EmailService
                 $fromEmail,
                 $fromName,
                 $replyTo,
+                $ccJson,
+                $bccJson,
+                $attachmentsJson,
                 $priority,
                 $scheduledFor ? $scheduledFor->format('Y-m-d H:i:s') : null
-            ], 'iissssssssis');
+            ], 'iissssssssssiss');
 
             return true;
 
@@ -246,109 +261,94 @@ class EmailService
     /**
      * 📤 Process Email Queue
      *
-     * Processes pending emails in the queue.
+     * Processes pending emails in the queue using configured email providers.
      * Should be called by cron job or scheduled task.
      *
+     * Uses the EmailQueueProcessor which supports:
+     * - Multiple email providers (Microsoft Graph, Gmail API, SMTP)
+     * - Provider priority and fallback
+     * - Automatic retry with exponential backoff
+     * - Dead letter queue for permanent failures
+     *
      * @param int $batchSize Number of emails to process
-     * @return int Number of emails sent
+     * @param bool $verbose Enable verbose output (useful for debugging)
+     * @return array Processing statistics
      */
-    public static function processQueue(int $batchSize = 50): int
+    public static function processQueue(int $batchSize = 50, bool $verbose = false): array
     {
         try {
-            // Get pending emails
-            $query = "
-                SELECT *
-                FROM tblEmailQueue
-                WHERE status = 'pending'
-                AND attempts < maxAttempts
-                AND (scheduledFor IS NULL OR scheduledFor <= NOW())
-                ORDER BY priority ASC, createdAt ASC
-                LIMIT ?
-            ";
+            // 🚀 Load email queue processor
+            require_once __DIR__ . DIRECTORY_SEPARATOR . 'EmailQueueProcessor.php';
 
-            $emails = Database::fetchAll($query, [$batchSize], 'i');
-            $sentCount = 0;
+            // 📧 Process queue
+            $processor = new EmailQueueProcessor($verbose);
+            $stats = $processor->process($batchSize);
 
-            foreach ($emails as $email) {
-                if (self::sendEmail($email)) {
-                    $sentCount++;
-                }
-            }
-
-            return $sentCount;
+            return $stats;
 
         } catch (Exception $e) {
             ErrorLogger::logError('Exception', $e->getMessage(), $e->getFile(), $e->getLine());
-            return 0;
+            return [
+                'processed' => 0,
+                'sent' => 0,
+                'failed' => 0,
+                'retried' => 0,
+                'dead_letter' => 0,
+                'duration' => 0,
+                'error' => $e->getMessage()
+            ];
         }
     }
 
     /**
-     * 📧 Send Individual Email
+     * 📊 Get Queue Statistics
      *
-     * @param array $emailData Email data from queue
-     * @return bool Success status
+     * Returns current email queue statistics.
+     *
+     * @return array Queue statistics
      */
-    private static function sendEmail(array $emailData): bool
+    public static function getQueueStats(): array
     {
         try {
-            // Update status to sending
-            Database::query(
-                "UPDATE tblEmailQueue SET status = 'sending', attempts = attempts + 1, lastAttemptAt = NOW() WHERE queueID = ?",
-                [$emailData['queueID']],
-                'i'
-            );
+            // 🚀 Load email queue processor
+            require_once __DIR__ . DIRECTORY_SEPARATOR . 'EmailQueueProcessor.php';
 
-            $headers = [
-                'From' => $emailData['fromName'] ? "{$emailData['fromName']} <{$emailData['fromEmail']}>" : $emailData['fromEmail'],
-                'Reply-To' => $emailData['replyTo'] ?? $emailData['fromEmail'],
-                'MIME-Version' => '1.0',
-                'Content-Type' => 'text/html; charset=UTF-8',
-                'X-Mailer' => 'SIGNula Mailer'
-            ];
-
-            $headerString = '';
-            foreach ($headers as $key => $value) {
-                $headerString .= "{$key}: {$value}\r\n";
-            }
-
-            // Send email using PHP mail() function
-            // For production, consider using SMTP or email service API
-            $sent = mail(
-                $emailData['recipientEmail'],
-                $emailData['subject'],
-                $emailData['bodyHTML'] ?? $emailData['bodyText'],
-                $headerString
-            );
-
-            if ($sent) {
-                // Mark as sent
-                Database::query(
-                    "UPDATE tblEmailQueue SET status = 'sent', sentAt = NOW() WHERE queueID = ?",
-                    [$emailData['queueID']],
-                    'i'
-                );
-                return true;
-            } else {
-                // Mark as failed
-                Database::query(
-                    "UPDATE tblEmailQueue SET status = 'failed', errorMessage = ? WHERE queueID = ?",
-                    ['Failed to send email', $emailData['queueID']],
-                    'si'
-                );
-                return false;
-            }
+            return EmailQueueProcessor::getQueueStatistics();
 
         } catch (Exception $e) {
-            // Mark as failed with error message
-            Database::query(
-                "UPDATE tblEmailQueue SET status = 'failed', errorMessage = ? WHERE queueID = ?",
-                [$e->getMessage(), $emailData['queueID']],
-                'si'
-            );
-
             ErrorLogger::logError('Exception', $e->getMessage(), $e->getFile(), $e->getLine());
-            return false;
+            return [
+                'total' => 0,
+                'pending' => 0,
+                'sent' => 0,
+                'failed' => 0,
+                'retried' => 0,
+                'oldest_pending' => null,
+                'last_sent' => null,
+                'error' => $e->getMessage()
+            ];
+        }
+    }
+
+    /**
+     * 🧹 Cleanup Old Sent Emails
+     *
+     * Removes old sent emails from queue for housekeeping.
+     *
+     * @param int $daysOld Number of days to keep (default: 30)
+     * @return int Number of emails deleted
+     */
+    public static function cleanupOldEmails(int $daysOld = 30): int
+    {
+        try {
+            // 🚀 Load email queue processor
+            require_once __DIR__ . DIRECTORY_SEPARATOR . 'EmailQueueProcessor.php';
+
+            return EmailQueueProcessor::cleanupOldEmails($daysOld);
+
+        } catch (Exception $e) {
+            ErrorLogger::logError('Exception', $e->getMessage(), $e->getFile(), $e->getLine());
+            return 0;
         }
     }
 }

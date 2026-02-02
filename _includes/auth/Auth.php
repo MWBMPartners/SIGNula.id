@@ -361,24 +361,36 @@ class Auth
                 );
             }
 
-            // 🔐 Check if MFA is enabled
-            $mfaEnabled = Database::fetchOne(
-                "SELECT COUNT(*) as count FROM tblUserMFA WHERE userID = ? AND isEnabled = TRUE",
-                [$user['userID']],
-                'i'
-            );
+            // 🔐 Check if MFA is enabled for this user
+            $mfaEnabled = MFA::isEnabled($user['userID']);
 
-            if ($mfaEnabled && $mfaEnabled['count'] > 0) {
-                // Store user ID in session for MFA verification
-                $_SESSION['mfa_user_id'] = $user['userID'];
-                $_SESSION['mfa_remember_me'] = $rememberMe;
+            if ($mfaEnabled) {
+                // 🍪 Check if device is trusted (skip MFA for trusted devices)
+                $deviceTrusted = MFA::isDeviceTrusted($user['userID']);
 
-                return [
-                    'success' => true,
-                    'userID' => $user['userID'],
-                    'message' => 'MFA verification required',
-                    'requiresMFA' => true
-                ];
+                if (!$deviceTrusted) {
+                    // 🔐 MFA verification required
+                    // Store user ID and metadata in session for MFA verification
+                    $_SESSION['mfa_user_id'] = $user['userID'];
+                    $_SESSION['mfa_required'] = true;
+                    $_SESSION['mfa_remember_me'] = $rememberMe;
+                    $_SESSION['redirect_after_login'] = $_GET['redirect'] ?? 'dashboard.php';
+
+                    // 📝 Log MFA challenge
+                    ActivityLogger::log($user['userID'], 'mfa_challenge_issued', 'auth', 'info',
+                        'MFA verification required for login');
+
+                    return [
+                        'success' => true,
+                        'userID' => $user['userID'],
+                        'message' => 'MFA verification required',
+                        'requiresMFA' => true
+                    ];
+                } else {
+                    // ✅ Device is trusted - skip MFA
+                    ActivityLogger::log($user['userID'], 'mfa_skipped_trusted_device', 'auth', 'info',
+                        'MFA skipped for trusted device');
+                }
             }
 
             // ✅ Complete login (no MFA required)

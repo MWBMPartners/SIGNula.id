@@ -88,6 +88,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     $success = 'Device removed successfully!';
                     break;
+
+                case 'disable_totp':
+                    // 🚫 Disable TOTP MFA
+                    MFA::disableMethod($user['userID'], 'totp');
+                    $success = 'Authenticator app has been disabled!';
+                    break;
+
+                case 'regenerate_backup_codes':
+                    // 🔄 Regenerate backup codes
+                    if (MFA::isEnabled($user['userID'])) {
+                        $newBackupCodes = MFA::generateBackupCodes($user['userID'], true);
+                        $_SESSION['new_backup_codes'] = $newBackupCodes;
+                        $success = 'New backup codes generated! Please save them securely.';
+                    } else {
+                        $error = 'MFA must be enabled to generate backup codes.';
+                    }
+                    break;
+
+                case 'disable_all_mfa':
+                    // 🚫 Disable all MFA methods
+                    $methods = MFA::getEnabledMethods($user['userID']);
+                    foreach ($methods as $method) {
+                        MFA::disableMethod($user['userID'], $method);
+                    }
+
+                    // Also remove all backup codes
+                    Database::query(
+                        "DELETE FROM tblUserMFA WHERE userID = ? AND mfaType = 'backup_code'",
+                        [$user['userID']],
+                        'i'
+                    );
+
+                    ActivityLogger::log($user['userID'], 'mfa_all_disabled', 'security', 'warning',
+                        'All MFA methods disabled');
+
+                    $success = 'All multi-factor authentication methods have been disabled!';
+                    break;
             }
 
         } catch (Exception $e) {
@@ -130,26 +167,14 @@ try {
 }
 
 // 🔐 Get MFA status
-$mfaEnabled = false;
-$mfaMethods = [];
-try {
-    $mfaMethods = Database::fetchAll(
-        "SELECT mfaID, mfaType, isEnabled, isPrimary, lastUsedAt
-         FROM tblUserMFA
-         WHERE userID = ?
-         ORDER BY isPrimary DESC, mfaType ASC",
-        [$user['userID']],
-        'i'
-    );
+$mfaEnabled = MFA::isEnabled($user['userID']);
+$mfaMethods = MFA::getEnabledMethods($user['userID']);
+$remainingBackupCodes = MFA::getRemainingBackupCodes($user['userID']);
 
-    foreach ($mfaMethods as $method) {
-        if ($method['isEnabled']) {
-            $mfaEnabled = true;
-            break;
-        }
-    }
-} catch (Exception $e) {
-    ErrorLogger::logError('Exception', $e->getMessage(), $e->getFile(), $e->getLine());
+// 🎲 Check for newly generated backup codes in session
+$newBackupCodes = $_SESSION['new_backup_codes'] ?? [];
+if (!empty($newBackupCodes)) {
+    unset($_SESSION['new_backup_codes']); // Clear after displaying once
 }
 
 // 🎫 Generate CSRF token
@@ -267,38 +292,38 @@ $pageTitle = 'Security Settings - SIGNula';
                 <h4 style="margin-bottom: 1rem;">Available Methods:</h4>
 
                 <!-- TOTP Authenticator App -->
-                <div class="d-flex align-items-center justify-content-between mb-3 pb-3" style="border-bottom: 1px solid var(--border-color);">
+                <div class="d-flex align-items-center justify-content-between mb-3 pb-3" style="border-bottom: 1px solid #dee2e6;">
                     <div class="d-flex align-items-center">
                         <div style="width: 48px; height: 48px; border-radius: 50%; background: rgba(102, 126, 234, 0.1); display: flex; align-items: center; justify-content: center; margin-right: 1rem;">
-                            <i class="fas fa-mobile-alt" style="color: var(--primary-color); font-size: 1.5rem;"></i>
+                            <i class="fas fa-mobile-alt" style="color: #667eea; font-size: 1.5rem;"></i>
                         </div>
                         <div>
                             <strong>Authenticator App</strong>
-                            <p style="margin: 0; color: var(--text-secondary); font-size: 0.875rem;">
+                            <p style="margin: 0; color: #6c757d; font-size: 0.875rem;">
                                 Use an app like Google Authenticator or Microsoft Authenticator
                             </p>
                         </div>
                     </div>
-                    <button class="btn btn-primary btn-sm" onclick="alert('TOTP setup coming in Phase 2!')">
-                        <i class="fas fa-plus"></i> Enable
-                    </button>
+                    <a href="/mfa/setup?step=choose" class="btn btn-primary btn-sm">
+                        <i class="fas fa-plus"></i> Set Up
+                    </a>
                 </div>
 
                 <!-- Email OTP -->
-                <div class="d-flex align-items-center justify-content-between mb-3 pb-3" style="border-bottom: 1px solid var(--border-color);">
+                <div class="d-flex align-items-center justify-content-between mb-3 pb-3" style="border-bottom: 1px solid #dee2e6;">
                     <div class="d-flex align-items-center">
                         <div style="width: 48px; height: 48px; border-radius: 50%; background: rgba(59, 130, 246, 0.1); display: flex; align-items: center; justify-content: center; margin-right: 1rem;">
-                            <i class="fas fa-envelope" style="color: var(--info-color); font-size: 1.5rem;"></i>
+                            <i class="fas fa-envelope" style="color: #3b82f6; font-size: 1.5rem;"></i>
                         </div>
                         <div>
                             <strong>Email Verification</strong>
-                            <p style="margin: 0; color: var(--text-secondary); font-size: 0.875rem;">
-                                Receive verification codes via email
+                            <p style="margin: 0; color: #6c757d; font-size: 0.875rem;">
+                                Receive verification codes via email (available after setting up primary method)
                             </p>
                         </div>
                     </div>
-                    <button class="btn btn-primary btn-sm" onclick="alert('Email OTP setup coming in Phase 2!')">
-                        <i class="fas fa-plus"></i> Enable
+                    <button class="btn btn-secondary btn-sm" disabled>
+                        <i class="fas fa-clock"></i> Available after setup
                     </button>
                 </div>
 
@@ -306,49 +331,125 @@ $pageTitle = 'Security Settings - SIGNula';
                 <div class="d-flex align-items-center justify-content-between">
                     <div class="d-flex align-items-center">
                         <div style="width: 48px; height: 48px; border-radius: 50%; background: rgba(16, 185, 129, 0.1); display: flex; align-items: center; justify-content: center; margin-right: 1rem;">
-                            <i class="fas fa-key" style="color: var(--success-color); font-size: 1.5rem;"></i>
+                            <i class="fas fa-key" style="color: #10b981; font-size: 1.5rem;"></i>
                         </div>
                         <div>
                             <strong>Passkey</strong>
-                            <p style="margin: 0; color: var(--text-secondary); font-size: 0.875rem;">
-                                Use your device's biometric authentication
+                            <p style="margin: 0; color: #6c757d; font-size: 0.875rem;">
+                                Use your device's biometric authentication (Coming Soon)
                             </p>
                         </div>
                     </div>
-                    <button class="btn btn-primary btn-sm" onclick="alert('Passkey setup coming in Phase 2!')">
-                        <i class="fas fa-plus"></i> Enable
+                    <button class="btn btn-secondary btn-sm" disabled>
+                        <i class="fas fa-clock"></i> Coming Soon
                     </button>
                 </div>
 
             <?php else: ?>
+                <!-- ✅ MFA Enabled Status -->
                 <div class="alert alert-success">
                     <i class="fas fa-check-circle"></i>
                     <span><strong>Protected:</strong> Your account is secured with two-factor authentication.</span>
                 </div>
 
+                <!-- 🎲 Display Newly Generated Backup Codes -->
+                <?php if (!empty($newBackupCodes)): ?>
+                    <div class="alert alert-warning">
+                        <h5><i class="fas fa-key me-2"></i>New Backup Codes Generated</h5>
+                        <p class="mb-3"><strong>Save these codes now!</strong> You won't be able to see them again.</p>
+                        <div class="row">
+                            <?php foreach ($newBackupCodes as $code): ?>
+                                <div class="col-md-6 mb-2">
+                                    <code style="display: block; padding: 0.5rem; background: #f8f9fa; border-radius: 0.25rem; font-size: 1.1rem; letter-spacing: 0.1em;">
+                                        <?php echo htmlspecialchars($code); ?>
+                                    </code>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-outline-primary mt-2" onclick="printBackupCodes()">
+                            <i class="fas fa-print"></i> Print Codes
+                        </button>
+                    </div>
+                <?php endif; ?>
+
+                <!-- 📊 Enabled Methods -->
                 <h4 style="margin-bottom: 1rem;">Enabled Methods:</h4>
 
-                <?php foreach ($mfaMethods as $method): ?>
-                    <?php if ($method['isEnabled']): ?>
-                        <div class="d-flex align-items-center justify-content-between mb-3">
+                <?php if (in_array('totp', $mfaMethods)): ?>
+                    <div class="d-flex align-items-center justify-content-between mb-3 pb-3" style="border-bottom: 1px solid #dee2e6;">
+                        <div class="d-flex align-items-center">
+                            <div style="width: 48px; height: 48px; border-radius: 50%; background: rgba(102, 126, 234, 0.1); display: flex; align-items: center; justify-content: center; margin-right: 1rem;">
+                                <i class="fas fa-mobile-alt" style="color: #667eea; font-size: 1.5rem;"></i>
+                            </div>
                             <div>
-                                <strong><?php echo ucfirst(str_replace('_', ' ', $method['mfaType'])); ?></strong>
-                                <?php if ($method['isPrimary']): ?>
-                                    <span class="badge" style="background: var(--primary-color); color: white; margin-left: 0.5rem;">Primary</span>
-                                <?php endif; ?>
-                                <p style="margin: 0; color: var(--text-secondary); font-size: 0.875rem;">
-                                    Last used: <?php echo $method['lastUsedAt'] ? date('M d, Y', strtotime($method['lastUsedAt'])) : 'Never'; ?>
+                                <strong>Authenticator App</strong>
+                                <span class="badge bg-success ms-2">Active</span>
+                                <p style="margin: 0; color: #6c757d; font-size: 0.875rem;">
+                                    TOTP codes from your authenticator app
                                 </p>
                             </div>
-                            <button class="btn btn-danger btn-sm" onclick="alert('MFA management coming in Phase 2!')">
-                                <i class="fas fa-times"></i> Remove
-                            </button>
                         </div>
-                    <?php endif; ?>
-                <?php endforeach; ?>
+                        <form method="POST" style="display: inline;">
+                            <input type="hidden" name="csrf_token" value="<?php echo SecurityUtils::generateCSRFToken(); ?>">
+                            <input type="hidden" name="action" value="disable_totp">
+                            <button type="submit" class="btn btn-outline-danger btn-sm" onclick="return confirm('Are you sure you want to disable authenticator app? This will reduce your account security.')">
+                                <i class="fas fa-times"></i> Disable
+                            </button>
+                        </form>
+                    </div>
+                <?php endif; ?>
+
+                <!-- 🎲 Backup Codes Section -->
+                <div class="d-flex align-items-center justify-content-between mb-3 pb-3" style="border-bottom: 1px solid #dee2e6;">
+                    <div class="d-flex align-items-center">
+                        <div style="width: 48px; height: 48px; border-radius: 50%; background: rgba(255, 193, 7, 0.1); display: flex; align-items: center; justify-content: center; margin-right: 1rem;">
+                            <i class="fas fa-key" style="color: #ffc107; font-size: 1.5rem;"></i>
+                        </div>
+                        <div>
+                            <strong>Backup Codes</strong>
+                            <?php if ($remainingBackupCodes > 0): ?>
+                                <?php if ($remainingBackupCodes < 3): ?>
+                                    <span class="badge bg-warning ms-2">Low</span>
+                                <?php else: ?>
+                                    <span class="badge bg-success ms-2">Active</span>
+                                <?php endif; ?>
+                            <?php endif; ?>
+                            <p style="margin: 0; color: #6c757d; font-size: 0.875rem;">
+                                <?php echo $remainingBackupCodes; ?> of 10 codes remaining
+                            </p>
+                        </div>
+                    </div>
+                    <form method="POST" style="display: inline;">
+                        <input type="hidden" name="csrf_token" value="<?php echo SecurityUtils::generateCSRFToken(); ?>">
+                        <input type="hidden" name="action" value="regenerate_backup_codes">
+                        <button type="submit" class="btn btn-outline-primary btn-sm" onclick="return confirm('Generate new backup codes? This will invalidate your existing codes.')">
+                            <i class="fas fa-sync"></i> Regenerate
+                        </button>
+                    </form>
+                </div>
+
+                <!-- 🚨 Disable All MFA -->
+                <div class="mt-4 pt-3" style="border-top: 2px solid #dee2e6;">
+                    <form method="POST">
+                        <input type="hidden" name="csrf_token" value="<?php echo SecurityUtils::generateCSRFToken(); ?>">
+                        <input type="hidden" name="action" value="disable_all_mfa">
+                        <button type="submit" class="btn btn-danger" onclick="return confirm('⚠️ WARNING: This will disable all two-factor authentication on your account and make it less secure. Are you absolutely sure?')">
+                            <i class="fas fa-shield-slash"></i> Disable All MFA
+                        </button>
+                        <small class="text-muted d-block mt-2">
+                            <i class="fas fa-exclamation-triangle"></i> This will remove all two-factor authentication from your account
+                        </small>
+                    </form>
+                </div>
             <?php endif; ?>
         </div>
     </div>
+
+    <script>
+    function printBackupCodes() {
+        window.print();
+    }
+    </script>
 
     <!-- 🎫 Active Sessions -->
     <div class="card mb-4">

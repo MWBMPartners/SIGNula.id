@@ -133,6 +133,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         }
                     }
                     break;
+
+                case 'unlink_oauth':
+                    // 🔗 Unlink OAuth provider account
+                    $provider = $_POST['provider'] ?? '';
+
+                    if (empty($provider)) {
+                        $error = 'Provider not specified.';
+                    } else {
+                        // Delete linked account
+                        $deleted = Database::query(
+                            "DELETE FROM tblUserLinkedAccounts WHERE userID = ? AND provider = ?",
+                            [$user['userID'], $provider],
+                            'is'
+                        );
+
+                        if ($deleted) {
+                            ActivityLogger::log($user['userID'], 'oauth_unlinked', 'account', 'info',
+                                "Unlinked {$provider} account", ['provider' => $provider]);
+
+                            $success = ucfirst($provider) . ' account unlinked successfully!';
+                        } else {
+                            $error = 'Failed to unlink account.';
+                        }
+                    }
+                    break;
             }
 
         } catch (Exception $e) {
@@ -144,6 +169,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // 🎫 Generate CSRF token
 $csrfToken = SecurityUtils::generateCSRFToken();
+
+// 🔗 Get linked OAuth accounts
+$linkedAccounts = [];
+try {
+    $linkedAccounts = Database::fetchAll(
+        "SELECT provider, email, displayName, profilePicture, createdAt, updatedAt
+         FROM tblUserLinkedAccounts
+         WHERE userID = ?
+         ORDER BY createdAt DESC",
+        [$user['userID']],
+        'i'
+    );
+} catch (Exception $e) {
+    ErrorLogger::logError('Exception', $e->getMessage(), $e->getFile(), $e->getLine());
+}
 
 // 📄 Page metadata
 $pageTitle = 'Account Settings - SIGNula';
@@ -456,6 +496,107 @@ $pageTitle = 'Account Settings - SIGNula';
                     <i class="fas fa-key"></i> Change Password
                 </button>
             </form>
+        </div>
+    </div>
+
+    <!-- 🔗 Linked Accounts -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h3 class="card-title"><i class="fas fa-link"></i> Linked Accounts</h3>
+        </div>
+        <div class="card-body">
+            <p class="text-muted mb-4">
+                Connect your SIGNula account with third-party providers for easier sign-in and account recovery.
+            </p>
+
+            <?php if (!empty($linkedAccounts)): ?>
+                <!-- 📊 Linked Accounts List -->
+                <div class="mb-4">
+                    <h5 class="mb-3">Connected Accounts</h5>
+                    <?php foreach ($linkedAccounts as $account): ?>
+                        <?php
+                        $providerIcons = [
+                            'google' => 'fab fa-google',
+                            'microsoft' => 'fab fa-microsoft',
+                            'apple' => 'fab fa-apple',
+                            'facebook' => 'fab fa-facebook',
+                        ];
+                        $icon = $providerIcons[$account['provider']] ?? 'fas fa-link';
+                        $providerName = ucfirst($account['provider']);
+                        ?>
+                        <div class="d-flex align-items-center justify-content-between p-3 mb-2" style="border: 1px solid #dee2e6; border-radius: 0.5rem; background: #f8f9fa;">
+                            <div class="d-flex align-items-center">
+                                <div style="width: 48px; height: 48px; border-radius: 50%; background: white; display: flex; align-items: center; justify-content: center; margin-right: 1rem; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                                    <?php if (!empty($account['profilePicture'])): ?>
+                                        <img src="<?php echo htmlspecialchars($account['profilePicture']); ?>" alt="<?php echo htmlspecialchars($providerName); ?>" style="width: 48px; height: 48px; border-radius: 50%;" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                                        <i class="<?php echo $icon; ?>" style="font-size: 24px; display: none;"></i>
+                                    <?php else: ?>
+                                        <i class="<?php echo $icon; ?>" style="font-size: 24px;"></i>
+                                    <?php endif; ?>
+                                </div>
+                                <div>
+                                    <strong><?php echo htmlspecialchars($providerName); ?></strong>
+                                    <p style="margin: 0; color: #6c757d; font-size: 0.875rem;">
+                                        <?php echo htmlspecialchars($account['email'] ?? $account['displayName']); ?>
+                                    </p>
+                                    <small style="color: #999; font-size: 0.75rem;">
+                                        Connected <?php echo date('M j, Y', strtotime($account['createdAt'])); ?>
+                                    </small>
+                                </div>
+                            </div>
+                            <form method="POST" style="display: inline;">
+                                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrfToken); ?>">
+                                <input type="hidden" name="action" value="unlink_oauth">
+                                <input type="hidden" name="provider" value="<?php echo htmlspecialchars($account['provider']); ?>">
+                                <button type="submit" class="btn btn-outline-danger btn-sm" onclick="return confirm('Are you sure you want to unlink your <?php echo htmlspecialchars($providerName); ?> account?');">
+                                    <i class="fas fa-unlink"></i> Unlink
+                                </button>
+                            </form>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
+
+            <!-- 🔗 Available Providers to Link -->
+            <h5 class="mb-3"><?php echo empty($linkedAccounts) ? 'Connect an Account' : 'Connect More Accounts'; ?></h5>
+
+            <?php
+            // 📋 Get already linked providers
+            $linkedProviders = array_column($linkedAccounts, 'provider');
+            $availableProviders = [
+                ['id' => 'google', 'name' => 'Google', 'icon' => 'fab fa-google', 'color' => '#4285F4'],
+                ['id' => 'microsoft', 'name' => 'Microsoft', 'icon' => 'fab fa-microsoft', 'color' => '#00A4EF'],
+                ['id' => 'apple', 'name' => 'Apple', 'icon' => 'fab fa-apple', 'color' => '#000'],
+                ['id' => 'facebook', 'name' => 'Facebook', 'icon' => 'fab fa-facebook', 'color' => '#1877F2'],
+            ];
+            ?>
+
+            <div class="row">
+                <?php foreach ($availableProviders as $provider): ?>
+                    <?php if (!in_array($provider['id'], $linkedProviders)): ?>
+                        <div class="col-md-6 mb-3">
+                            <a href="/oauth/authorize?provider=<?php echo $provider['id']; ?>&mode=link" class="btn btn-outline-secondary w-100" style="padding: 0.75rem;">
+                                <i class="<?php echo $provider['icon']; ?> me-2" style="color: <?php echo $provider['color']; ?>;"></i>
+                                Connect <?php echo $provider['name']; ?>
+                            </a>
+                        </div>
+                    <?php endif; ?>
+                <?php endforeach; ?>
+
+                <?php if (count($linkedProviders) === count($availableProviders)): ?>
+                    <div class="col-12">
+                        <div class="alert alert-success">
+                            <i class="fas fa-check-circle"></i>
+                            All available providers are connected!
+                        </div>
+                    </div>
+                <?php endif; ?>
+            </div>
+
+            <div class="alert alert-info mt-3">
+                <i class="fas fa-info-circle"></i>
+                <strong>Tip:</strong> Linking multiple accounts makes it easier to sign in and helps with account recovery if you forget your password.
+            </div>
         </div>
     </div>
 
