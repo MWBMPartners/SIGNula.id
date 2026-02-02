@@ -525,7 +525,7 @@ class AppleOAuth extends OAuth
                 'oauth.apple.team_id' => 'Your 10-character Team ID',
                 'oauth.apple.key_id' => 'Your 10-character Key ID',
                 'oauth.apple.private_key' => 'Contents of .p8 file (will be encrypted)',
-                'oauth.apple.redirect_uri' => 'Your redirect URL (e.g., https://signulo.id/oauth/callback)'
+                'oauth.apple.redirect_uri' => 'Your redirect URL (e.g., https://SIGNula.id/oauth/callback)'
             ],
             'notes' => [
                 'The private key (.p8 file) can only be downloaded once - store it securely!',

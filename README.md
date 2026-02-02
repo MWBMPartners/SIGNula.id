@@ -9,7 +9,7 @@
 
 **SIGNula** is a comprehensive, universal single sign-on (SSO) authentication system designed to provide seamless user authentication across multiple web and mobile applications. Built with security, scalability, and user experience as top priorities, SIGNula offers a modern authentication solution for today's interconnected digital ecosystem.
 
-**Current Status:** Phase 1 (WebAuthn/PassKeys & Passwordless Login) Complete ✅ | Phase 2 (Account Management) In Progress 🟡
+**Current Status:** Phase 1 (WebAuthn/PassKeys & Passwordless Login) Complete ✅ | Phase 2 (Account Management UI) Complete ✅
 
 ### ✨ Key Features
 
@@ -354,6 +354,110 @@ php _tests/verify-phase1-setup.php
 
 See [TESTING_GUIDE_PHASE1.md](TESTING_GUIDE_PHASE1.md) for detailed testing instructions and [QUICK_TEST_REFERENCE.md](QUICK_TEST_REFERENCE.md) for a 15-minute quick test guide.
 
+## 🎛️ Phase 2 Features (Account Management UI)
+
+### 📊 Settings Dashboard
+
+Central hub for account management with:
+- **User Statistics:** PassKey count, MFA status, connected accounts, activity summary
+- **Security Recommendations:** Personalized suggestions to improve account security
+- **Quick Actions:** Direct links to common settings
+- **Recent Activity Preview:** Last 5 account activities
+
+**Access:** [/settings/](public_html/settings/index.php)
+
+### 👤 Profile Management
+
+Manage personal information and account details:
+- **Update Profile:** Display name, username, timezone
+- **Email Management:** Change email address with password verification
+- **Account Information:** View account creation date, last login
+- **Activity Logging:** All changes tracked in activity log
+
+**Access:** [/settings/profile](public_html/settings/profile.php)
+
+### 🔒 Security Settings
+
+Comprehensive security management:
+- **Security Score:** 0-100% score based on enabled security features
+- **Password Management:** Change password with validation
+- **Authentication Overview:** View all enabled authentication methods
+- **Login History:** Review recent login attempts and locations
+
+**Access:** [/settings/security](public_html/settings/security.php)
+
+### 🔗 Connected Accounts
+
+OAuth account linking and management:
+- **Supported Providers:** Google, Microsoft, Apple, Facebook, LinkedIn, GitHub
+- **Link/Unlink:** Connect and disconnect OAuth accounts
+- **Primary Account:** Set primary account for avatar display
+- **Permission Review:** View granted scopes and permissions
+
+**Access:** [/settings/connected-accounts](public_html/settings/connected-accounts.php)
+
+### 🔐 MFA Management
+
+Two-factor authentication control:
+- **Enable/Disable MFA:** Toggle MFA with password confirmation
+- **Authenticator Setup:** QR code and manual setup instructions
+- **Backup Codes:** Generate, regenerate, print, and copy recovery codes
+- **Usage Tracking:** Monitor MFA usage statistics
+
+**Access:** [/settings/mfa](public_html/settings/mfa.php)
+
+### 📊 Activity Log
+
+Comprehensive activity tracking and export:
+- **View History:** All account activities with details
+- **Advanced Filtering:** By type, result, date range, search
+- **Statistics:** Total, 7-day, 30-day, and failed login counts
+- **Export:** Download as CSV or JSON
+- **Pagination:** 25 items per page
+
+**Access:** [/settings/activity](public_html/settings/activity.php)
+
+### 🔒 Privacy Settings
+
+Privacy and data control:
+- **Profile Visibility:** Private, Friends Only, or Public
+- **Third-Party Apps:** View and revoke API access
+- **Data Preferences:** Analytics tracking, marketing emails
+- **GDPR Compliance:** Data rights information and export
+
+**Access:** [/settings/privacy](public_html/settings/privacy.php)
+
+### 🔔 Notification Preferences
+
+Customize notification delivery:
+- **Email Notifications:** Security alerts, account updates, marketing
+- **Push Notifications:** Security alerts, login notifications
+- **SMS Notifications:** Security alerts (requires phone number)
+- **Quick Actions:** Enable All, Disable All, Security Only
+
+**Access:** [/settings/notifications](public_html/settings/notifications.php)
+
+### 🧪 Testing Phase 2
+
+Phase 2 includes comprehensive testing documentation:
+
+**Quick Test (20 minutes):**
+```bash
+# Follow quick test guide
+cat QUICK_TEST_REFERENCE_PHASE2.md
+```
+
+**Comprehensive Testing:**
+See [TESTING_GUIDE_PHASE2.md](TESTING_GUIDE_PHASE2.md) for detailed testing with 100+ test cases covering:
+- Functional testing (all 8 pages)
+- Security testing (CSRF, XSS, SQL injection)
+- UI/UX testing (responsive, accessibility)
+- Performance testing
+- Integration testing
+
+**Quick Reference:**
+[QUICK_TEST_REFERENCE_PHASE2.md](QUICK_TEST_REFERENCE_PHASE2.md) - 20-minute validation guide
+
 ## 🔧 Configuration
 
 All configuration is managed through the database `tblSettings` table. Key settings include:
@@ -473,8 +577,8 @@ This software is proprietary and confidential. Unauthorized copying, distributio
 ## 👥 Support
 
 For support, please contact:
-- **Website:** https://signulo.com
-- **Email:** support@signulo.com
+- **Website:** https://SIGNula.com
+- **Email:** support@signula.com
 
 ## 🗺️ Roadmap
 
@@ -482,10 +586,18 @@ See [PROJECT_PROGRESS.md](PROJECT_PROGRESS.md) for detailed development roadmap 
 
 ## 📚 Additional Resources
 
-### Phase 1 Documentation
+### Phase 1 Documentation (WebAuthn & Passwordless Login)
 - [AUTH_PHASE1_DOCUMENTATION.md](AUTH_PHASE1_DOCUMENTATION.md) - Complete Phase 1 feature documentation
 - [TESTING_GUIDE_PHASE1.md](TESTING_GUIDE_PHASE1.md) - Comprehensive testing guide (60+ test cases)
 - [QUICK_TEST_REFERENCE.md](QUICK_TEST_REFERENCE.md) - 15-minute quick test guide
+
+### Phase 2 Documentation (Account Management UI)
+- [TESTING_GUIDE_PHASE2.md](TESTING_GUIDE_PHASE2.md) - Comprehensive testing guide (100+ test cases)
+- [QUICK_TEST_REFERENCE_PHASE2.md](QUICK_TEST_REFERENCE_PHASE2.md) - 20-minute quick test guide
+
+### Development Notes
+- [CLAUDE_NOTES.md](CLAUDE_NOTES.md) - Development patterns, conventions, and troubleshooting
+- [PROJECT_PROGRESS.md](PROJECT_PROGRESS.md) - Detailed development roadmap and progress tracking
 
 ### Coming Soon
 - [Technical Documentation](docs/TECHNICAL.md) (Coming Soon)

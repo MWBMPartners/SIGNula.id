@@ -17,7 +17,7 @@
  * @package    SIGNula
  * @subpackage Configuration
  * @version    1.0.0
- * @link       https://signulo.id
+ * @link       https://SIGNula.id
  * ============================================================================
  */
 

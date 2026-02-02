@@ -105,19 +105,19 @@ define('ENCRYPTION_SALT', 'YOUR_UNIQUE_SALT_HERE_CHANGE_THIS');
  * The base URL of your SIGNula installation
  * No trailing slash
  */
-define('BASE_URL', 'https://signulo.id');
+define('BASE_URL', 'https://SIGNula.id');
 
 /**
  * 🏠 Public Site URL
  * The public-facing marketing website
  */
-define('PUBLIC_SITE_URL', 'https://signulo.com');
+define('PUBLIC_SITE_URL', 'https://SIGNula.com');
 
 /**
  * 📧 System Email Address
  * Default email address for system notifications
  */
-define('SYSTEM_EMAIL', 'noreply@signulo.id');
+define('SYSTEM_EMAIL', 'noreply@signula.id');
 
 /**
  * 🔧 Environment

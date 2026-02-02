@@ -21,7 +21,7 @@
  * @package    SIGNula
  * @subpackage Security
  * @version    1.0.0
- * @link       https://signulo.id
+ * @link       https://SIGNula.id
  * @see        https://www.rfc-editor.org/rfc/rfc6238
  * @see        https://www.rfc-editor.org/rfc/rfc4226
  * ============================================================================

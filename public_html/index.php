@@ -9,7 +9,7 @@
  *
  * @package    SIGNula
  * @version    1.0.0
- * @link       https://signulo.id
+ * @link       https://SIGNula.id
  * ============================================================================
  */
 
@@ -149,7 +149,7 @@ $pageDescription = 'Secure, universal single sign-on authentication for all your
                     </li>
                 <?php endif; ?>
                 <li class="nav-item">
-                    <a class="nav-link" href="https://signulo.com" target="_blank">
+                    <a class="nav-link" href="https://SIGNula.com" target="_blank">
                         <i class="fas fa-external-link-alt"></i> About
                     </a>
                 </li>
@@ -297,7 +297,7 @@ $pageDescription = 'Secure, universal single sign-on authentication for all your
             <div class="col-md-3">
                 <h6>Quick Links</h6>
                 <ul class="list-unstyled">
-                    <li><a href="https://signulo.com" class="text-white-50">About Us</a></li>
+                    <li><a href="https://SIGNula.com" class="text-white-50">About Us</a></li>
                     <li><a href="/privacy" class="text-white-50">Privacy Policy</a></li>
                     <li><a href="/terms" class="text-white-50">Terms of Service</a></li>
                     <li><a href="/contact" class="text-white-50">Contact</a></li>

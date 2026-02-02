@@ -29,7 +29,7 @@ Complete OAuth 2.0 provider integration for universal single sign-on.
 2. Create a new project or select existing
 3. Enable "Google+ API"
 4. Create OAuth 2.0 credentials (Web application)
-5. Add authorized redirect URI: `https://signulo.id/oauth/callback`
+5. Add authorized redirect URI: `https://SIGNula.id/oauth/callback`
 6. Copy Client ID and Client Secret
 
 **Database Configuration:**
@@ -37,7 +37,7 @@ Complete OAuth 2.0 provider integration for universal single sign-on.
 INSERT INTO tblSettings (settingKey, settingValue, isSensitive) VALUES
 ('oauth.google.client_id', 'YOUR_CLIENT_ID.apps.googleusercontent.com', 0),
 ('oauth.google.client_secret', 'ENCRYPTED_CLIENT_SECRET', 1),
-('oauth.google.redirect_uri', 'https://signulo.id/oauth/callback', 0);
+('oauth.google.redirect_uri', 'https://SIGNula.id/oauth/callback', 0);
 ```
 
 ---
@@ -69,7 +69,7 @@ INSERT INTO tblSettings (settingKey, settingValue, isSensitive) VALUES
 1. Go to [Azure Portal](https://portal.azure.com/)
 2. Navigate to "Azure Active Directory" > "App registrations"
 3. Create a new registration
-4. Set redirect URI: `https://signulo.id/oauth/callback`
+4. Set redirect URI: `https://SIGNula.id/oauth/callback`
 5. Generate a client secret under "Certificates & secrets"
 6. Note Application (client) ID and client secret value
 
@@ -78,7 +78,7 @@ INSERT INTO tblSettings (settingKey, settingValue, isSensitive) VALUES
 INSERT INTO tblSettings (settingKey, settingValue, isSensitive) VALUES
 ('oauth.microsoft.client_id', 'YOUR_APPLICATION_ID', 0),
 ('oauth.microsoft.client_secret', 'ENCRYPTED_CLIENT_SECRET', 1),
-('oauth.microsoft.redirect_uri', 'https://signulo.id/oauth/callback', 0);
+('oauth.microsoft.redirect_uri', 'https://SIGNula.id/oauth/callback', 0);
 ```
 
 ---
@@ -106,7 +106,7 @@ INSERT INTO tblSettings (settingKey, settingValue, isSensitive) VALUES
 1. Go to [Facebook Developers](https://developers.facebook.com/)
 2. Create a new app (Consumer type)
 3. Add "Facebook Login" product
-4. Configure OAuth redirect URI: `https://signulo.id/oauth/callback`
+4. Configure OAuth redirect URI: `https://SIGNula.id/oauth/callback`
 5. Copy App ID and App Secret
 6. For production: Submit for app review to request email permission
 
@@ -115,7 +115,7 @@ INSERT INTO tblSettings (settingKey, settingValue, isSensitive) VALUES
 INSERT INTO tblSettings (settingKey, settingValue, isSensitive) VALUES
 ('oauth.facebook.client_id', 'YOUR_APP_ID', 0),
 ('oauth.facebook.client_secret', 'ENCRYPTED_APP_SECRET', 1),
-('oauth.facebook.redirect_uri', 'https://signulo.id/oauth/callback', 0);
+('oauth.facebook.redirect_uri', 'https://SIGNula.id/oauth/callback', 0);
 ```
 
 **Notes:**
@@ -149,8 +149,8 @@ INSERT INTO tblSettings (settingKey, settingValue, isSensitive) VALUES
 2. Create an App ID with "Sign in with Apple" capability
 3. Create a Services ID (this is your OAuth Client ID)
 4. Configure Services ID:
-   - Add domain: `signulo.id`
-   - Add return URL: `https://signulo.id/oauth/callback`
+   - Add domain: `SIGNula.id`
+   - Add return URL: `https://SIGNula.id/oauth/callback`
 5. Create a Key with "Sign in with Apple" capability
 6. Download the private key (.p8 file) - **ONE TIME ONLY!**
 7. Note your Team ID, Key ID, and Services ID
@@ -162,7 +162,7 @@ INSERT INTO tblSettings (settingKey, settingValue, isSensitive) VALUES
 ('oauth.apple.team_id', 'YOUR_TEAM_ID', 0),
 ('oauth.apple.key_id', 'YOUR_KEY_ID', 0),
 ('oauth.apple.private_key', 'ENCRYPTED_PRIVATE_KEY_PEM', 1),
-('oauth.apple.redirect_uri', 'https://signulo.id/oauth/callback', 0);
+('oauth.apple.redirect_uri', 'https://SIGNula.id/oauth/callback', 0);
 ```
 
 **Special Considerations:**

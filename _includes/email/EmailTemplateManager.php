@@ -458,16 +458,16 @@ class EmailTemplateManager
             'lastName' => 'Doe',
             'email' => 'user@example.com',
             'username' => 'johndoe',
-            'verificationUrl' => 'https://signulo.id/verify-email?token=sample_token',
+            'verificationUrl' => 'https://SIGNula.id/verify-email?token=sample_token',
             'verificationCode' => '123456',
-            'resetUrl' => 'https://signulo.id/reset-password?token=sample_token',
+            'resetUrl' => 'https://SIGNula.id/reset-password?token=sample_token',
             'resetCode' => '789012',
-            'loginUrl' => 'https://signulo.id/passwordless-login?token=sample_token',
+            'loginUrl' => 'https://SIGNula.id/passwordless-login?token=sample_token',
             'loginCode' => '345678',
             'mfaCode' => '901234',
             'expiryMinutes' => '30',
             'companyName' => 'SIGNula',
-            'supportEmail' => 'support@signulo.id',
+            'supportEmail' => 'support@SIGNula.id',
             'currentYear' => date('Y')
         ];
 

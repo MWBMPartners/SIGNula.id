@@ -117,7 +117,7 @@ class EmailService
         array $attachments = []
     ): bool {
         try {
-            $fromEmail = $fromEmail ?? getSetting('email.from.address', 'noreply@signulo.id');
+            $fromEmail = $fromEmail ?? getSetting('email.from.address', 'noreply@SIGNula.id');
             $fromName = $fromName ?? getSetting('email.from.name', 'SIGNula');
 
             // 📋 Encode arrays as JSON
@@ -170,7 +170,7 @@ class EmailService
      */
     public static function sendVerificationEmail(string $email, string $token, string $code): bool
     {
-        $baseURL = getSetting('url.base', 'https://signulo.id');
+        $baseURL = getSetting('url.base', 'https://SIGNula.id');
         $verificationURL = "{$baseURL}/verify-email?token={$token}";
 
         $variables = [
@@ -199,7 +199,7 @@ class EmailService
         string $token,
         string $code
     ): bool {
-        $baseURL = getSetting('url.base', 'https://signulo.id');
+        $baseURL = getSetting('url.base', 'https://SIGNula.id');
         $resetURL = "{$baseURL}/reset-password?token={$token}";
 
         $variables = [
@@ -228,7 +228,7 @@ class EmailService
         string $token,
         string $code
     ): bool {
-        $baseURL = getSetting('url.base', 'https://signulo.id');
+        $baseURL = getSetting('url.base', 'https://SIGNula.id');
         $loginURL = "{$baseURL}/passwordless-login?token={$token}";
 
         $variables = [

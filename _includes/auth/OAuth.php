@@ -21,7 +21,7 @@
  * @package    SIGNula
  * @subpackage Authentication
  * @version    1.0.0
- * @link       https://signulo.id
+ * @link       https://SIGNula.id
  * @see        https://www.rfc-editor.org/rfc/rfc6749
  * ============================================================================
  */
@@ -120,7 +120,7 @@ abstract class OAuth
             $this->clientId = getSetting("{$prefix}.client_id", '');
             $this->clientSecret = getSetting("{$prefix}.client_secret", '');
             $this->redirectUri = getSetting("{$prefix}.redirect_uri",
-                getSetting('app.url', 'https://signulo.id') . '/oauth/callback'
+                getSetting('app.url', 'https://SIGNula.id') . '/oauth/callback'
             );
 
             // 🔓 Decrypt sensitive credentials

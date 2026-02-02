@@ -359,7 +359,7 @@ $pageTitle = 'Two-Factor Authentication';
 
                 <div class="alert alert-info mt-3">
                     <i class="fas fa-life-ring me-2"></i>
-                    For additional help, please contact support at <strong>support@signulo.id</strong>
+                    For additional help, please contact support at <strong>support@SIGNula.id</strong>
                 </div>
             </div>
             <div class="modal-footer">

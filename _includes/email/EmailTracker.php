@@ -64,7 +64,7 @@ class EmailTracker
      */
     public static function addTrackingPixel(string $htmlContent, string $trackingToken): string
     {
-        $baseURL = getSetting('url.base', 'https://signulo.id');
+        $baseURL = getSetting('url.base', 'https://SIGNula.id');
         $trackingPixel = '<img src="' . $baseURL . '/email/track-open?t=' . $trackingToken . '" width="1" height="1" alt="" style="display:block;width:1px;height:1px;" />';
 
         // 📍 Insert pixel just before closing </body> tag
@@ -89,7 +89,7 @@ class EmailTracker
      */
     public static function addClickTracking(string $htmlContent, string $trackingToken): string
     {
-        $baseURL = getSetting('url.base', 'https://signulo.id');
+        $baseURL = getSetting('url.base', 'https://SIGNula.id');
 
         // 🔍 Find all links in HTML
         $pattern = '/<a\s+([^>]*?)href=["\']([^"\']+)["\']([^>]*?)>/i';

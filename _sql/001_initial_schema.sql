@@ -660,7 +660,7 @@ INSERT INTO `tblSettings` (`settingKey`, `settingValue`, `settingType`, `setting
 ('mfa.totp.issuer', 'SIGNula', 'string', 'mfa', 'TOTP issuer name', FALSE, TRUE, 25),
 
 -- Email Settings
-('email.from.address', 'noreply@signulo.id', 'email', 'email', 'Default from email address', FALSE, TRUE, 30),
+('email.from.address', 'noreply@SIGNula.id', 'email', 'email', 'Default from email address', FALSE, TRUE, 30),
 ('email.from.name', 'SIGNula', 'string', 'email', 'Default from name', FALSE, TRUE, 31),
 ('email.smtp.enabled', 'false', 'boolean', 'email', 'Use SMTP for sending emails', FALSE, TRUE, 32),
 ('email.smtp.host', '', 'string', 'email', 'SMTP host', FALSE, TRUE, 33),
@@ -701,9 +701,9 @@ INSERT INTO `tblSettings` (`settingKey`, `settingValue`, `settingType`, `setting
 ('payment.paypal.client_secret', '', 'password', 'payment', 'PayPal client secret', TRUE, TRUE, 73),
 
 -- URL Settings
-('url.base', 'https://signulo.id', 'url', 'url', 'Base URL for the application', FALSE, TRUE, 80),
-('url.public_site', 'https://signulo.com', 'url', 'url', 'Public-facing website URL', FALSE, TRUE, 81),
-('url.api', 'https://signulo.id/api', 'url', 'url', 'API base URL', FALSE, TRUE, 82);
+('url.base', 'https://SIGNula.id', 'url', 'url', 'Base URL for the application', FALSE, TRUE, 80),
+('url.public_site', 'https://SIGNula.com', 'url', 'url', 'Public-facing website URL', FALSE, TRUE, 81),
+('url.api', 'https://SIGNula.id/api', 'url', 'url', 'API base URL', FALSE, TRUE, 82);
 
 -- ============================================================================
 -- 📧 Insert Default Email Templates

@@ -18,7 +18,7 @@
  * @package    SIGNula
  * @subpackage Authentication
  * @version    1.0.0
- * @link       https://signulo.id
+ * @link       https://SIGNula.id
  * ============================================================================
  */
 
