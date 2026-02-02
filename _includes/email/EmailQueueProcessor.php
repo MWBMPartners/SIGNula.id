@@ -36,6 +36,10 @@ require_once __DIR__ . DIRECTORY_SEPARATOR . 'providers' . DIRECTORY_SEPARATOR .
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'providers' . DIRECTORY_SEPARATOR . 'MicrosoftGraphEmailProvider.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'providers' . DIRECTORY_SEPARATOR . 'GmailAPIEmailProvider.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'providers' . DIRECTORY_SEPARATOR . 'SMTPEmailProvider.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'providers' . DIRECTORY_SEPARATOR . 'SendGridEmailProvider.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'providers' . DIRECTORY_SEPARATOR . 'MailgunEmailProvider.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'providers' . DIRECTORY_SEPARATOR . 'AmazonSESEmailProvider.php';
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'providers' . DIRECTORY_SEPARATOR . 'PostmarkEmailProvider.php';
 
 /**
  * 📧 Email Queue Processor
@@ -93,6 +97,10 @@ class EmailQueueProcessor
         $providerClasses = [
             'microsoft_graph' => MicrosoftGraphEmailProvider::class,
             'gmail_api' => GmailAPIEmailProvider::class,
+            'sendgrid' => SendGridEmailProvider::class,
+            'mailgun' => MailgunEmailProvider::class,
+            'amazon_ses' => AmazonSESEmailProvider::class,
+            'postmark' => PostmarkEmailProvider::class,
             'smtp' => SMTPEmailProvider::class
         ];
 
