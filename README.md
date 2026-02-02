@@ -1,6 +1,6 @@
 # SIGNula - Universal Login System
 
-![Version](https://img.shields.io/badge/version-1.0.0-blue)
+![Version](https://img.shields.io/badge/version-1.5.0-blue)
 ![PHP](https://img.shields.io/badge/PHP-8.3%2B-777BB4?logo=php)
 ![MySQL](https://img.shields.io/badge/MySQL-8.0%2B-4479A1?logo=mysql)
 ![License](https://img.shields.io/badge/license-Proprietary-red)
@@ -8,6 +8,8 @@
 ## 📋 Overview
 
 **SIGNula** is a comprehensive, universal single sign-on (SSO) authentication system designed to provide seamless user authentication across multiple web and mobile applications. Built with security, scalability, and user experience as top priorities, SIGNula offers a modern authentication solution for today's interconnected digital ecosystem.
+
+**Current Status:** Phase 1 (WebAuthn/PassKeys & Passwordless Login) Complete ✅ | Phase 2 (Account Management) In Progress 🟡
 
 ### ✨ Key Features
 
@@ -31,12 +33,18 @@
   - PayPal
   - OpenID
 
-- **🔑 Advanced Authentication Options**
-  - Biometric authentication (TouchID, FaceID, Windows Hello)
-  - WebAuthn Passkey support
-  - Passwordless login via secure email links
-  - Traditional password authentication
-  - Account recovery mechanisms
+- **🔑 Advanced Authentication Options** ✅
+  - ✅ **WebAuthn/FIDO2 PassKeys** - Fully implemented biometric authentication
+    - Platform authenticators (TouchID, FaceID, Windows Hello)
+    - Cross-platform authenticators (security keys)
+    - Credential management (rename, revoke, usage tracking)
+  - ✅ **Passwordless Email Login** - Secure magic link authentication
+    - Token-based email links (15-minute expiry)
+    - Rate limiting (per email and per IP)
+    - SHA-256 token hashing
+  - ✅ Traditional password authentication with Argon2id hashing
+  - ✅ Account recovery mechanisms
+  - ✅ Challenge-response authentication (WebAuthn ceremonies)
 
 - **🌐 RESTful API**
   - Secure JSON-based API for service integration
@@ -83,7 +91,13 @@ SIGNula.id/
 │   └── database.php        # Database connection handler
 ├── _includes/              # Reusable PHP components
 │   ├── auth/               # Authentication classes
-│   │   └── Auth.php       # Core authentication system
+│   │   ├── Auth.php       # Core authentication system
+│   │   ├── WebAuthnHandler.php  # WebAuthn/PassKey handler
+│   │   └── PasswordlessLoginHandler.php  # Passwordless email auth
+│   ├── layout/             # Layout components
+│   │   ├── header.php     # Common header
+│   │   ├── footer.php     # Common footer
+│   │   └── settings-sidebar.php  # Settings navigation
 │   ├── security/           # Security utilities
 │   │   └── SecurityUtils.php
 │   ├── email/              # Email services
@@ -103,16 +117,39 @@ SIGNula.id/
 │   ├── backups/           # Database backups
 │   └── templates/         # Email templates
 │       └── email/
-├── _sql/                   # SQL schema and migrations
-│   └── 001_initial_schema.sql
+├── _database/              # Database files
+│   └── migrations/        # Database migrations
+│       ├── 001_initial_schema.sql
+│       ├── 002_mfa_system.sql
+│       ├── 003_oauth_integration.sql
+│       ├── 004_email_system.sql
+│       └── 005_webauthn_passkeys.sql
+├── _tests/                # Test files
+│   └── verify-phase1-setup.php
 ├── public_html/            # Public web directory
 │   ├── assets/            # Static assets
 │   │   ├── css/
 │   │   ├── js/
 │   │   ├── images/
 │   │   └── fonts/
-│   └── api/               # API endpoints
-│       └── v1/
+│   ├── api/               # API endpoints
+│   │   └── webauthn/     # WebAuthn API endpoints
+│   │       ├── register-options.php
+│   │       ├── register-verify.php
+│   │       ├── auth-options.php
+│   │       └── auth-verify.php
+│   ├── auth/              # Authentication pages
+│   │   ├── login.php
+│   │   ├── register.php
+│   │   ├── passkey-register.php
+│   │   ├── passkey-login.php
+│   │   ├── passwordless-request.php
+│   │   └── passwordless-login.php
+│   └── settings/          # Account settings pages
+│       ├── index.php     # Settings dashboard
+│       ├── profile.php   # Profile management
+│       ├── security.php  # Security settings
+│       └── passkeys.php  # PassKey management
 ├── alpha_html/             # Alpha version directory
 ├── beta_html/              # Beta version directory
 ├── .gitignore
@@ -147,10 +184,47 @@ CREATE DATABASE signula_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 2. Import the database schema:
 
 ```bash
-mysql -u your_username -p signula_db < _sql/001_initial_schema.sql
+# Import initial schema
+mysql -u your_username -p signula_db < _database/migrations/001_initial_schema.sql
+
+# Import MFA system
+mysql -u your_username -p signula_db < _database/migrations/002_mfa_system.sql
+
+# Import OAuth integration
+mysql -u your_username -p signula_db < _database/migrations/003_oauth_integration.sql
+
+# Import email system
+mysql -u your_username -p signula_db < _database/migrations/004_email_system.sql
+
+# Import WebAuthn/PassKeys (Phase 1)
+mysql -u your_username -p signula_db < _database/migrations/005_webauthn_passkeys.sql
 ```
 
-### Step 3: Configuration
+3. Verify setup:
+
+```bash
+php _tests/verify-phase1-setup.php
+```
+
+### Step 3: WebAuthn/PassKey Configuration
+
+Configure WebAuthn settings in `tblSettings`:
+
+```sql
+-- Set your domain for WebAuthn
+UPDATE tblSettings SET settingValue = 'yourdomain.com' WHERE settingKey = 'auth.webauthn.rp_id';
+
+-- Set relying party name
+UPDATE tblSettings SET settingValue = 'SIGNula' WHERE settingKey = 'auth.webauthn.rp_name';
+
+-- Enable WebAuthn
+UPDATE tblSettings SET settingValue = '1' WHERE settingKey = 'auth.webauthn.enabled';
+
+-- Enable passwordless login
+UPDATE tblSettings SET settingValue = '1' WHERE settingKey = 'auth.passwordless.enabled';
+```
+
+### Step 4: Configuration
 
 1. Copy the authentication template:
 
@@ -179,7 +253,7 @@ openssl rand -hex 16
 
 4. Update `ENCRYPTION_KEY` and `ENCRYPTION_SALT` in `_private/auth.php`
 
-### Step 4: File Permissions
+### Step 5: File Permissions
 
 ```bash
 chmod 600 _private/auth.php
@@ -188,7 +262,7 @@ chmod 755 _private/backups
 chmod 755 public_html
 ```
 
-### Step 5: Web Server Configuration
+### Step 6: Web Server Configuration
 
 #### Apache (.htaccess)
 
@@ -221,7 +295,7 @@ location ~ \.php$ {
 }
 ```
 
-### Step 6: Initial Settings
+### Step 7: Initial Settings
 
 Update settings in the database `tblSettings` table or via the admin interface (once created):
 
@@ -229,6 +303,56 @@ Update settings in the database `tblSettings` table or via the admin interface (
 - OAuth credentials (Google, Microsoft, etc.)
 - Captcha keys (reCAPTCHA or Cloudflare Turnstile)
 - Payment gateway credentials
+- WebAuthn/PassKey settings (RP ID, RP Name)
+
+## ✨ Phase 1 Features (WebAuthn & Passwordless Auth)
+
+### 🔑 WebAuthn/PassKeys
+
+SIGNula implements the FIDO2/WebAuthn standard for passwordless authentication:
+
+- **Registration Flow:** Users can register biometric credentials (TouchID, FaceID, Windows Hello) or security keys
+- **Authentication Flow:** Login with a simple biometric gesture or security key tap
+- **Credential Management:** Rename, revoke, and track usage of PassKeys
+- **Multi-Device Support:** Register multiple authenticators for flexibility
+- **Security:** Challenge-response protocol with public key cryptography
+
+**User Pages:**
+- [/auth/passkey-register](public_html/auth/passkey-register.php) - Register new PassKey
+- [/auth/passkey-login](public_html/auth/passkey-login.php) - Login with PassKey
+- [/settings/passkeys](public_html/settings/passkeys.php) - Manage PassKeys
+
+**API Endpoints:**
+- `/api/webauthn/register-options.php` - Get registration challenge
+- `/api/webauthn/register-verify.php` - Verify and store credential
+- `/api/webauthn/auth-options.php` - Get authentication challenge
+- `/api/webauthn/auth-verify.php` - Verify authentication and login
+
+### 📧 Passwordless Email Login
+
+Secure magic link authentication via email:
+
+- **Token Generation:** 64-character cryptographically secure tokens
+- **SHA-256 Hashing:** Tokens hashed before database storage
+- **Expiration:** 15-minute validity (configurable)
+- **Rate Limiting:**
+  - 5 requests per email per hour
+  - 10 requests per IP per hour
+- **Single Use:** Tokens invalidated after use
+
+**User Pages:**
+- [/auth/passwordless-request](public_html/auth/passwordless-request.php) - Request magic link
+- [/auth/passwordless-login](public_html/auth/passwordless-login.php) - Verify and login
+
+### 🧪 Testing
+
+Run the Phase 1 setup verification:
+
+```bash
+php _tests/verify-phase1-setup.php
+```
+
+See [TESTING_GUIDE_PHASE1.md](TESTING_GUIDE_PHASE1.md) for detailed testing instructions and [QUICK_TEST_REFERENCE.md](QUICK_TEST_REFERENCE.md) for a 15-minute quick test guide.
 
 ## 🔧 Configuration
 
@@ -246,6 +370,18 @@ All configuration is managed through the database `tblSettings` table. Key setti
 - `mfa.totp.enabled` - Enable TOTP authentication
 - `mfa.email.enabled` - Enable email OTP
 - `mfa.otp.lifetime` - OTP validity period
+
+### WebAuthn/PassKey Settings
+
+- `auth.webauthn.enabled` - Enable WebAuthn/PassKeys
+- `auth.webauthn.rp_name` - Relying Party display name
+- `auth.webauthn.rp_id` - Relying Party ID (your domain)
+- `auth.webauthn.challenge_validity` - Challenge validity period (minutes)
+- `auth.webauthn.user_verification` - User verification requirement
+- `auth.passwordless.enabled` - Enable passwordless email login
+- `auth.passwordless.token_validity` - Token validity period (minutes)
+- `auth.passwordless.rate_limit_email` - Rate limit per email
+- `auth.passwordless.rate_limit_ip` - Rate limit per IP
 
 ### Email Settings
 
@@ -346,6 +482,12 @@ See [PROJECT_PROGRESS.md](PROJECT_PROGRESS.md) for detailed development roadmap 
 
 ## 📚 Additional Resources
 
+### Phase 1 Documentation
+- [AUTH_PHASE1_DOCUMENTATION.md](AUTH_PHASE1_DOCUMENTATION.md) - Complete Phase 1 feature documentation
+- [TESTING_GUIDE_PHASE1.md](TESTING_GUIDE_PHASE1.md) - Comprehensive testing guide (60+ test cases)
+- [QUICK_TEST_REFERENCE.md](QUICK_TEST_REFERENCE.md) - 15-minute quick test guide
+
+### Coming Soon
 - [Technical Documentation](docs/TECHNICAL.md) (Coming Soon)
 - [API Documentation](docs/API.md) (Coming Soon)
 - [User Guide](docs/USER_GUIDE.md) (Coming Soon)
