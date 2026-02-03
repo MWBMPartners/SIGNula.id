@@ -1,0 +1,158 @@
+<?xml version="1.0"?>
+<!--
+    PHP_CodeSniffer Configuration for SIGNula
+    Code style and quality checker
+
+    Usage:
+        vendor/bin/phpcs                      # Check all files
+        vendor/bin/phpcs path/to/file.php    # Check specific file
+        vendor/bin/phpcbf                     # Auto-fix issues where possible
+
+    Installation:
+        composer require --dev squizlabs/php_codesniffer
+-->
+<ruleset name="SIGNula">
+    <description>SIGNula PHP Coding Standards</description>
+
+    <!-- Files to check -->
+    <file>private_html</file>
+    <file>public_html</file>
+
+    <!-- Exclude patterns -->
+    <exclude-pattern>*/vendor/*</exclude-pattern>
+    <exclude-pattern>*/node_modules/*</exclude-pattern>
+    <exclude-pattern>*/assets/*</exclude-pattern>
+    <exclude-pattern>*/.git/*</exclude-pattern>
+    <exclude-pattern>*/_coverage/*</exclude-pattern>
+    <exclude-pattern>*/_tests/reports/*</exclude-pattern>
+
+    <!-- Show progress -->
+    <arg value="p"/>
+
+    <!-- Use colors -->
+    <arg name="colors"/>
+
+    <!-- Base ruleset: PSR-12 -->
+    <rule ref="PSR12">
+        <!-- Allow long lines in comments (for URLs, etc.) -->
+        <exclude name="Generic.Files.LineLength"/>
+    </rule>
+
+    <!-- Additional rules -->
+
+    <!-- Arrays -->
+    <rule ref="Generic.Arrays.DisallowLongArraySyntax"/>
+
+    <!-- Classes -->
+    <rule ref="Generic.Classes.DuplicateClassName"/>
+    <rule ref="PSR1.Classes.ClassDeclaration"/>
+
+    <!-- Code Analysis -->
+    <rule ref="Generic.CodeAnalysis.EmptyStatement"/>
+    <rule ref="Generic.CodeAnalysis.ForLoopShouldBeWhileLoop"/>
+    <rule ref="Generic.CodeAnalysis.UnconditionalIfStatement"/>
+    <rule ref="Generic.CodeAnalysis.UnnecessaryFinalModifier"/>
+    <rule ref="Generic.CodeAnalysis.UselessOverridingMethod"/>
+
+    <!-- Commenting -->
+    <rule ref="Squiz.Commenting.FunctionComment">
+        <!-- Don't require comments on every function -->
+        <severity>3</severity>
+    </rule>
+    <rule ref="Squiz.Commenting.ClassComment">
+        <severity>3</severity>
+    </rule>
+
+    <!-- Control Structures -->
+    <rule ref="Generic.ControlStructures.InlineControlStructure"/>
+
+    <!-- Files -->
+    <rule ref="Generic.Files.ByteOrderMark"/>
+    <rule ref="Generic.Files.EndFileNewline"/>
+    <rule ref="Generic.Files.OneObjectStructurePerFile"/>
+
+    <!-- Formatting -->
+    <rule ref="Generic.Formatting.DisallowMultipleStatements"/>
+    <rule ref="Generic.Formatting.SpaceAfterCast"/>
+    <rule ref="Generic.Formatting.SpaceAfterNot">
+        <properties>
+            <property name="spacing" value="0"/>
+        </properties>
+    </rule>
+
+    <!-- Functions -->
+    <rule ref="Generic.Functions.CallTimePassByReference"/>
+    <rule ref="Generic.Functions.FunctionCallArgumentSpacing"/>
+
+    <!-- Metrics -->
+    <rule ref="Generic.Metrics.CyclomaticComplexity">
+        <properties>
+            <property name="complexity" value="15"/>
+            <property name="absoluteComplexity" value="30"/>
+        </properties>
+    </rule>
+    <rule ref="Generic.Metrics.NestingLevel">
+        <properties>
+            <property name="nestingLevel" value="5"/>
+            <property name="absoluteNestingLevel" value="10"/>
+        </properties>
+    </rule>
+
+    <!-- Naming Conventions -->
+    <rule ref="Generic.NamingConventions.ConstructorName"/>
+    <rule ref="Generic.NamingConventions.CamelCapsFunctionName">
+        <!-- Allow underscores in function names for private methods -->
+        <properties>
+            <property name="strict" value="false"/>
+        </properties>
+    </rule>
+
+    <!-- PHP -->
+    <rule ref="Generic.PHP.CharacterBeforePHPOpeningTag"/>
+    <rule ref="Generic.PHP.DeprecatedFunctions"/>
+    <rule ref="Generic.PHP.DisallowAlternativePHPTags"/>
+    <rule ref="Generic.PHP.DisallowShortOpenTag"/>
+    <rule ref="Generic.PHP.ForbiddenFunctions">
+        <properties>
+            <property name="forbiddenFunctions" type="array">
+                <element key="eval" value="null"/>
+                <element key="create_function" value="null"/>
+                <element key="var_dump" value="null"/>
+                <element key="print_r" value="null"/>
+                <element key="die" value="exit"/>
+                <element key="sizeof" value="count"/>
+                <element key="delete" value="unset"/>
+            </property>
+        </properties>
+    </rule>
+    <rule ref="Generic.PHP.LowerCaseConstant"/>
+    <rule ref="Generic.PHP.LowerCaseKeyword"/>
+    <rule ref="Generic.PHP.LowerCaseType"/>
+    <rule ref="Generic.PHP.NoSilencedErrors">
+        <!-- Allow @ operator in specific cases -->
+        <severity>3</severity>
+    </rule>
+    <rule ref="Generic.PHP.Syntax"/>
+
+    <!-- Strings -->
+    <rule ref="Squiz.Strings.ConcatenationSpacing">
+        <properties>
+            <property name="spacing" value="1"/>
+            <property name="ignoreNewlines" value="true"/>
+        </properties>
+    </rule>
+
+    <!-- WhiteSpace -->
+    <rule ref="Generic.WhiteSpace.DisallowTabIndent"/>
+    <rule ref="Squiz.WhiteSpace.SuperfluousWhitespace">
+        <properties>
+            <property name="ignoreBlankLines" value="false"/>
+        </properties>
+    </rule>
+    <rule ref="Generic.WhiteSpace.ScopeIndent">
+        <properties>
+            <property name="indent" value="4"/>
+            <property name="exact" value="true"/>
+        </properties>
+    </rule>
+</ruleset>

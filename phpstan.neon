@@ -1,0 +1,49 @@
+# PHPStan Configuration for SIGNula
+# Static analysis tool for finding bugs in PHP code
+#
+# Usage:
+#   vendor/bin/phpstan analyze
+#
+# Installation:
+#   composer require --dev phpstan/phpstan
+
+parameters:
+    # Analysis level (0-9, 9 is strictest)
+    level: 6
+
+    # Paths to analyze
+    paths:
+        - private_html
+        - public_html
+
+    # Paths to exclude from analysis
+    excludePaths:
+        - private_html/layout
+        - public_html/*/assets
+        - vendor
+
+    # Bootstrap file for analysis
+    bootstrapFiles:
+        - _tests/bootstrap.php
+
+    # Ignore errors
+    ignoreErrors:
+        # Allow mixed return types for legacy code
+        - '#Function .* has no return type specified#'
+        # Allow dynamic properties for database results
+        - '#Access to an undefined property mysqli_result::\$#'
+
+    # Check missing types
+    checkMissingIterableValueType: false
+    checkGenericClassInNonGenericObjectType: false
+
+    # Report unused private methods/properties
+    checkUninitializedProperties: true
+    checkTooWideReturnTypesInProtectedAndPublicMethods: true
+
+    # Treat PHP superglobals correctly
+    universalObjectCratesClasses:
+        - stdClass
+
+    # Custom rules
+    reportUnmatchedIgnoredErrors: false

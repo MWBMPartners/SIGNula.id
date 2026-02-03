@@ -1,0 +1,49 @@
+{
+  "testUsers": [
+    {
+      "email": "admin@example.com",
+      "displayName": "Admin User",
+      "firstName": "Admin",
+      "lastName": "User",
+      "accountStatus": "Active",
+      "emailVerified": true,
+      "mfaEnabled": true,
+      "isGlobalAdmin": true
+    },
+    {
+      "email": "user1@example.com",
+      "displayName": "Regular User 1",
+      "firstName": "Regular",
+      "lastName": "User1",
+      "accountStatus": "Active",
+      "emailVerified": true,
+      "mfaEnabled": false,
+      "isGlobalAdmin": false
+    },
+    {
+      "email": "user2@example.com",
+      "displayName": "Regular User 2",
+      "firstName": "Regular",
+      "lastName": "User2",
+      "accountStatus": "Active",
+      "emailVerified": false,
+      "mfaEnabled": false,
+      "isGlobalAdmin": false
+    },
+    {
+      "email": "suspended@example.com",
+      "displayName": "Suspended User",
+      "firstName": "Suspended",
+      "lastName": "User",
+      "accountStatus": "Suspended",
+      "emailVerified": true,
+      "mfaEnabled": false,
+      "isGlobalAdmin": false
+    }
+  ],
+  "testPasswords": {
+    "default": "TestPassword123!",
+    "weak": "password",
+    "strong": "Str0ng!P@ssw0rd#2024"
+  }
+}
