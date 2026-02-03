@@ -16,7 +16,7 @@
 require_once dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . '_config' . DIRECTORY_SEPARATOR . 'config.php';
 
 // 📚 Load required classes
-require_once SIGNULA_ROOT . '/_includes/auth/WebAuthnHandler.php';
+require_once SIGNULA_ROOT . '/private_html/auth/WebAuthnHandler.php';
 
 // 🔒 Set JSON header
 header('Content-Type: application/json');

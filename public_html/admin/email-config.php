@@ -28,11 +28,11 @@ if (!Auth::isAuthenticated() || !Auth::isAdmin()) {
 }
 
 // 📚 Load email classes
-require_once SIGNULA_ROOT . '/_includes/email/EmailService.php';
-require_once SIGNULA_ROOT . '/_includes/email/EmailQueueProcessor.php';
-require_once SIGNULA_ROOT . '/_includes/email/providers/MicrosoftGraphEmailProvider.php';
-require_once SIGNULA_ROOT . '/_includes/email/providers/GmailAPIEmailProvider.php';
-require_once SIGNULA_ROOT . '/_includes/email/providers/SMTPEmailProvider.php';
+require_once SIGNULA_ROOT . '/private_html/email/EmailService.php';
+require_once SIGNULA_ROOT . '/private_html/email/EmailQueueProcessor.php';
+require_once SIGNULA_ROOT . '/private_html/email/providers/MicrosoftGraphEmailProvider.php';
+require_once SIGNULA_ROOT . '/private_html/email/providers/GmailAPIEmailProvider.php';
+require_once SIGNULA_ROOT . '/private_html/email/providers/SMTPEmailProvider.php';
 
 $pageTitle = 'Email Configuration';
 $currentTab = $_GET['tab'] ?? 'overview';

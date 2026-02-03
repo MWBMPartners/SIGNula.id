@@ -16,7 +16,7 @@
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . '_config' . DIRECTORY_SEPARATOR . 'config.php';
 
 // 📚 Load email tracker
-require_once SIGNULA_ROOT . '/_includes/email/EmailTracker.php';
+require_once SIGNULA_ROOT . '/private_html/email/EmailTracker.php';
 
 // 📊 Get tracking token
 $trackingToken = $_GET['t'] ?? '';

@@ -193,7 +193,7 @@ $pageTitle = 'Domain Management - ' . $organization['name'] . ' - SIGNula';
 </button>
 
 <!-- 🗂️ Sidebar Navigation -->
-<?php include __DIR__ . '/../_includes/organization-nav.php'; ?>
+<?php include __DIR__ . '/../private_html/organization-nav.php'; ?>
 
 <!-- 📄 Main Content -->
 <main class="dashboard-main">

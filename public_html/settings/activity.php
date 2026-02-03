@@ -203,14 +203,14 @@ if ($statsData) {
 }
 
 // 🎨 Include header
-include SIGNULA_ROOT . '/_includes/layout/header.php';
+include SIGNULA_ROOT . '/private_html/layout/header.php';
 ?>
 
 <div class="container mt-5">
     <div class="row">
         <!-- Sidebar -->
         <div class="col-md-3 mb-4">
-            <?php include SIGNULA_ROOT . '/_includes/layout/settings-sidebar.php'; ?>
+            <?php include SIGNULA_ROOT . '/private_html/layout/settings-sidebar.php'; ?>
         </div>
 
         <!-- Main Content -->
@@ -529,5 +529,5 @@ include SIGNULA_ROOT . '/_includes/layout/header.php';
 
 <?php
 // 🎨 Include footer
-include SIGNULA_ROOT . '/_includes/layout/footer.php';
+include SIGNULA_ROOT . '/private_html/layout/footer.php';
 ?>

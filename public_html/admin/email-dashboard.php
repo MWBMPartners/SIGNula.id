@@ -28,10 +28,10 @@ if (!Auth::isAuthenticated() || !Auth::isAdmin()) {
 }
 
 // 📚 Load email classes
-require_once SIGNULA_ROOT . '/_includes/email/EmailService.php';
-require_once SIGNULA_ROOT . '/_includes/email/EmailQueueProcessor.php';
-require_once SIGNULA_ROOT . '/_includes/email/EmailTemplateManager.php';
-require_once SIGNULA_ROOT . '/_includes/email/EmailTracker.php';
+require_once SIGNULA_ROOT . '/private_html/email/EmailService.php';
+require_once SIGNULA_ROOT . '/private_html/email/EmailQueueProcessor.php';
+require_once SIGNULA_ROOT . '/private_html/email/EmailTemplateManager.php';
+require_once SIGNULA_ROOT . '/private_html/email/EmailTracker.php';
 
 $pageTitle = 'Email Dashboard';
 

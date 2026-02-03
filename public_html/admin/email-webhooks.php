@@ -31,7 +31,7 @@ if (!isAdmin()) {
 }
 
 // 📚 Load required classes
-require_once SIGNULA_ROOT . '/_includes/email/EmailWebhookHandler.php';
+require_once SIGNULA_ROOT . '/private_html/email/EmailWebhookHandler.php';
 
 // 🎯 Get current page title
 $pageTitle = 'Email Webhook Management';
@@ -132,14 +132,14 @@ function getWebhookUrl(string $provider): ?string
 }
 
 // 🎨 Include header
-include SIGNULA_ROOT . '/_includes/layout/admin-header.php';
+include SIGNULA_ROOT . '/private_html/layout/admin-header.php';
 ?>
 
 <div class="container-fluid">
     <div class="row">
         <!-- Sidebar -->
         <nav class="col-md-2 d-md-block bg-light sidebar">
-            <?php include SIGNULA_ROOT . '/_includes/layout/admin-sidebar.php'; ?>
+            <?php include SIGNULA_ROOT . '/private_html/layout/admin-sidebar.php'; ?>
         </nav>
 
         <!-- Main Content -->
@@ -406,5 +406,5 @@ function showLogDetails(log) {
 
 <?php
 // 🎨 Include footer
-include SIGNULA_ROOT . '/_includes/layout/admin-footer.php';
+include SIGNULA_ROOT . '/private_html/layout/admin-footer.php';
 ?>

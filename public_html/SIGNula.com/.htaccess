@@ -1,0 +1,190 @@
+# ============================================================================
+# 🌐 SIGNula Marketing Site - Apache Configuration
+# ============================================================================
+# Clean URL routing and security for SIGNula.com
+# ============================================================================
+
+# Enable Rewrite Engine
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /
+
+    # ========================================================================
+    # HTTPS Enforcement (Uncomment for production)
+    # ========================================================================
+    # RewriteCond %{HTTPS} off
+    # RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+    # ========================================================================
+    # WWW Redirect (Uncomment to force www or non-www)
+    # ========================================================================
+    # Force www
+    # RewriteCond %{HTTP_HOST} !^www\. [NC]
+    # RewriteRule ^(.*)$ https://www.%{HTTP_HOST}/$1 [L,R=301]
+
+    # Force non-www
+    # RewriteCond %{HTTP_HOST} ^www\.(.*)$ [NC]
+    # RewriteRule ^(.*)$ https://%1/$1 [L,R=301]
+
+    # ========================================================================
+    # Clean URL Routing
+    # ========================================================================
+
+    # Remove trailing slash (except for directories)
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteCond %{REQUEST_URI} (.+)/$
+    RewriteRule ^ %1 [L,R=301]
+
+    # Add .php extension if file exists
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME}.php -f
+    RewriteRule ^(.+?)/?$ $1.php [L]
+
+    # Handle legal subdirectory
+    RewriteCond %{REQUEST_URI} ^/legal/(.+)$
+    RewriteCond %{DOCUMENT_ROOT}/legal/%1.php -f
+    RewriteRule ^legal/(.+?)/?$ legal/$1.php [L]
+
+    # Handle blog subdirectory
+    RewriteCond %{REQUEST_URI} ^/blog/(.+)$
+    RewriteCond %{DOCUMENT_ROOT}/blog/%1.php -f
+    RewriteRule ^blog/(.+?)/?$ blog/$1.php [L]
+
+    # Handle docs subdirectory
+    RewriteCond %{REQUEST_URI} ^/docs/(.+)$
+    RewriteCond %{DOCUMENT_ROOT}/docs/%1.php -f
+    RewriteRule ^docs/(.+?)/?$ docs/$1.php [L]
+
+    # Handle support subdirectory
+    RewriteCond %{REQUEST_URI} ^/support/(.+)$
+    RewriteCond %{DOCUMENT_ROOT}/support/%1.php -f
+    RewriteRule ^support/(.+?)/?$ support/$1.php [L]
+
+    # Default to index.php for directories
+    DirectoryIndex index.php index.html
+</IfModule>
+
+# ============================================================================
+# SECURITY HEADERS
+# ============================================================================
+
+<IfModule mod_headers.c>
+    # X-Frame-Options (Clickjacking protection)
+    Header always set X-Frame-Options "SAMEORIGIN"
+
+    # X-Content-Type-Options (MIME sniffing protection)
+    Header always set X-Content-Type-Options "nosniff"
+
+    # X-XSS-Protection (XSS protection for older browsers)
+    Header always set X-XSS-Protection "1; mode=block"
+
+    # Referrer-Policy
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+
+    # Permissions-Policy (Feature policy)
+    Header always set Permissions-Policy "geolocation=(), microphone=(), camera=()"
+
+    # Content-Security-Policy (Uncomment and customize for production)
+    # Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; img-src 'self' data: https:; font-src 'self' data: https://cdnjs.cloudflare.com;"
+
+    # Remove server signature
+    Header unset Server
+    Header unset X-Powered-By
+</IfModule>
+
+# ============================================================================
+# DIRECTORY BROWSING
+# ============================================================================
+
+# Disable directory browsing
+Options -Indexes
+
+# ============================================================================
+# FILE PROTECTION
+# ============================================================================
+
+# Protect sensitive files
+<FilesMatch "\.(htaccess|htpasswd|ini|log|sh|sql|env|md|txt)$">
+    <IfVersion < 2.4>
+        Order allow,deny
+        Deny from all
+    </IfVersion>
+    <IfVersion >= 2.4>
+        Require all denied
+    </IfVersion>
+</FilesMatch>
+
+# Protect hidden files (starting with dot)
+<FilesMatch "^\.">
+    <IfVersion < 2.4>
+        Order allow,deny
+        Deny from all
+    </IfVersion>
+    <IfVersion >= 2.4>
+        Require all denied
+    </IfVersion>
+</FilesMatch>
+
+# ============================================================================
+# ERROR PAGES (Optional - create custom error pages)
+# ============================================================================
+
+# ErrorDocument 404 /error/404.php
+# ErrorDocument 403 /error/403.php
+# ErrorDocument 500 /error/500.php
+
+# ============================================================================
+# PERFORMANCE OPTIMIZATION
+# ============================================================================
+
+# Enable GZIP Compression
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/plain text/xml text/css text/javascript application/javascript application/json application/xml+rss
+</IfModule>
+
+# Browser Caching
+<IfModule mod_expires.c>
+    ExpiresActive On
+
+    # Images
+    ExpiresByType image/jpeg "access plus 1 year"
+    ExpiresByType image/png "access plus 1 year"
+    ExpiresByType image/gif "access plus 1 year"
+    ExpiresByType image/svg+xml "access plus 1 year"
+    ExpiresByType image/webp "access plus 1 year"
+
+    # CSS and JavaScript
+    ExpiresByType text/css "access plus 1 month"
+    ExpiresByType text/javascript "access plus 1 month"
+    ExpiresByType application/javascript "access plus 1 month"
+
+    # Fonts
+    ExpiresByType font/woff "access plus 1 year"
+    ExpiresByType font/woff2 "access plus 1 year"
+    ExpiresByType application/font-woff "access plus 1 year"
+    ExpiresByType application/font-woff2 "access plus 1 year"
+
+    # Default
+    ExpiresDefault "access plus 1 week"
+</IfModule>
+
+# ============================================================================
+# CHARSET
+# ============================================================================
+
+AddDefaultCharset UTF-8
+AddType 'text/html; charset=UTF-8' html
+AddType 'text/css; charset=UTF-8' css
+AddType 'application/javascript; charset=UTF-8' js
+
+# ============================================================================
+# MIME TYPES
+# ============================================================================
+
+<IfModule mod_mime.c>
+    AddType application/javascript js
+    AddType text/css css
+    AddType image/svg+xml svg svgz
+    AddType application/font-woff woff
+    AddType application/font-woff2 woff2
+</IfModule>

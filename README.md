@@ -815,7 +815,7 @@ See [PROJECT_PROGRESS.md](PROJECT_PROGRESS.md) for detailed development roadmap 
 ### Development & Version Management
 - [VERSION_MANAGEMENT.md](_docs/VERSION_MANAGEMENT.md) - Complete version management guide
 - [CHANGELOG.md](CHANGELOG.md) - Detailed change history following Keep a Changelog format
-- [CLAUDE_NOTES.md](CLAUDE_NOTES.md) - Development patterns, conventions, and troubleshooting
+- [CLAUDE_NOTES.md](.claude/CLAUDE_NOTES.md) - Development patterns, conventions, and troubleshooting
 - [PROJECT_PROGRESS.md](PROJECT_PROGRESS.md) - Detailed development roadmap and progress tracking
 
 ### Coming Soon

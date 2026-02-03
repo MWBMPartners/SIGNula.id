@@ -245,7 +245,7 @@ $pageTitle = 'Set Up Multi-Factor Authentication';
 <body>
 
 <!-- 🔝 Navigation -->
-<?php require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . '_includes' . DIRECTORY_SEPARATOR . 'navigation.php'; ?>
+<?php require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'navigation.php'; ?>
 
 <main class="container my-5">
     <div class="setup-wizard">

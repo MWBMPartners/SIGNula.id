@@ -61,7 +61,7 @@ try {
 
     // 🔌 Load provider class
     $providerClass = ucfirst($provider) . 'OAuth';
-    $providerFile = dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . '_includes' . DIRECTORY_SEPARATOR .
+    $providerFile = dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR .
                    'auth' . DIRECTORY_SEPARATOR . 'providers' . DIRECTORY_SEPARATOR . $providerClass . '.php';
 
     if (!file_exists($providerFile)) {
