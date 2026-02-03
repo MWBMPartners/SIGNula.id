@@ -1,6 +1,6 @@
 # SIGNula.ID - Universal Login System
 
-![Version](https://img.shields.io/badge/version-2.0.0--beta-blue)
+![Version](https://img.shields.io/badge/version-2.0.1--beta-blue)
 ![PHP](https://img.shields.io/badge/PHP-8.3%2B-777BB4?logo=php)
 ![MySQL](https://img.shields.io/badge/MySQL-8.0%2B-4479A1?logo=mysql)
 ![License](https://img.shields.io/badge/license-Proprietary-red)
@@ -740,6 +740,34 @@ Enable debug mode in development:
 php -S localhost:8000 -t public_html
 ```
 
+### Version Management
+
+SIGNula follows [Semantic Versioning](https://semver.org/) (SemVer) for all releases.
+
+**Current Version:** See [VERSION](VERSION) file
+
+**Version Format:** `MAJOR.MINOR.PATCH-prerelease`
+- **MAJOR**: Breaking changes
+- **MINOR**: New features (backward compatible)
+- **PATCH**: Bug fixes (backward compatible)
+- **prerelease**: alpha, beta, rc
+
+**Quick Commands:**
+```bash
+# View current version info
+cd _scripts && ./version-info.sh
+
+# Bump version (patch, minor, major, beta, rc, release)
+./version-bump.sh patch
+
+# Create GitHub release
+./create-release.sh
+```
+
+**Documentation:**
+- [VERSION_MANAGEMENT.md](_docs/VERSION_MANAGEMENT.md) - Complete version management guide
+- [CHANGELOG.md](CHANGELOG.md) - Detailed change history
+
 ## 📊 Monitoring & Logging
 
 SIGNula provides comprehensive logging:
@@ -780,7 +808,13 @@ See [PROJECT_PROGRESS.md](PROJECT_PROGRESS.md) for detailed development roadmap 
 - [TESTING_GUIDE_PHASE2.md](TESTING_GUIDE_PHASE2.md) - Comprehensive testing guide (100+ test cases)
 - [QUICK_TEST_REFERENCE_PHASE2.md](QUICK_TEST_REFERENCE_PHASE2.md) - 20-minute quick test guide
 
-### Development Notes
+### Phase 3 Documentation (API & OAuth)
+- [OAUTH_INTEGRATION_EXAMPLES.md](_docs/OAUTH_INTEGRATION_EXAMPLES.md) - OAuth integration guide for third-party services
+- [Database Installation Guide](_sql/README.md) - Complete SQL installation instructions
+
+### Development & Version Management
+- [VERSION_MANAGEMENT.md](_docs/VERSION_MANAGEMENT.md) - Complete version management guide
+- [CHANGELOG.md](CHANGELOG.md) - Detailed change history following Keep a Changelog format
 - [CLAUDE_NOTES.md](CLAUDE_NOTES.md) - Development patterns, conventions, and troubleshooting
 - [PROJECT_PROGRESS.md](PROJECT_PROGRESS.md) - Detailed development roadmap and progress tracking
 
