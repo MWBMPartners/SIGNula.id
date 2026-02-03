@@ -1,6 +1,6 @@
 # SIGNula.ID - Universal Login System
 
-![Version](https://img.shields.io/badge/version-1.5.0-blue)
+![Version](https://img.shields.io/badge/version-2.0.0--beta-blue)
 ![PHP](https://img.shields.io/badge/PHP-8.3%2B-777BB4?logo=php)
 ![MySQL](https://img.shields.io/badge/MySQL-8.0%2B-4479A1?logo=mysql)
 ![License](https://img.shields.io/badge/license-Proprietary-red)
@@ -9,7 +9,7 @@
 
 **SIGNula** is a comprehensive, universal single sign-on (SSO) authentication system designed to provide seamless user authentication across multiple web and mobile applications. Built with security, scalability, and user experience as top priorities, SIGNula offers a modern authentication solution for today's interconnected digital ecosystem.
 
-**Current Status:** Phase 1 (WebAuthn/PassKeys & Passwordless Login) Complete ✅ | Phase 2 (Account Management UI) Complete ✅
+**Current Status:** Phase 1 & 2 Complete ✅ | Phase 3 (RESTful API) Complete ✅
 
 ### ✨ Key Features
 
@@ -457,6 +457,148 @@ See [TESTING_GUIDE_PHASE2.md](TESTING_GUIDE_PHASE2.md) for detailed testing with
 
 **Quick Reference:**
 [QUICK_TEST_REFERENCE_PHASE2.md](QUICK_TEST_REFERENCE_PHASE2.md) - 20-minute validation guide
+
+## 🌐 Phase 3 Features (RESTful API)
+
+### 📡 Comprehensive RESTful API (v1)
+
+SIGNula provides a complete RESTful API for integration with third-party applications and services.
+
+**Base URL:** `https://SIGNula.id/api/v1`
+
+**Authentication Methods:**
+- Session-based (cookies)
+- Bearer token (Authorization: Bearer {token})
+- API key (X-API-Key header or ?api_key= parameter)
+
+**Response Format:**
+All endpoints return standardized JSON responses with consistent structure.
+
+### 🔐 Authentication Endpoints
+
+**User Registration & Login:**
+- `POST /api/v1/auth/register` - Create new user account
+- `POST /api/v1/auth/login` - Login with email/password
+- `POST /api/v1/auth/logout` - Logout current user
+- `POST /api/v1/auth/refresh` - Refresh session/token
+
+**Email Verification:**
+- `POST /api/v1/auth/verify-email` - Verify email address
+- `GET /api/v1/auth/verify-email` - Verify via email link
+
+**Password Reset:**
+- `POST /api/v1/auth/forgot-password` - Request password reset
+- `POST /api/v1/auth/reset-password` - Reset password with token
+
+### 👤 User Management Endpoints
+
+**Profile Management:**
+- `GET /api/v1/user/profile` - Get user profile with statistics
+- `PUT /api/v1/user/profile` - Update display name, username, timezone
+
+**Session Management:**
+- `GET /api/v1/user/sessions` - List all active sessions
+- `DELETE /api/v1/user/session/{id}` - Terminate specific session
+
+**Activity & Preferences:**
+- `GET /api/v1/user/activity` - Get activity log (filtered, paginated)
+- `GET /api/v1/user/preferences` - Get user preferences
+- `PUT /api/v1/user/preferences` - Update preferences
+
+**Account Changes:**
+- `POST /api/v1/user/change-password` - Change password
+- `POST /api/v1/user/change-email` - Change email address
+
+### 🔐 MFA (Multi-Factor Authentication) Endpoints
+
+**MFA Management:**
+- `POST /api/v1/mfa/enable` - Enable two-factor authentication
+- `POST /api/v1/mfa/disable` - Disable two-factor authentication
+- `POST /api/v1/mfa/verify` - Verify MFA code (TOTP or backup code)
+- `GET /api/v1/mfa/setup` - Get MFA setup information
+
+**Backup Codes:**
+- `GET /api/v1/mfa/backup-codes` - Get backup codes count
+- `POST /api/v1/mfa/backup-codes/regenerate` - Generate new backup codes
+
+### 🔗 OAuth Account Linking Endpoints
+
+**Provider Management:**
+- `GET /api/v1/oauth/providers` - List available OAuth providers
+
+**Account Linking:**
+- `GET /api/v1/oauth/linked` - Get linked OAuth accounts
+- `POST /api/v1/oauth/link` - Link OAuth account
+- `DELETE /api/v1/oauth/unlink/{provider}` - Unlink OAuth account
+- `POST /api/v1/oauth/set-primary` - Set primary OAuth account
+
+**Supported Providers:**
+Google, Microsoft, Apple, Facebook, LinkedIn, GitHub
+
+### 🔍 Utility Endpoints
+
+- `GET /api/v1/health` - API health check
+- `GET /api/v1/info` - API version and information
+
+### 📊 API Features
+
+✅ **30+ Endpoints** - Comprehensive API coverage
+✅ **Standardized Responses** - Consistent JSON format
+✅ **Input Validation** - 20+ validation rules
+✅ **Pagination** - Efficient data retrieval (25-100 items per page)
+✅ **Error Handling** - Detailed error messages
+✅ **Activity Logging** - All API actions logged
+✅ **CORS Support** - Cross-origin requests enabled
+✅ **Rate Limiting** - Protection against abuse (framework ready)
+
+### 📖 API Response Example
+
+```json
+{
+  "success": true,
+  "message": "User profile retrieved successfully",
+  "data": {
+    "profile": {
+      "userID": 123,
+      "email": "user@example.com",
+      "displayName": "John Doe",
+      "username": "johndoe",
+      "emailVerified": true,
+      "mfaEnabled": true
+    },
+    "stats": {
+      "passkeys_count": 2,
+      "oauth_accounts_count": 1,
+      "active_sessions_count": 3
+    }
+  },
+  "meta": {
+    "timestamp": "2026-02-02T12:00:00Z",
+    "version": "v1",
+    "request_id": "abc123def456"
+  }
+}
+```
+
+### 🧪 Testing the API
+
+**Manual Testing:**
+Use tools like Postman, Insomnia, or cURL to test API endpoints.
+
+**Health Check:**
+```bash
+curl https://SIGNula.id/api/v1/health
+```
+
+**Example API Call:**
+```bash
+curl -X POST https://SIGNula.id/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "user@example.com",
+    "password": "yourpassword"
+  }'
+```
 
 ## 🔧 Configuration
 

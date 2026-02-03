@@ -1,0 +1,49 @@
+# ============================================================================
+# 🛣️ SIGNula API - URL Rewrite Rules
+# ============================================================================
+# Routes all API requests to the appropriate version handler
+# ============================================================================
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /api/
+
+    # Redirect all requests to v1/index.php (default version)
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^(.*)$ v1/index.php [QSA,L]
+</IfModule>
+
+# ============================================================================
+# 🔒 Security Headers
+# ============================================================================
+
+<IfModule mod_headers.c>
+    # CORS headers (configured in Response.php)
+    Header always set Access-Control-Allow-Methods "GET, POST, PUT, DELETE, PATCH, OPTIONS"
+    Header always set Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With, X-API-Key"
+
+    # Security headers
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "DENY"
+    Header always set X-XSS-Protection "1; mode=block"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+
+    # Content-Type enforcement
+    Header always set Content-Type "application/json; charset=utf-8"
+</IfModule>
+
+# ============================================================================
+# 📝 Disable directory listing
+# ============================================================================
+
+Options -Indexes
+
+# ============================================================================
+# 🚫 Protect sensitive files
+# ============================================================================
+
+<FilesMatch "\.(md|log|ini|conf)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>

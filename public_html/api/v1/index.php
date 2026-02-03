@@ -1,0 +1,171 @@
+<?php
+/**
+ * ============================================================================
+ * 🚀 SIGNula - RESTful API Entry Point (v1)
+ * ============================================================================
+ *
+ * Main entry point for SIGNula RESTful API v1.
+ * All API requests are routed through this file.
+ *
+ * API Documentation: https://SIGNula.id/docs/api
+ *
+ * Authentication:
+ * - Session-based (via cookies)
+ * - Bearer token (Authorization: Bearer {token})
+ * - API key (X-API-Key header or ?api_key= parameter)
+ *
+ * Response Format:
+ * {
+ *   "success": true|false,
+ *   "message": "Message",
+ *   "data": {...},
+ *   "meta": {
+ *     "timestamp": "ISO 8601",
+ *     "version": "v1",
+ *     "request_id": "unique-id"
+ *   }
+ * }
+ *
+ * @package    SIGNula
+ * @subpackage API
+ * @version    1.0.0
+ * @link       https://SIGNula.id
+ * ============================================================================
+ */
+
+// 🔧 Initialize application
+define('SIGNULA_INIT', true);
+require_once __DIR__ . '/../../../_config/config.php';
+
+// 📡 Load API classes
+require_once INCLUDES_DIR . '/api/Response.php';
+require_once INCLUDES_DIR . '/api/Router.php';
+require_once INCLUDES_DIR . '/api/Validator.php';
+require_once INCLUDES_DIR . '/api/BaseController.php';
+
+// 📦 Load controllers
+require_once INCLUDES_DIR . '/api/controllers/AuthController.php';
+require_once INCLUDES_DIR . '/api/controllers/UserController.php';
+require_once INCLUDES_DIR . '/api/controllers/MFAController.php';
+require_once INCLUDES_DIR . '/api/controllers/OAuthController.php';
+
+// 🛣️ Create router instance
+$router = new Router();
+
+// 🔧 Set API version
+Response::setVersion('v1');
+
+// ============================================================================
+// 🔐 AUTHENTICATION ROUTES
+// ============================================================================
+
+$router->group('/api/v1/auth', function($router) {
+    // User registration and login
+    $router->post('/register', 'AuthController@register');
+    $router->post('/login', 'AuthController@login');
+    $router->post('/logout', 'AuthController@logout');
+    $router->post('/refresh', 'AuthController@refresh');
+
+    // Email verification
+    $router->post('/verify-email', 'AuthController@verifyEmail');
+    $router->get('/verify-email', 'AuthController@verifyEmail'); // Support GET for email links
+
+    // Password reset
+    $router->post('/forgot-password', 'AuthController@forgotPassword');
+    $router->post('/reset-password', 'AuthController@resetPassword');
+});
+
+// ============================================================================
+// 👤 USER MANAGEMENT ROUTES
+// ============================================================================
+
+$router->group('/api/v1/user', function($router) {
+    // Profile management
+    $router->get('/profile', 'UserController@getProfile');
+    $router->put('/profile', 'UserController@updateProfile');
+
+    // Session management
+    $router->get('/sessions', 'UserController@getSessions');
+    $router->delete('/session/{id}', 'UserController@deleteSession');
+
+    // Activity log
+    $router->get('/activity', 'UserController@getActivity');
+
+    // Preferences
+    $router->get('/preferences', 'UserController@getPreferences');
+    $router->put('/preferences', 'UserController@updatePreferences');
+
+    // Account changes
+    $router->post('/change-password', 'UserController@changePassword');
+    $router->post('/change-email', 'UserController@changeEmail');
+});
+
+// ============================================================================
+// 🔐 MFA (MULTI-FACTOR AUTHENTICATION) ROUTES
+// ============================================================================
+
+$router->group('/api/v1/mfa', function($router) {
+    // MFA management
+    $router->post('/enable', 'MFAController@enable');
+    $router->post('/disable', 'MFAController@disable');
+    $router->post('/verify', 'MFAController@verify');
+    $router->get('/setup', 'MFAController@getSetup');
+
+    // Backup codes
+    $router->get('/backup-codes', 'MFAController@getBackupCodes');
+    $router->post('/backup-codes/regenerate', 'MFAController@regenerateBackupCodes');
+});
+
+// ============================================================================
+// 🔗 OAUTH ACCOUNT LINKING ROUTES
+// ============================================================================
+
+$router->group('/api/v1/oauth', function($router) {
+    // Provider information
+    $router->get('/providers', 'OAuthController@getProviders');
+
+    // Account management
+    $router->get('/linked', 'OAuthController@getLinkedAccounts');
+    $router->post('/link', 'OAuthController@linkAccount');
+    $router->delete('/unlink/{provider}', 'OAuthController@unlinkAccount');
+    $router->post('/set-primary', 'OAuthController@setPrimary');
+});
+
+// ============================================================================
+// 🔍 UTILITY ROUTES
+// ============================================================================
+
+// Health check endpoint
+$router->get('/api/v1/health', function($params) {
+    Response::success([
+        'status' => 'healthy',
+        'timestamp' => gmdate('c'),
+        'version' => 'v1',
+    ], 'API is operational');
+});
+
+// API info endpoint
+$router->get('/api/v1/info', function($params) {
+    Response::success([
+        'name' => 'SIGNula API',
+        'version' => 'v1',
+        'documentation' => 'https://SIGNula.id/docs/api',
+        'status' => 'active',
+    ], 'API information');
+});
+
+// ============================================================================
+// 🚀 DISPATCH REQUEST
+// ============================================================================
+
+try {
+    $router->dispatch();
+} catch (Exception $e) {
+    // 💥 Global error handler
+    ErrorLogger::log($e);
+    Response::internalError('An unexpected error occurred', [
+        'error' => $e->getMessage(),
+        'file' => $e->getFile(),
+        'line' => $e->getLine(),
+    ]);
+}
