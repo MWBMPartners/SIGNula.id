@@ -58,6 +58,12 @@ if ($purpose === 'email') {
     // 🔐 Load OAuth flow handler
     require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'auth' . DIRECTORY_SEPARATOR . 'OAuthFlowHandler.php';
 
+    // 📝 Store purpose in session for callback
+    if (session_status() === PHP_SESSION_NONE) {
+        session_start();
+    }
+    $_SESSION['oauth_purpose'] = 'email';
+
     // 🔗 Generate authorization URL
     $result = OAuthFlowHandler::generateAuthorizationUrl($provider, $userID, $mailboxEmail);
 

@@ -22,7 +22,8 @@
  */
 
 // 🚀 Bootstrap the application
-require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . '_config' . DIRECTORY_SEPARATOR . 'config.php';
+define('SIGNULA_INIT', true);
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'bootstrap.php';
 
 // 📝 Handle OAuth callback
 $error = null;
@@ -31,6 +32,51 @@ $success = null;
 try {
     // 🔍 Determine request method (Apple uses POST, others use GET)
     $requestData = $_SERVER['REQUEST_METHOD'] === 'POST' ? $_POST : $_GET;
+
+    // 🎯 Check if this is email delegation callback (vs account sign-in)
+    // Email delegation uses state parameter from OAuthFlowHandler
+    if (!empty($requestData['state']) && !empty($requestData['code'])) {
+        // 🔍 Load OAuth flow handler to check if this is email delegation
+        require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'auth' . DIRECTORY_SEPARATOR . 'OAuthFlowHandler.php';
+
+        // 🔐 Validate state token format (email delegation uses specific format)
+        if (session_status() === PHP_SESSION_NONE) {
+            session_start();
+        }
+
+        // Check if state exists in our OAuth flow handler's session storage
+        if (isset($_SESSION['oauth_state'][$requestData['state']])) {
+            // ✅ This is an email delegation callback
+            $provider = $_GET['provider'] ?? '';
+            if (empty($provider)) {
+                // Try to determine provider from state
+                $stateData = $_SESSION['oauth_state'][$requestData['state']];
+                $provider = $stateData['provider'] ?? '';
+            }
+
+            $code = $requestData['code'];
+            $state = $requestData['state'];
+            $error = $requestData['error'] ?? null;
+
+            // 🔄 Handle email delegation callback
+            $result = OAuthFlowHandler::handleCallback($provider, $code, $state, $error);
+
+            if (isset($result['error'])) {
+                // ❌ Error - redirect to settings with error
+                $_SESSION['error'] = 'Failed to connect account: ' . $result['error'];
+                header('Location: /settings/connected-accounts');
+                exit;
+            }
+
+            // ✅ Success - redirect to settings with success message
+            $_SESSION['success'] = 'Email account connected successfully! You can now send emails from this mailbox.';
+            header('Location: /settings/connected-accounts');
+            exit;
+        }
+    }
+
+    // 🔐 If we reach here, this is a regular account sign-in callback (not email delegation)
+    // Continue with existing sign-in logic...
 
     // ❌ Check for OAuth errors
     if (!empty($requestData['error'])) {
