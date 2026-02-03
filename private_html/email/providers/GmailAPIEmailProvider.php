@@ -67,12 +67,18 @@ class GmailAPIEmailProvider extends EmailProvider
     private const GMAIL_SEND_SCOPE = 'https://www.googleapis.com/auth/gmail.send';
 
     /**
-     * @var string|null Cached access token
+     * @var array Cached access tokens per mailbox
+     * Format: ['email@domain.com' => ['token' => 'token_value', 'expires' => timestamp]]
+     */
+    private array $accessTokens = [];
+
+    /**
+     * @var string|null Cached access token (deprecated - kept for backward compatibility)
      */
     private ?string $accessToken = null;
 
     /**
-     * @var int Token expiration timestamp
+     * @var int Token expiration timestamp (deprecated - kept for backward compatibility)
      */
     private int $tokenExpires = 0;
 
@@ -131,22 +137,34 @@ class GmailAPIEmailProvider extends EmailProvider
      * 🔑 Get Access Token
      *
      * Retrieves access token using OAuth 2.0 service account with JWT.
-     * Uses domain-wide delegation to send as the configured user.
-     * Tokens are cached until expiration.
+     * Uses domain-wide delegation to send as the specified user.
+     * Tokens are cached per mailbox until expiration.
      *
+     * @param string|null $impersonateEmail Email address to impersonate (defaults to configured send_from_email)
      * @return string Access token
      * @throws RuntimeException If authentication fails
      */
-    private function getAccessToken(): string
+    private function getAccessToken(?string $impersonateEmail = null): string
     {
-        // ♻️ Return cached token if still valid
-        if ($this->accessToken && time() < $this->tokenExpires) {
+        // 🎯 Use configured email as default
+        $impersonateEmail = $impersonateEmail ?? $this->config['send_from_email'];
+
+        // ♻️ Return cached token if still valid for this mailbox
+        if (isset($this->accessTokens[$impersonateEmail])) {
+            $cached = $this->accessTokens[$impersonateEmail];
+            if (time() < $cached['expires']) {
+                return $cached['token'];
+            }
+        }
+
+        // 🔙 Backward compatibility: check old cache
+        if ($this->accessToken && time() < $this->tokenExpires && $impersonateEmail === $this->config['send_from_email']) {
             return $this->accessToken;
         }
 
         try {
-            // 🔑 Create JWT assertion
-            $jwt = $this->createJWTAssertion();
+            // 🔑 Create JWT assertion for specific mailbox
+            $jwt = $this->createJWTAssertion($impersonateEmail);
 
             // 📝 Prepare token request
             $postData = [
@@ -176,14 +194,24 @@ class GmailAPIEmailProvider extends EmailProvider
                 throw new RuntimeException("No access token in response");
             }
 
-            // 💾 Cache token
-            $this->accessToken = $tokenData['access_token'];
-            $this->tokenExpires = time() + ($tokenData['expires_in'] ?? 3600) - 60; // 60s buffer
+            $expiresAt = time() + ($tokenData['expires_in'] ?? 3600) - 60; // 60s buffer
 
-            return $this->accessToken;
+            // 💾 Cache token per mailbox
+            $this->accessTokens[$impersonateEmail] = [
+                'token' => $tokenData['access_token'],
+                'expires' => $expiresAt
+            ];
+
+            // 🔙 Backward compatibility: update old cache if default mailbox
+            if ($impersonateEmail === $this->config['send_from_email']) {
+                $this->accessToken = $tokenData['access_token'];
+                $this->tokenExpires = $expiresAt;
+            }
+
+            return $tokenData['access_token'];
 
         } catch (Exception $e) {
-            error_log("Gmail API authentication error: " . $e->getMessage());
+            error_log("Gmail API authentication error for {$impersonateEmail}: " . $e->getMessage());
             throw new RuntimeException("Failed to authenticate with Gmail API");
         }
     }
@@ -192,12 +220,13 @@ class GmailAPIEmailProvider extends EmailProvider
      * 🔑 Create JWT Assertion
      *
      * Creates a signed JWT assertion for service account authentication.
-     * Uses domain-wide delegation to impersonate the sending user.
+     * Uses domain-wide delegation to impersonate the specified user.
      *
+     * @param string $impersonateEmail Email address to impersonate
      * @return string Signed JWT token
      * @throws RuntimeException If JWT creation fails
      */
-    private function createJWTAssertion(): string
+    private function createJWTAssertion(string $impersonateEmail): string
     {
         try {
             // 📅 Token timestamps
@@ -210,10 +239,10 @@ class GmailAPIEmailProvider extends EmailProvider
                 'typ' => 'JWT'
             ];
 
-            // 📝 JWT Payload (Claims)
+            // 📝 JWT Payload (Claims) - DYNAMIC SUBJECT for delegate sending! 🎯
             $payload = [
                 'iss' => $this->serviceAccountCredentials['client_email'], // Issuer (service account)
-                'sub' => $this->config['send_from_email'],                 // Subject (impersonated user)
+                'sub' => $impersonateEmail,                                // Subject (impersonated user) - DYNAMIC!
                 'scope' => self::GMAIL_SEND_SCOPE,                         // Gmail send scope
                 'aud' => self::TOKEN_ENDPOINT,                             // Audience
                 'iat' => $now,                                              // Issued at
@@ -260,7 +289,7 @@ class GmailAPIEmailProvider extends EmailProvider
     /**
      * 📨 Send Email via Gmail API
      *
-     * @param array $emailData Email data
+     * @param array $emailData Email data (including optional 'sendAsEmail' for delegate sending)
      * @return array Result with success status and message ID
      */
     public function send(array $emailData): array
@@ -274,8 +303,11 @@ class GmailAPIEmailProvider extends EmailProvider
                 return ['success' => false, 'messageId' => null, 'error' => $error];
             }
 
-            // 🔑 Get access token
-            $accessToken = $this->getAccessToken();
+            // 🎯 Extract delegate mailbox (if provided)
+            $sendAsEmail = $emailData['sendAsEmail'] ?? $this->config['send_from_email'];
+
+            // 🔑 Get access token for specific mailbox (domain-wide delegation)
+            $accessToken = $this->getAccessToken($sendAsEmail);
 
             // 📝 Build RFC 2822 email message
             $rawMessage = $this->buildRFC2822Message($emailData);
@@ -283,8 +315,8 @@ class GmailAPIEmailProvider extends EmailProvider
             // 🔐 Encode message in Base64URL format
             $encodedMessage = $this->base64UrlEncode($rawMessage);
 
-            // 🌐 Send via Gmail API
-            $sendEndpoint = self::GMAIL_API_URL . '/users/' . urlencode($this->config['send_from_email']) . '/messages/send';
+            // 🌐 Send via Gmail API using delegate mailbox
+            $sendEndpoint = self::GMAIL_API_URL . '/users/' . urlencode($sendAsEmail) . '/messages/send';
 
             $headers = [
                 'Authorization: Bearer ' . $accessToken,
@@ -547,9 +579,11 @@ class GmailAPIEmailProvider extends EmailProvider
                 'Delivery reports and tracking via Gmail'
             ],
             'notes' => [
-                'Access token is cached for 1 hour to reduce API calls',
+                'Access tokens are cached per mailbox for 1 hour to reduce API calls',
                 'Uses service account with domain-wide delegation',
-                'Emails are sent from the configured mailbox',
+                'Emails are sent from the configured mailbox by default',
+                'SUPPORTS DELEGATE SENDING: Can send from ANY mailbox in your domain via sendAsEmail parameter',
+                'Tokens are cached per delegate mailbox for optimal performance',
                 'Supports HTML, plain text, CC, BCC (attachments can be added)',
                 'Gmail API has generous rate limits (1 billion quota units/day)'
             ]

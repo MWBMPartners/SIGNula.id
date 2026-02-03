@@ -34,6 +34,7 @@ class EmailService
      * @param array $variables Template variables
      * @param int|null $userID User ID (optional)
      * @param int $priority Email priority (1=highest, 10=lowest)
+     * @param string|null $sendAsEmail Delegate mailbox to send from (for Microsoft 365/Google Workspace)
      * @return bool Success status
      */
     public static function sendTemplateEmail(
@@ -41,7 +42,8 @@ class EmailService
         string $templateKey,
         array $variables = [],
         ?int $userID = null,
-        int $priority = 5
+        int $priority = 5,
+        ?string $sendAsEmail = null
     ): bool {
         try {
             // 🔍 Fetch email template
@@ -72,7 +74,12 @@ class EmailService
                 $template['replyTo'],
                 $userID,
                 $template['templateID'],
-                $priority
+                $priority,
+                null,  // scheduledFor
+                [],    // cc
+                [],    // bcc
+                [],    // attachments
+                $sendAsEmail  // Delegate mailbox
             );
 
         } catch (Exception $e) {
@@ -98,6 +105,7 @@ class EmailService
      * @param array $cc CC recipients (array of email addresses)
      * @param array $bcc BCC recipients (array of email addresses)
      * @param array $attachments Attachments (array of attachment data)
+     * @param string|null $sendAsEmail Delegate mailbox to send from (Microsoft 365/Google Workspace)
      * @return bool Success status
      */
     public static function queueEmail(
@@ -114,7 +122,8 @@ class EmailService
         ?\DateTime $scheduledFor = null,
         array $cc = [],
         array $bcc = [],
-        array $attachments = []
+        array $attachments = [],
+        ?string $sendAsEmail = null
     ): bool {
         try {
             $fromEmail = $fromEmail ?? getSetting('email.from.address', 'noreply@SIGNula.id');
@@ -129,10 +138,10 @@ class EmailService
                 INSERT INTO tblEmailQueue (
                     userID, templateID, recipientEmail, recipientName,
                     subject, bodyHTML, bodyText,
-                    fromEmail, fromName, replyToEmail,
+                    fromEmail, fromName, sendAsEmail, replyToEmail,
                     ccRecipients, bccRecipients, attachments,
                     priority, status, scheduledAt
-                ) VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+                ) VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
             ";
 
             Database::query($query, [
@@ -144,13 +153,14 @@ class EmailService
                 $bodyText,
                 $fromEmail,
                 $fromName,
+                $sendAsEmail,  // Delegate mailbox
                 $replyTo,
                 $ccJson,
                 $bccJson,
                 $attachmentsJson,
                 $priority,
                 $scheduledFor ? $scheduledFor->format('Y-m-d H:i:s') : null
-            ], 'iissssssssssiss');
+            ], 'iisssssssssssiss');
 
             return true;
 

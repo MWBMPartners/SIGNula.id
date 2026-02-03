@@ -70,11 +70,22 @@ class MicrosoftGraphEmailProvider extends EmailProvider
     private int $tokenExpires = 0;
 
     /**
+     * @var string Authentication mode: 'application' or 'delegated'
+     * Application: Uses client credentials (service account)
+     * Delegated: Uses per-user OAuth tokens
+     */
+    private string $authMode = 'auto'; // 'auto', 'application', 'delegated'
+
+    /**
      * 🏗️ Constructor
      */
     public function __construct()
     {
         parent::__construct('microsoft_graph');
+
+        // 🔍 Determine default auth mode from settings
+        $useDelegated = getSetting('email.microsoft.use_delegated_permissions', 'false');
+        $this->authMode = ($useDelegated === 'true') ? 'delegated' : 'auto';
     }
 
     // ========================================================================
@@ -179,6 +190,77 @@ class MicrosoftGraphEmailProvider extends EmailProvider
         }
     }
 
+    /**
+     * 🔍 Determine Authentication Mode
+     *
+     * Intelligently chooses between application and delegated auth modes:
+     * - AUTO: Try user OAuth first, fallback to application
+     * - APPLICATION: Always use application credentials (for shared mailboxes)
+     * - DELEGATED: Only use user OAuth (fail if not available)
+     *
+     * @param int|null $userID User ID (for user OAuth lookup)
+     * @param string $sendAsEmail Mailbox to send from
+     * @return array ['accessToken' => string, 'useUserAuth' => bool, 'mode' => string]
+     * @throws RuntimeException If authentication fails
+     */
+    private function determineAuthMode(?int $userID, string $sendAsEmail): array
+    {
+        // 🔍 Check auth mode preference
+        $preferredMode = $this->authMode;
+
+        // 🎯 AUTO MODE: Try user OAuth first, fallback to application
+        if ($preferredMode === 'auto' && $userID) {
+            // 🔍 Try to get user OAuth token
+            require_once dirname(dirname(__DIR__)) . DIRECTORY_SEPARATOR . 'auth' . DIRECTORY_SEPARATOR . 'OAuthTokenManager.php';
+
+            $userToken = OAuthTokenManager::getToken($userID, 'microsoft_graph', $sendAsEmail);
+
+            if ($userToken && !empty($userToken['accessToken'])) {
+                // ✅ User OAuth token available - use delegated permissions
+                return [
+                    'accessToken' => $userToken['accessToken'],
+                    'useUserAuth' => true,
+                    'mode' => 'delegated'
+                ];
+            }
+
+            // ⚠️ User token not available - fallback to application
+            // This is normal for system emails or unlicensed/shared mailboxes
+        }
+
+        // 👤 DELEGATED MODE: Only use user OAuth
+        if ($preferredMode === 'delegated') {
+            if (!$userID) {
+                throw new RuntimeException('Delegated auth mode requires userID');
+            }
+
+            require_once dirname(dirname(__DIR__)) . DIRECTORY_SEPARATOR . 'auth' . DIRECTORY_SEPARATOR . 'OAuthTokenManager.php';
+
+            $userToken = OAuthTokenManager::getToken($userID, 'microsoft_graph', $sendAsEmail);
+
+            if (!$userToken || empty($userToken['accessToken'])) {
+                throw new RuntimeException("User OAuth token not found for userID {$userID} and mailbox {$sendAsEmail}");
+            }
+
+            return [
+                'accessToken' => $userToken['accessToken'],
+                'useUserAuth' => true,
+                'mode' => 'delegated'
+            ];
+        }
+
+        // 🏢 APPLICATION MODE (default): Use client credentials
+        // Perfect for:
+        // - System/transactional emails
+        // - Shared/unlicensed mailboxes (e.g., noreply@, support@, info@)
+        // - When user OAuth not available or not needed
+        return [
+            'accessToken' => $this->getAccessToken(),
+            'useUserAuth' => false,
+            'mode' => 'application'
+        ];
+    }
+
     // ========================================================================
     // 📧 EMAIL SENDING
     // ========================================================================
@@ -186,7 +268,12 @@ class MicrosoftGraphEmailProvider extends EmailProvider
     /**
      * 📨 Send Email via Microsoft Graph API
      *
-     * @param array $emailData Email data
+     * Supports DUAL-MODE authentication:
+     * - Application mode: Uses client credentials (shared/unlicensed mailboxes)
+     * - Delegated mode: Uses per-user OAuth tokens (user mailboxes)
+     * - Auto mode: Tries delegated first, falls back to application
+     *
+     * @param array $emailData Email data (including optional 'sendAsEmail' for delegate sending)
      * @return array Result with success status and message ID
      */
     public function send(array $emailData): array
@@ -200,14 +287,30 @@ class MicrosoftGraphEmailProvider extends EmailProvider
                 return ['success' => false, 'messageId' => null, 'error' => $error];
             }
 
-            // 🔑 Get access token
-            $accessToken = $this->getAccessToken();
+            // 🎯 Extract delegate mailbox and user ID
+            $sendAsEmail = $emailData['sendAsEmail'] ?? $this->config['send_from_email'];
+            $userID = $emailData['userID'] ?? null;
+
+            // 🔑 Determine authentication mode and get access token
+            $authResult = $this->determineAuthMode($userID, $sendAsEmail);
+            $accessToken = $authResult['accessToken'];
+            $useUserAuth = $authResult['useUserAuth'];
+            $authMode = $authResult['mode'];
 
             // 📝 Build email message
             $message = $this->buildGraphMessage($emailData);
 
-            // 🌐 Send via Microsoft Graph API
-            $sendEndpoint = self::GRAPH_API_URL . '/users/' . urlencode($this->config['send_from_email']) . '/sendMail';
+            // 🌐 Choose appropriate endpoint based on auth mode
+            if ($useUserAuth) {
+                // 👤 Delegated permissions: Send as authenticated user
+                $sendEndpoint = self::GRAPH_API_URL . '/me/sendMail';
+                $logContext = "user OAuth (userID: {$userID})";
+            } else {
+                // 🏢 Application permissions: Send from delegate mailbox
+                // Note: Requires Mail.Send.Shared + Exchange "Send As" permission
+                $sendEndpoint = self::GRAPH_API_URL . '/users/' . urlencode($sendAsEmail) . '/sendMail';
+                $logContext = "application credentials (mailbox: {$sendAsEmail})";
+            }
 
             $headers = [
                 'Authorization: Bearer ' . $accessToken,
@@ -224,14 +327,20 @@ class MicrosoftGraphEmailProvider extends EmailProvider
             // ✅ Microsoft Graph sendMail returns 202 Accepted with no body on success
             // The email is queued for delivery
 
-            // 📝 Log success
+            // 📝 Log success with authentication context
             $messageId = uniqid('msg_', true); // Generate unique ID for tracking
-            $this->logEmailActivity($emailData, true, $messageId);
+            $this->logEmailActivity($emailData, true, $messageId, null, [
+                'authMode' => $authMode,
+                'useUserAuth' => $useUserAuth,
+                'sendAsEmail' => $sendAsEmail,
+                'context' => $logContext
+            ]);
 
             return [
                 'success' => true,
                 'messageId' => $messageId,
-                'error' => null
+                'error' => null,
+                'authMode' => $authMode  // For debugging/monitoring
             ];
 
         } catch (Exception $e) {
@@ -377,7 +486,7 @@ class MicrosoftGraphEmailProvider extends EmailProvider
                 '10. Copy the secret value immediately (you can only see it once!)',
                 '11. Go to "API permissions" > "Add a permission"',
                 '12. Select "Microsoft Graph" > "Application permissions"',
-                '13. Add permission: "Mail.Send"',
+                '13. Add permissions: "Mail.Send" and "Mail.Send.Shared" (for delegate mailbox sending)',
                 '14. Click "Grant admin consent" for your tenant',
                 '15. Create a dedicated mailbox in Microsoft 365 for sending (e.g., noreply@yourdomain.com)',
                 '16. Store credentials in SIGNula database settings'
@@ -391,8 +500,10 @@ class MicrosoftGraphEmailProvider extends EmailProvider
             ],
             'permissions' => [
                 'Required: Mail.Send (Application permission)',
-                'Admin consent: Required',
-                'Scope: Allows sending email as any user in the organization'
+                'Optional: Mail.Send.Shared (for delegate mailbox sending)',
+                'Admin consent: Required for both permissions',
+                'Exchange: "Send As" permission required for each delegate mailbox',
+                'Scope: Allows sending email from service mailbox and delegate mailboxes'
             ],
             'benefits' => [
                 'Excellent deliverability (sent from your Microsoft 365 tenant)',
@@ -404,7 +515,10 @@ class MicrosoftGraphEmailProvider extends EmailProvider
             'notes' => [
                 'Access token is cached for 1 hour to reduce API calls',
                 'Uses client credentials flow (application permissions, not delegated)',
-                'Emails are sent from the configured mailbox',
+                'Emails are sent from the configured mailbox by default',
+                'SUPPORTS DELEGATE SENDING: Can send from different mailboxes via sendAsEmail parameter',
+                'Delegate sending requires Mail.Send.Shared permission + Exchange "Send As" permission',
+                'See _docs/MICROSOFT_DELEGATE_MAILBOX_SETUP.md for configuration instructions',
                 'Supports HTML, plain text, CC, BCC, and attachments',
                 'Microsoft Graph API has rate limits - monitor usage'
             ]

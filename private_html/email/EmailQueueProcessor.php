@@ -289,10 +289,12 @@ class EmailQueueProcessor
             'bodyHTML' => $queueItem['bodyHTML'],
             'from' => $queueItem['fromEmail'],
             'fromName' => $queueItem['fromName'],
+            'sendAsEmail' => $queueItem['sendAsEmail'] ?? null,  // Delegate mailbox for Microsoft 365/Google Workspace
             'replyTo' => $queueItem['replyToEmail'],
             'cc' => !empty($queueItem['ccRecipients']) ? json_decode($queueItem['ccRecipients'], true) : [],
             'bcc' => !empty($queueItem['bccRecipients']) ? json_decode($queueItem['bccRecipients'], true) : [],
-            'attachments' => !empty($queueItem['attachments']) ? json_decode($queueItem['attachments'], true) : []
+            'attachments' => !empty($queueItem['attachments']) ? json_decode($queueItem['attachments'], true) : [],
+            'userID' => $queueItem['userID'] ?? null  // For Phase 3 (delegated permissions token lookup)
         ];
 
         // 🔄 Try each provider in order
