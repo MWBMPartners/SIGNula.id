@@ -175,30 +175,48 @@ cd SIGNula.id
 
 ### Step 2: Database Setup
 
+**Option A: Complete Installation (Recommended for new installations)**
+
+Use the comprehensive installation script that includes everything:
+
+```bash
+# Single command installs complete database (v2.0.1)
+mysql -u your_username -p < _sql/signula_complete_install_v2.0.1.sql
+```
+
+This creates the `signula` database with all tables, views, procedures, and default settings.
+
+**Option B: Manual Migration (For existing installations or step-by-step setup)**
+
 1. Create a new MySQL database:
 
 ```sql
-CREATE DATABASE signula_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE DATABASE signula CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 ```
 
-2. Import the database schema:
+2. Import migrations in order:
 
 ```bash
 # Import initial schema
-mysql -u your_username -p signula_db < _database/migrations/001_initial_schema.sql
+mysql -u your_username -p signula < _database/migrations/001_initial_schema.sql
 
 # Import MFA system
-mysql -u your_username -p signula_db < _database/migrations/002_mfa_system.sql
+mysql -u your_username -p signula < _database/migrations/002_mfa_system.sql
 
 # Import OAuth integration
-mysql -u your_username -p signula_db < _database/migrations/003_oauth_integration.sql
+mysql -u your_username -p signula < _database/migrations/003_oauth_integration.sql
 
 # Import email system
-mysql -u your_username -p signula_db < _database/migrations/004_email_system.sql
+mysql -u your_username -p signula < _database/migrations/004_email_system.sql
 
-# Import WebAuthn/PassKeys (Phase 1)
-mysql -u your_username -p signula_db < _database/migrations/005_webauthn_passkeys.sql
+# Import WebAuthn/PassKeys (Phase 1.5)
+mysql -u your_username -p signula < _database/migrations/005_webauthn_passkeys.sql
+
+# Import OAuth multi-account support (Phase 3.1)
+mysql -u your_username -p signula < _migrations/003_oauth_multi_account_support.sql
 ```
+
+**Documentation:** See [_sql/README.md](_sql/README.md) for detailed installation instructions, troubleshooting, and post-installation configuration.
 
 3. Verify setup:
 
@@ -534,6 +552,31 @@ All endpoints return standardized JSON responses with consistent structure.
 
 **Supported Providers:**
 Google, Microsoft, Apple, Facebook, LinkedIn, GitHub
+
+**🆕 Multi-Account Support:**
+SIGNula now supports linking **multiple accounts from the same provider** to a single SIGNula account. This enables:
+
+- Linking both personal and work Google accounts
+- Multiple Microsoft 365 accounts (personal, work, school)
+- Separation of personal and organizational identities
+
+Each OAuth account includes:
+- `account_type` - Account classification (personal, work, school)
+- `email_domain` - Email domain for filtering (e.g., company.com)
+
+**Third-Party Integration:**
+Services using SIGNula can require specific domains or account types:
+
+```php
+// Example: Require company domain
+$accounts = getLinkedOAuthAccounts($token);
+$companyAccounts = array_filter($accounts, function($acc) {
+    return $acc['email_domain'] === 'company.com';
+});
+```
+
+**Documentation:**
+See [OAuth Integration Examples](_docs/OAUTH_INTEGRATION_EXAMPLES.md) for detailed implementation guidance including domain-based requirements and account filtering.
 
 ### 🔍 Utility Endpoints
 

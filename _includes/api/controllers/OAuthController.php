@@ -128,6 +128,8 @@ class OAuthController extends BaseController
                     providerUserID,
                     email,
                     displayName,
+                    accountType,
+                    emailDomain,
                     isPrimary,
                     DATE_FORMAT(linkedAt, '%Y-%m-%dT%H:%i:%sZ') as linked_at,
                     DATE_FORMAT(lastUsedAt, '%Y-%m-%dT%H:%i:%sZ') as last_used_at
@@ -156,6 +158,8 @@ class OAuthController extends BaseController
                         'provider_user_id' => $row['providerUserID'],
                         'email' => $row['email'],
                         'display_name' => $row['displayName'],
+                        'account_type' => $row['accountType'],
+                        'email_domain' => $row['emailDomain'],
                         'is_primary' => (bool) $row['isPrimary'],
                         'linked_at' => $row['linked_at'],
                         'last_used_at' => $row['last_used_at'],
@@ -193,27 +197,60 @@ class OAuthController extends BaseController
             'provider_user_id' => 'required|string',
             'email' => 'required|email',
             'display_name' => 'string',
+            'account_type' => 'string|in:personal,work,school',
             'access_token' => 'required|string',
             'refresh_token' => 'string',
         ]);
 
         try {
-            // Check if provider is already linked
+            // 🔒 Check if this specific external account is already linked to ANY SIGNula account
+            // This prevents the same external account (e.g., john@gmail.com from Google)
+            // from being linked to multiple SIGNula accounts
             $existingQuery = "
-                SELECT oauthAccountID FROM tblOAuthAccounts
-                WHERE userID = ? AND provider = ?
+                SELECT oauthAccountID, userID FROM tblOAuthAccounts
+                WHERE provider = ? AND providerUserID = ?
             ";
 
             $existingResult = Database::query(
                 $existingQuery,
-                [$user['userID'], $data['provider']],
-                'is'
+                [$data['provider'], $data['provider_user_id']],
+                'ss'
             );
 
             if ($existingResult && $existingResult->num_rows > 0) {
-                $this->error('This provider is already linked to your account', Response::HTTP_CONFLICT);
+                $existingRow = $existingResult->fetch_assoc();
+
+                // If it's linked to a different SIGNula account, reject
+                if ($existingRow['userID'] != $user['userID']) {
+                    $this->error('This external account is already linked to another SIGNula account', Response::HTTP_CONFLICT);
+                    return;
+                }
+
+                // If it's already linked to THIS SIGNula account, reject as duplicate
+                $this->error('This external account is already linked to your SIGNula account', Response::HTTP_CONFLICT);
                 return;
             }
+
+            // 🎯 Auto-determine account type if not provided
+            $accountType = $data['account_type'] ?? 'personal';
+            if (!isset($data['account_type'])) {
+                $email = strtolower($data['email']);
+
+                // Check for common personal email domains
+                $personalDomains = ['gmail.com', 'yahoo.com', 'outlook.com', 'hotmail.com',
+                                   'live.com', 'icloud.com', 'me.com', 'aol.com'];
+
+                // Check for educational domains
+                if (preg_match('/\.(edu|ac\.|edu\.)/', $email)) {
+                    $accountType = 'school';
+                } else {
+                    $domain = substr(strrchr($email, "@"), 1);
+                    $accountType = in_array($domain, $personalDomains) ? 'personal' : 'work';
+                }
+            }
+
+            // 📧 Extract email domain
+            $emailDomain = substr(strrchr($data['email'], "@"), 1);
 
             // 🔒 Encrypt tokens
             $accessTokenEncrypted = SecurityUtils::encrypt($data['access_token']);
@@ -221,12 +258,13 @@ class OAuthController extends BaseController
                 ? SecurityUtils::encrypt($data['refresh_token'])
                 : null;
 
-            // 💾 Store OAuth account link
+            // 💾 Store OAuth account link with account type and domain
             $query = "
                 INSERT INTO tblOAuthAccounts (
                     userID, provider, providerUserID, email, displayName,
-                    accessToken, refreshToken, isPrimary, linkedAt, lastUsedAt
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, NOW(), NOW())
+                    accountType, emailDomain, accessToken, refreshToken,
+                    isPrimary, linkedAt, lastUsedAt
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NOW(), NOW())
             ";
 
             Database::query(
@@ -237,21 +275,25 @@ class OAuthController extends BaseController
                     $data['provider_user_id'],
                     $data['email'],
                     $data['display_name'] ?? '',
+                    $accountType,
+                    $emailDomain,
                     $accessTokenEncrypted,
                     $refreshTokenEncrypted
                 ],
-                'issssss'
+                'issssssss'
             );
 
             $accountId = Database::getLastInsertId();
 
             // 📊 Log activity
-            ActivityLogger::log($user['userID'], 'oauth_linked', 'success', "Linked {$data['provider']} account via API");
+            ActivityLogger::log($user['userID'], 'oauth_linked', 'success', "Linked {$data['provider']} ($accountType) account via API");
 
             $this->created([
                 'account_id' => $accountId,
                 'provider' => $data['provider'],
                 'email' => $data['email'],
+                'account_type' => $accountType,
+                'email_domain' => $emailDomain,
                 'linked' => true,
             ], 'OAuth account linked successfully');
 
