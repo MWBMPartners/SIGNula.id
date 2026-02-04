@@ -1,0 +1,113 @@
+#!/bin/bash
+###############################################################################
+# Git Pre-Commit Hook - Copyright Management
+#
+# Purpose:
+#   1. Add copyright headers to new files without them
+#   2. Update copyright year ranges in existing files
+#
+# Copyright © 2025-2026 MWBM Partners Ltd (t/a MWservices). All rights reserved.
+#
+# This hook runs before each commit and manages copyright headers automatically.
+#
+###############################################################################
+
+# Get script directory
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+# Get current year
+CURRENT_YEAR=$(date +%Y)
+START_YEAR="2025"
+COMPANY_NAME="MWBM Partners Ltd (t/a MWservices)"
+
+# Calculate year range
+if [ "$START_YEAR" = "$CURRENT_YEAR" ]; then
+    NEW_YEAR_RANGE="$START_YEAR"
+else
+    NEW_YEAR_RANGE="${START_YEAR}-${CURRENT_YEAR}"
+fi
+
+# Get list of staged files
+STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(php|js|sql|md|sh)$')
+
+if [ -z "$STAGED_FILES" ]; then
+    # No relevant files staged
+    exit 0
+fi
+
+# Flags to track changes
+FILES_UPDATED=false
+FILES_ADDED_COPYRIGHT=false
+
+###############################################################################
+# Step 1: Add copyright headers to new files
+###############################################################################
+FILES_WITHOUT_COPYRIGHT=""
+
+for file in $STAGED_FILES; do
+    if [ -f "$file" ]; then
+        # Check if file lacks copyright
+        if ! grep -q "Copyright © .*$COMPANY_NAME" "$file"; then
+            FILES_WITHOUT_COPYRIGHT="$FILES_WITHOUT_COPYRIGHT $file"
+        fi
+    fi
+done
+
+# If there are files without copyright, run add-copyright.sh
+if [ -n "$FILES_WITHOUT_COPYRIGHT" ]; then
+    echo "📝 Adding copyright headers to new files..."
+
+    # Run add-copyright.sh script
+    if [ -f "$PROJECT_ROOT/_scripts/add-copyright.sh" ]; then
+        bash "$PROJECT_ROOT/_scripts/add-copyright.sh" > /dev/null 2>&1
+
+        # Re-stage files that got copyright added
+        for file in $FILES_WITHOUT_COPYRIGHT; do
+            if grep -q "Copyright © .*$COMPANY_NAME" "$file"; then
+                git add "$file"
+                echo "✓ Added copyright to: $file"
+                FILES_ADDED_COPYRIGHT=true
+            fi
+        done
+    fi
+fi
+
+###############################################################################
+# Step 2: Update copyright years in existing files
+###############################################################################
+for file in $STAGED_FILES; do
+    if [ -f "$file" ]; then
+        # Check if file contains copyright
+        if grep -q "Copyright © .*$COMPANY_NAME" "$file"; then
+            # Check if year needs updating
+            if ! grep -q "Copyright © $NEW_YEAR_RANGE $COMPANY_NAME" "$file"; then
+                # Update year range
+                sed -i.bak "s/Copyright © [0-9]\{4\}\(-[0-9]\{4\}\)\? $COMPANY_NAME/Copyright © $NEW_YEAR_RANGE $COMPANY_NAME/" "$file"
+                rm "${file}.bak" 2>/dev/null || true
+
+                # Re-stage the file
+                git add "$file"
+
+                FILES_UPDATED=true
+                echo "✓ Updated copyright year in: $file"
+            fi
+        fi
+    fi
+done
+
+###############################################################################
+# Summary
+###############################################################################
+if [ "$FILES_ADDED_COPYRIGHT" = true ] || [ "$FILES_UPDATED" = true ]; then
+    echo ""
+    if [ "$FILES_ADDED_COPYRIGHT" = true ]; then
+        echo "✅ Copyright headers automatically added to new files"
+    fi
+    if [ "$FILES_UPDATED" = true ]; then
+        echo "✅ Copyright years automatically updated to $NEW_YEAR_RANGE"
+    fi
+    echo ""
+fi
+
+exit 0

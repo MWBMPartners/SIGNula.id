@@ -1,3 +1,12 @@
+-- ============================================================================
+-- SIGNula Database Schema
+-- 
+-- Copyright © 2025-2026 MWBM Partners Ltd (t/a MWservices). All rights reserved.
+-- 
+-- This software is proprietary and confidential. Unauthorized copying,
+-- distribution, or use is strictly prohibited.
+-- ============================================================================
+
 -- =====================================================
 -- SIGNula Rate Limiting System
 -- Migration: 007_rate_limiting.sql

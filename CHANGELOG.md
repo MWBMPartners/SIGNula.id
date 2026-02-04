@@ -110,6 +110,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **PROJECT_PROGRESS.md** - Added Phase 3.4 with comprehensive security details
 - **README.md** - Updated with security enhancements and security score
 - **VERSION** - Bumped to 2.2.0-beta
+- **Database File Organization** - Major restructuring for security and clarity
+  - Moved all database files from `web/_database/` to project root `_database/`
+  - Consolidated duplicate migration directories into single `_database/migrations/`
+  - Improved .gitignore configuration for database files
+  - Security enhancement: Database files no longer in web-accessible directory
+- **_scripts/add-copyright.sh** - Updated to reference new `_database/` location
+- **_scripts/git-hooks/pre-commit** - Enhanced with automatic copyright management
+  - Now automatically adds copyright headers to new files (PHP, JS, SQL, Markdown, Shell)
+  - Continues to update copyright years in existing files
+  - Eliminates manual copyright management overhead
+
+### Added - Infrastructure & Organization
+- **signula_complete_install_v2.2.0.sql** (121KB) - Complete database installation file
+  - Consolidated all migrations through v2.2.0-beta into single file
+  - Includes all features: auth, OAuth, email, blog, support, rate limiting, API keys
+  - Replaces need to run individual migrations for fresh installs
+  - Properly documented with feature list and installation instructions
+- **_scripts/build-complete-install.sh** - Automated build script for complete installation SQL
+  - Combines base schema with all migrations
+  - Generates up-to-date installation file
+  - Organized by feature area with clear section headers
+  - Includes copyright headers and proper documentation
+- **_scripts/reorganize-database-files.sh** - Database reorganization utility
+  - Automated migration from web/_database/ to _database/
+  - Creates backup before making changes
+  - Consolidates duplicate directories
+  - Updates .gitignore automatically
+- **_database/** directory structure created
+  - `migrations/` - All individual migration files (12 files)
+  - `archive/` - Deprecated/old schema files
+  - Complete installation files for each major version
+  - Organized, secure, and maintainable structure
 
 ### Rate Limiting Configuration
 
@@ -490,3 +522,9 @@ MAJOR.MINOR.PATCH-prerelease+build
 [2.0.1-beta]: https://github.com/MWBMPartners/SIGNula.id/compare/v2.0.0-beta...v2.0.1-beta
 [2.0.0-beta]: https://github.com/MWBMPartners/SIGNula.id/compare/v1.0.0...v2.0.0-beta
 [1.0.0]: https://github.com/MWBMPartners/SIGNula.id/releases/tag/v1.0.0
+
+---
+
+**Copyright © 2025-2026 MWBM Partners Ltd (t/a MWservices). All rights reserved.**
+
+This documentation is proprietary and confidential. Unauthorized copying, distribution, or use is strictly prohibited.

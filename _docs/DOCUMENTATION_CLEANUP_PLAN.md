@@ -233,3 +233,9 @@ Run the automated cleanup script:
 ```bash
 bash _scripts/cleanup-documentation.sh
 ```
+
+---
+
+**Copyright © 2025-2026 MWBM Partners Ltd (t/a MWservices). All rights reserved.**
+
+This documentation is proprietary and confidential. Unauthorized copying, distribution, or use is strictly prohibited.

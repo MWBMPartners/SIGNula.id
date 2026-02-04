@@ -1,4 +1,13 @@
 -- ============================================================================
+-- SIGNula Database Schema
+-- 
+-- Copyright © 2025-2026 MWBM Partners Ltd (t/a MWservices). All rights reserved.
+-- 
+-- This software is proprietary and confidential. Unauthorized copying,
+-- distribution, or use is strictly prohibited.
+-- ============================================================================
+
+-- ============================================================================
 -- 📧 SIGNula Contact Submissions Migration
 -- ============================================================================
 -- Creates table for storing contact form submissions from SIGNula.com

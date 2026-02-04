@@ -385,3 +385,9 @@ Expected: 200 OK with user profile data
 
 **Last Updated:** February 4, 2026
 **Maintained by:** SIGNula Development Team
+
+---
+
+**Copyright © 2025-2026 MWBM Partners Ltd (t/a MWservices). All rights reserved.**
+
+This documentation is proprietary and confidential. Unauthorized copying, distribution, or use is strictly prohibited.

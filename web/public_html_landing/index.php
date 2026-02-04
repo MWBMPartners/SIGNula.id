@@ -160,14 +160,16 @@ html[data-theme="light"] .theme-toggle .sun {
   </div>
 
   <h1>One Identity. All Access.</h1>
-  <p class="tagline">SIGNula is your universal sign-in gateway—simple, secure, and seamless.</p>
+  <p class="tagline">SIGNula is your universal sign-in gateway - simple, secure, and seamless.</p>
 
-  <!--<form class="notify-form" onsubmit="subscribe(event)">
-    <input type="email" id="email" placeholder="Enter your email to get notified" required />
-    <button type="submit">Notify Me</button>
-  </form>-->
-
-  <div class="footer">&copy; <?php if (date("Y")>"2025"){echo "2025–".date("Y");}else{echo date("Y");}?>  MWBM Partners Ltd</div>
+  
+  <?php
+   echo "<!--<form class=\"notify-form\" onsubmit=\"subscribe(event)\">";
+   echo " <input type=\"email\" id=\"email\" placeholder=\"Enter your email to get notified\" required />";
+   echo " <button type="submit">Notify Me</button>";
+   echo "</form>-->";
+  ?>
+  <div class="footer">&copy; <?php if (date("Y")>"2025"){echo "2025-".date("Y");}else{echo date("Y");}?>  MWBM Partners Ltd</div>
 
   <script>
     function subscribe(e) {

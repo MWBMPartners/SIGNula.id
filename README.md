@@ -214,48 +214,37 @@ cd SIGNula.id
 
 ### Step 2: Database Setup
 
-**Option A: Complete Installation (Recommended for new installations)**
+**Option A: Complete Installation (Recommended for new installations) ⭐**
 
-Use the comprehensive installation script that includes everything:
-
-```bash
-# Single command installs complete database (v2.0.1)
-mysql -u your_username -p < _sql/signula_complete_install_v2.0.1.sql
-```
-
-This creates the `signula` database with all tables, views, procedures, and default settings.
-
-**Option B: Manual Migration (For existing installations or step-by-step setup)**
-
-1. Create a new MySQL database:
-
-```sql
-CREATE DATABASE signula CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-```
-
-2. Import migrations in order:
+Use the comprehensive installation script that includes everything through v2.2.0-beta:
 
 ```bash
-# Import initial schema
-mysql -u your_username -p signula < _database/migrations/001_initial_schema.sql
-
-# Import MFA system
-mysql -u your_username -p signula < _database/migrations/002_mfa_system.sql
-
-# Import OAuth integration
-mysql -u your_username -p signula < _database/migrations/003_oauth_integration.sql
-
-# Import email system
-mysql -u your_username -p signula < _database/migrations/004_email_system.sql
-
-# Import WebAuthn/PassKeys (Phase 1.5)
-mysql -u your_username -p signula < _database/migrations/005_webauthn_passkeys.sql
-
-# Import OAuth multi-account support (Phase 3.1)
-mysql -u your_username -p signula < _migrations/003_oauth_multi_account_support.sql
+# Single command installs complete database with all features
+mysql -u your_username -p < _database/signula_complete_install_v2.2.0.sql
 ```
 
-**Documentation:** See [_sql/README.md](_sql/README.md) for detailed installation instructions, troubleshooting, and post-installation configuration.
+This creates the `signula` database with:
+- ✅ Core authentication system & MFA
+- ✅ OAuth integration (Google, Microsoft, Apple, etc.)
+- ✅ Email system with templates, tracking, campaigns
+- ✅ WebAuthn/PassKeys & passwordless login
+- ✅ Blog/news system & support tickets
+- ✅ Rate limiting & API key management
+- ✅ All default settings and configurations
+
+**Option B: Manual Migration (For upgrading existing installations)**
+
+If you already have a SIGNula installation and need to apply new migrations:
+
+```bash
+# Apply individual migrations as needed
+mysql -u your_username -p signula < _database/migrations/007_rate_limiting.sql
+mysql -u your_username -p signula < _database/migrations/008_partner_api_keys.sql
+```
+
+See [_docs/SECURITY_DEPLOYMENT_GUIDE.md](_docs/SECURITY_DEPLOYMENT_GUIDE.md) for detailed migration instructions with verification steps.
+
+**Documentation:** All database files are in [_database/](_database/) with migrations in [_database/migrations/](_database/migrations/).
 
 3. Verify setup:
 
@@ -747,8 +736,11 @@ SIGNula can send emails through user's connected Microsoft 365 or Google Workspa
 ### Setup
 
 **1. Database Migration:**
+
+**Note:** If you used the complete installation (v2.2.0), delegate mailbox support is already included. For existing installations, apply the migration:
+
 ```bash
-mysql -u username -p database < _sql/signula_email_system_addon_v2.1.0.sql
+mysql -u username -p database < _database/migrations/006_delegate_mailbox_support.sql
 ```
 
 **2. Configure Azure AD** (for Microsoft 365):
@@ -980,8 +972,10 @@ See [PROJECT_PROGRESS.md](PROJECT_PROGRESS.md) for detailed development roadmap 
 - **OAuth Integration:**
   - [_docs/OAUTH_INTEGRATION_EXAMPLES.md](_docs/OAUTH_INTEGRATION_EXAMPLES.md) - OAuth integration guide for third-party services
 - **Database:**
-  - [_sql/README.md](_sql/README.md) - Complete SQL installation instructions
-  - [.claude/DATABASE_SCHEMA_STATUS.md](.claude/DATABASE_SCHEMA_STATUS.md) - Schema documentation
+  - [_database/](_database/) - All database files (complete installation + migrations)
+  - [_database/signula_complete_install_v2.2.0.sql](_database/signula_complete_install_v2.2.0.sql) - Complete installation (121KB)
+  - [_database/migrations/](_database/migrations/) - Individual migration files
+  - [_docs/SECURITY_DEPLOYMENT_GUIDE.md](_docs/SECURITY_DEPLOYMENT_GUIDE.md) - Database deployment instructions
 
 ### Development & Version Management
 - [VERSION_MANAGEMENT.md](_docs/VERSION_MANAGEMENT.md) - Complete version management guide
@@ -1001,3 +995,9 @@ See [PROJECT_PROGRESS.md](PROJECT_PROGRESS.md) for detailed development roadmap 
 ---
 
 **Built with ❤️ by MWBMPartners**
+
+---
+
+**Copyright © 2025-2026 MWBM Partners Ltd (t/a MWservices). All rights reserved.**
+
+This documentation is proprietary and confidential. Unauthorized copying, distribution, or use is strictly prohibited.

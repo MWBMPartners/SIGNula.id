@@ -506,6 +506,39 @@ Enterprise-grade security infrastructure with rate limiting and partner API key 
   - Usage examples generator
   - Security notes and monitoring queries
 
+**Infrastructure & Organization:**
+- **Database File Reorganization** - Major structural improvement
+  - Moved all database files from `web/_database/` to `_database/` (project root)
+  - ✅ Security: Database files no longer in web-accessible directory
+  - ✅ Organization: Consolidated 3 duplicate migration directories into one
+  - ✅ Clarity: Clear separation between migrations and complete install files
+  - Backup created: database-backup-20260204_212957.tar.gz
+
+- **signula_complete_install_v2.2.0.sql** (121KB) - Complete database installation
+  - Single-file installation for all features through v2.2.0-beta
+  - Includes: Core auth, OAuth, email system, blog, support, rate limiting, API keys
+  - Eliminates need to run 12+ individual migrations for fresh installs
+  - Properly documented with feature list and usage instructions
+  - Generated via automated build script for consistency
+
+- **_scripts/build-complete-install.sh** - Build automation
+  - Combines base schema with all migrations
+  - Organized by feature area with clear headers
+  - Ensures complete installation file stays current
+  - Includes copyright headers and documentation
+
+- **_scripts/reorganize-database-files.sh** - Database reorganization utility
+  - Automated migration tool (used once)
+  - Creates backup before changes
+  - Consolidates directories and updates .gitignore
+
+- **Copyright Management Automation**
+  - Enhanced Git pre-commit hook to automatically add copyright headers
+  - Processes new PHP, JavaScript, SQL, Markdown, and Shell files
+  - Continues to update copyright years in existing files
+  - Updated copyright script to reference new `_database/` location
+  - Eliminates manual copyright management
+
 **Documentation:**
 - **_docs/SECURITY_DEPLOYMENT_GUIDE.md** (600+ lines)
   - Complete deployment instructions
@@ -1300,3 +1333,9 @@ API Keys (Partners):
 
 **Last Updated:** February 4, 2026
 **Current Version:** 2.2.0-beta
+
+---
+
+**Copyright © 2025-2026 MWBM Partners Ltd (t/a MWservices). All rights reserved.**
+
+This documentation is proprietary and confidential. Unauthorized copying, distribution, or use is strictly prohibited.

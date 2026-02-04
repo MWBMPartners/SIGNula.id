@@ -580,3 +580,9 @@ tar -xzf SIGNula-backup-YYYYMMDD_HHMMSS.tar.gz
 **Reorganization Complete!** 🎉
 
 The SIGNula project is now organized for optimal deployment via SFTP.
+
+---
+
+**Copyright © 2025-2026 MWBM Partners Ltd (t/a MWservices). All rights reserved.**
+
+This documentation is proprietary and confidential. Unauthorized copying, distribution, or use is strictly prohibited.

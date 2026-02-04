@@ -1,3 +1,12 @@
+-- ============================================================================
+-- SIGNula Database Schema
+-- 
+-- Copyright © 2025-2026 MWBM Partners Ltd (t/a MWservices). All rights reserved.
+-- 
+-- This software is proprietary and confidential. Unauthorized copying,
+-- distribution, or use is strictly prohibited.
+-- ============================================================================
+
 -- =====================================================
 -- SIGNula Partner API Key Management System
 -- Migration: 008_partner_api_keys.sql

@@ -713,3 +713,9 @@ ORDER BY createdAt DESC LIMIT 50;
 **Last Updated:** February 4, 2026
 **Version:** 2.1.0-beta
 **Maintained by:** SIGNula Development Team
+
+---
+
+**Copyright © 2025-2026 MWBM Partners Ltd (t/a MWservices). All rights reserved.**
+
+This documentation is proprietary and confidential. Unauthorized copying, distribution, or use is strictly prohibited.

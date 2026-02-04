@@ -456,3 +456,9 @@ Use this to verify everything is set up correctly:
 ---
 
 **Ready!** Your SSH keys are now set up for secure, password-free SFTP deployment! 🚀
+
+---
+
+**Copyright © 2025-2026 MWBM Partners Ltd (t/a MWservices). All rights reserved.**
+
+This documentation is proprietary and confidential. Unauthorized copying, distribution, or use is strictly prohibited.

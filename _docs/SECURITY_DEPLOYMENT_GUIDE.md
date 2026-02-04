@@ -563,3 +563,9 @@ If you encounter issues during deployment:
 **Deployment Complete!** 🎉
 
 Your SIGNula API now has enterprise-grade rate limiting and API key management.
+
+---
+
+**Copyright © 2025-2026 MWBM Partners Ltd (t/a MWservices). All rights reserved.**
+
+This documentation is proprietary and confidential. Unauthorized copying, distribution, or use is strictly prohibited.

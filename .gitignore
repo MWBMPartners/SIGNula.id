@@ -536,3 +536,7 @@ web/.vscode/sftp.json
 web/sftp-config.json
 web/.vscode/
 
+
+# Database files (keep structure, ignore generated SQL)
+_database/*.sql
+!_database/migrations/*.sql

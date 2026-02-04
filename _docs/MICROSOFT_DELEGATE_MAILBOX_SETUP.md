@@ -396,3 +396,9 @@ For issues or questions:
 **Last Updated**: 2026-02-03
 **Version**: 2.0.0
 **Phase**: 2
+
+---
+
+**Copyright © 2025-2026 MWBM Partners Ltd (t/a MWservices). All rights reserved.**
+
+This documentation is proprietary and confidential. Unauthorized copying, distribution, or use is strictly prohibited.
