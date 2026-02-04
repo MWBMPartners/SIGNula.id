@@ -540,6 +540,186 @@ Comprehensive API documentation for third-party partner integration.
 
 ---
 
+### 🔒 Security Enhancements Program
+**Start Date:** February 5, 2026 (Immediately)
+**Status:** 🔴 Critical Priority
+**Target:** Increase security score from 80% to 95%+
+
+**Overview:**
+Critical security enhancements required before public production launch. These address identified gaps from API security audit.
+
+#### Phase A: Rate Limiting (Week 1) 🔴 CRITICAL
+**Effort:** ~8 hours
+**Status:** ⏸️ Ready to implement
+
+**Deliverables:**
+- Database migration (007_rate_limiting.sql) ✅ Created
+- Rate limit tracking tables (tblRateLimits, tblRateLimitConfig) ✅ Schema ready
+- RateLimiter class with token bucket algorithm
+- Rate limit middleware for all API endpoints
+- Configuration for IP, user, and API key-based limits
+- Progressive blocking (1min → 5min → 15min → 1hour → 24hour)
+- Activity logging for rate limit violations
+
+**Default Limits:**
+```
+Unauthenticated (IP):
+- 100 requests/hour global
+- 20 requests/hour for login (brute force protection)
+- 10 requests/hour for registration (spam prevention)
+- 5 requests/hour for password reset
+
+Authenticated Users:
+- Free: 500/hour
+- Basic: 1,000/hour
+- Premium: 5,000/hour
+- Enterprise: 50,000/hour
+
+API Keys (Partners):
+- Free: 1,000/hour
+- Basic: 10,000/hour
+- Premium: 50,000/hour
+- Enterprise: 100,000/hour
+```
+
+**Benefits:**
+- Prevents API abuse and DDoS attacks
+- Prevents brute force login attempts
+- Prevents spam registrations
+- Protects server resources
+- Improves overall system stability
+
+#### Phase B: Partner API Key Management (Week 2) 🔴 CRITICAL
+**Effort:** ~16 hours
+**Status:** ⏸️ Ready to implement
+
+**Deliverables:**
+- Database migration (008_partner_api_keys.sql) ✅ Created
+- Partner organization tables (tblPartners, tblAPIKeys, tblAPIKeyUsage, tblAPIKeyAudit) ✅ Schema ready
+- APIKeyManager class for key lifecycle
+- Partner registration and management UI
+- Admin dashboard for partner management
+- API key generation with secure prefixes (sk_live_xxx, sk_test_xxx)
+- API key revocation and rotation
+- Usage tracking and analytics
+- IP whitelisting per key
+- Permissions and scopes system
+
+**Key Features:**
+- Secure key generation (SHA-256 hash, 64-character keys)
+- Environment separation (test vs live keys)
+- Custom rate limits per partner
+- IP whitelist enforcement
+- Automatic expiration
+- Usage analytics and logging
+- Audit trail for all key operations
+
+**Benefits:**
+- Enables secure partner integrations
+- Provides usage analytics and monitoring
+- Supports tiered pricing model
+- Allows granular access control
+- Prevents API key compromises
+
+#### Phase C: Webhook Signature System (Week 3) 🟡 MEDIUM
+**Effort:** ~4 hours
+**Status:** ⏸️ Planned
+
+**Deliverables:**
+- HMAC-SHA256 signature generation
+- Signature verification utilities
+- Webhook signature documentation
+- Partner webhook configuration UI
+- Signature verification examples (PHP, JS, Python)
+
+**Benefits:**
+- Prevents webhook spoofing
+- Ensures webhook authenticity
+- Industry-standard security
+
+#### Phase D: Enhanced IP Whitelisting (Week 3) 🟡 MEDIUM
+**Effort:** ~8 hours
+**Status:** ⏸️ Planned
+
+**Deliverables:**
+- IP whitelist management UI (partner and admin)
+- CIDR range support
+- IPv6 support verification
+- Geo-blocking options (optional)
+- IP whitelist validation and testing
+
+**Benefits:**
+- Restricts API access to trusted IPs
+- Prevents stolen key usage
+- Additional security layer
+
+#### Phase E: Request Logging Enhancement (Week 4) 🟡 MEDIUM
+**Effort:** ~6 hours
+**Status:** ⏸️ Planned
+
+**Deliverables:**
+- Enhanced request/response logging
+- Performance metrics tracking
+- Error rate monitoring
+- API analytics dashboard
+- Export functionality (CSV, JSON)
+
+**Benefits:**
+- Complete audit trail
+- Debugging and troubleshooting
+- Performance monitoring
+- Business intelligence
+
+---
+
+### 📊 Security Enhancement Timeline
+
+| Week | Phase | Focus | Deliverables | Status |
+|------|-------|-------|--------------|--------|
+| **Week 1** | Phase A | Rate Limiting | Database, RateLimiter class, Middleware, Testing | ⏸️ Ready |
+| **Week 2** | Phase B | API Key Management | Database, APIKeyManager, Partner UI, Admin UI | ⏸️ Ready |
+| **Week 3** | Phase C & D | Webhooks & IP Whitelist | Signatures, IP management, Testing | ⏸️ Planned |
+| **Week 4** | Phase E | Request Logging | Analytics, Dashboard, Monitoring | ⏸️ Planned |
+
+**Total Effort:** ~42 hours (1-2 developer weeks)
+
+### 🎯 Security Enhancement Success Metrics
+
+**Current State:**
+- Security Score: 80% (B+ - Excellent foundation)
+- Rate Limiting: ❌ Not implemented
+- API Key Management: ❌ Not implemented
+- Webhook Signatures: ❌ Not implemented
+- Request Logging: ⚠️ Partial
+
+**Target State (After Enhancements):**
+- Security Score: 95%+ (A - Production-grade)
+- Rate Limiting: ✅ Implemented & enforced
+- API Key Management: ✅ Full lifecycle management
+- Webhook Signatures: ✅ HMAC-SHA256 signatures
+- Request Logging: ✅ Comprehensive logging
+- Rate Limit Violations: < 1% of total requests
+- API Key Compromises: 0
+- Average API Response Time: < 300ms (with rate limiting overhead)
+- Partner Integrations: 100% success rate
+
+### 📚 Security Enhancement Documentation
+
+**Created:**
+- [_docs/SECURITY_ENHANCEMENTS_ROADMAP.md](_docs/SECURITY_ENHANCEMENTS_ROADMAP.md) - Complete implementation guide
+- [_database/migrations/007_rate_limiting.sql](_database/migrations/007_rate_limiting.sql) - Rate limiting database schema
+- [_database/migrations/008_partner_api_keys.sql](_database/migrations/008_partner_api_keys.sql) - API key management schema
+
+**To Be Created (During Implementation):**
+- private_html/security/RateLimiter.php
+- private_html/api/RateLimitMiddleware.php
+- private_html/api/APIKeyManager.php
+- private_html/api/APIKeyMiddleware.php
+- public_html/admin/partners/ (Partner management UI)
+- public_html/partner/ (Partner dashboard and API key management)
+
+---
+
 ## 📈 Metrics & KPIs
 
 ### Code Quality
