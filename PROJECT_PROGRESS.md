@@ -1299,4 +1299,4 @@ API Keys (Partners):
 ---
 
 **Last Updated:** February 4, 2026
-**Current Version:** 2.1.0-beta
+**Current Version:** 2.2.0-beta
