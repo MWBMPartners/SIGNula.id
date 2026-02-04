@@ -43,6 +43,10 @@ require_once INCLUDES_DIR . '/api/Router.php';
 require_once INCLUDES_DIR . '/api/Validator.php';
 require_once INCLUDES_DIR . '/api/BaseController.php';
 
+// 🔒 Load security middleware
+require_once PRIVATE_DIR . '/api/RateLimitMiddleware.php';
+require_once PRIVATE_DIR . '/api/APIKeyMiddleware.php';
+
 // 📦 Load controllers
 require_once INCLUDES_DIR . '/api/controllers/AuthController.php';
 require_once INCLUDES_DIR . '/api/controllers/UserController.php';
@@ -54,6 +58,21 @@ $router = new Router();
 
 // 🔧 Set API version
 Response::setVersion('v1');
+
+// ============================================================================
+// 🔒 SECURITY MIDDLEWARE
+// ============================================================================
+
+// Initialize security middlewares
+$rateLimitMiddleware = new RateLimitMiddleware($db);
+$apiKeyMiddleware = new APIKeyMiddleware($db);
+
+// Apply rate limiting to ALL requests
+$rateLimitMiddleware->handle();
+
+// Apply API key authentication (optional - allows both authenticated and unauthenticated)
+// Individual routes can require API key authentication by calling $apiKeyMiddleware->handle(true)
+$apiKeyMiddleware->handle(false);
 
 // ============================================================================
 // 🔐 AUTHENTICATION ROUTES
@@ -160,9 +179,19 @@ $router->get('/api/v1/info', function($params) {
 
 try {
     $router->dispatch();
+
+    // 📊 Log API usage on success (200-299 status codes)
+    $statusCode = http_response_code();
+    if ($statusCode >= 200 && $statusCode < 300) {
+        $apiKeyMiddleware->logUsage($statusCode);
+    }
 } catch (Exception $e) {
     // 💥 Global error handler
     ErrorLogger::log($e);
+
+    // Log API usage on error
+    $apiKeyMiddleware->logUsage(500, 'INTERNAL_ERROR');
+
     Response::internalError('An unexpected error occurred', [
         'error' => $e->getMessage(),
         'file' => $e->getFile(),
