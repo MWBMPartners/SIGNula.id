@@ -9,7 +9,9 @@
 
 **SIGNula** is a comprehensive, universal single sign-on (SSO) authentication system designed to provide seamless user authentication across multiple web and mobile applications. Built with security, scalability, and user experience as top priorities, SIGNula offers a modern authentication solution for today's interconnected digital ecosystem.
 
-**Current Status:** Phase 1 & 2 Complete ✅ | Phase 3 (RESTful API) Complete ✅
+**Current Status:** Phase 1, 2 & 3 Complete ✅ | Delegate Email & API Docs Complete ✅
+
+**Latest Version:** 2.0.1-beta (February 4, 2026)
 
 ### ✨ Key Features
 
@@ -46,11 +48,22 @@
   - ✅ Account recovery mechanisms
   - ✅ Challenge-response authentication (WebAuthn ceremonies)
 
-- **🌐 RESTful API**
+- **🌐 RESTful API** ✅
   - Secure JSON-based API for service integration
   - OAuth 2.0 support
+  - 31+ documented endpoints
   - Rate limiting and throttling
-  - Comprehensive API documentation
+  - **Comprehensive partner documentation** (Markdown + Interactive HTML)
+  - Authentication methods: API Key, Bearer Token, Session
+  - Webhook support with 10 event types
+
+- **📧 Delegate Email Sending** ✅
+  - Send emails from user's Microsoft 365 or Google Workspace mailboxes
+  - **FREE shared mailbox support** (saves $600+/year)
+  - Dual-mode authentication (application + delegated)
+  - Automatic OAuth token refresh
+  - Secure encrypted token storage
+  - User interface for managing email accounts
 
 - **💳 Subscription Management**
   - Multiple tier support (Free, Basic, Premium, Enterprise)
@@ -623,6 +636,37 @@ See [OAuth Integration Examples](_docs/OAUTH_INTEGRATION_EXAMPLES.md) for detail
 }
 ```
 
+### 📚 API Documentation for Partners
+
+**Complete documentation available in two formats:**
+
+1. **Interactive HTML Documentation** (Recommended)
+   - Access: `https://SIGNula.id/docs/api/` ([/public_html/docs/api/index.html](public_html/docs/api/index.html))
+   - Features: Search, syntax highlighting, copy-to-clipboard, mobile responsive
+   - Comprehensive guide with examples
+
+2. **Markdown Documentation**
+   - File: [/public_html/docs/api/API_DOCUMENTATION.md](public_html/docs/api/API_DOCUMENTATION.md)
+   - 26KB complete reference
+   - All 31 endpoints documented
+   - Request/response examples
+   - Error codes and webhooks
+
+**Documentation Includes:**
+- ✅ Getting started guide (3 steps)
+- ✅ Authentication methods (API Key, Bearer Token, Session)
+- ✅ Rate limiting guidelines
+- ✅ Error handling
+- ✅ All 31 endpoints with examples
+- ✅ Webhook integration (10 event types)
+- ✅ SDK information (PHP, JavaScript, Python, Ruby)
+- ✅ Quick start code samples
+
+**Security Analysis:**
+- See [.claude/API_ANALYSIS.md](.claude/API_ANALYSIS.md) for comprehensive security audit
+- Security score: 80% (excellent foundation)
+- Overall API quality: 87% (B+ grade)
+
 ### 🧪 Testing the API
 
 **Manual Testing:**
@@ -642,6 +686,93 @@ curl -X POST https://SIGNula.id/api/v1/auth/login \
     "password": "yourpassword"
   }'
 ```
+
+## 📧 Delegate Email Sending
+
+### Overview
+
+SIGNula can send emails through user's connected Microsoft 365 or Google Workspace mailboxes, enabling personalized communication and significant cost savings.
+
+### Key Features
+
+**✅ Dual-Mode Authentication:**
+- **Application Auth** - Use FREE Microsoft 365 shared mailboxes (no user license required)
+- **Delegated Auth** - Send from user's personal mailboxes via OAuth
+- **AUTO Mode** - Intelligent fallback between modes
+
+**✅ Supported Providers:**
+- Microsoft 365 (Personal, Work, School accounts + Shared mailboxes)
+- Google Workspace (Gmail API with service account delegation)
+
+**✅ Security:**
+- OAuth 2.0 token storage with AES-256 encryption
+- Automatic token refresh
+- Activity logging for all operations
+- State token CSRF protection
+
+### Cost Savings
+
+**Before:**
+- 5 system mailboxes = 5 Microsoft 365 licenses = **$600/year**
+
+**After:**
+- 5 FREE shared mailboxes = **$0/year** 💰
+
+### Setup
+
+**1. Database Migration:**
+```bash
+mysql -u username -p database < _sql/signula_email_system_addon_v2.1.0.sql
+```
+
+**2. Configure Azure AD** (for Microsoft 365):
+- Add `Mail.Send.Shared` permission
+- Create shared mailboxes
+- Grant "Send As" permissions
+
+See [_docs/MICROSOFT_DELEGATE_MAILBOX_SETUP.md](_docs/MICROSOFT_DELEGATE_MAILBOX_SETUP.md) for detailed setup.
+
+**3. User Interface:**
+- Navigate to `/settings/email-accounts.php`
+- Connect Microsoft 365 or Google Workspace
+- Manage connected accounts
+
+### Usage Examples
+
+**System Emails (FREE Shared Mailboxes):**
+```php
+// Send from FREE shared mailbox (no userID)
+EmailService::sendTemplateEmail(
+    'customer@example.com',
+    'welcome_email',
+    ['name' => 'John Doe'],
+    null,  // No userID = application auth = FREE
+    5,
+    'support@signulo.id'
+);
+```
+
+**Personal Emails (User OAuth):**
+```php
+// Send from user's connected mailbox
+EmailService::sendTemplateEmail(
+    'prospect@example.com',
+    'sales_proposal',
+    ['amount' => '$10,000'],
+    $userID,  // User's ID = delegated auth
+    5,
+    'sales@company.com'
+);
+```
+
+### Documentation
+
+- [_docs/SHARED_MAILBOXES_AND_AUTH_MODES.md](_docs/SHARED_MAILBOXES_AND_AUTH_MODES.md) - Complete feature guide
+- [_docs/MICROSOFT_DELEGATE_MAILBOX_SETUP.md](_docs/MICROSOFT_DELEGATE_MAILBOX_SETUP.md) - Azure AD setup
+- [_docs/DELEGATE_MAILBOX_ARCHITECTURE.md](_docs/DELEGATE_MAILBOX_ARCHITECTURE.md) - Technical architecture
+- [.claude/IMPLEMENTATION_COMPLETE.md](.claude/IMPLEMENTATION_COMPLETE.md) - Setup and testing guide
+
+---
 
 ## 🔧 Configuration
 
@@ -808,9 +939,23 @@ See [PROJECT_PROGRESS.md](PROJECT_PROGRESS.md) for detailed development roadmap 
 - [TESTING_GUIDE_PHASE2.md](TESTING_GUIDE_PHASE2.md) - Comprehensive testing guide (100+ test cases)
 - [QUICK_TEST_REFERENCE_PHASE2.md](QUICK_TEST_REFERENCE_PHASE2.md) - 20-minute quick test guide
 
-### Phase 3 Documentation (API & OAuth)
-- [OAUTH_INTEGRATION_EXAMPLES.md](_docs/OAUTH_INTEGRATION_EXAMPLES.md) - OAuth integration guide for third-party services
-- [Database Installation Guide](_sql/README.md) - Complete SQL installation instructions
+### Phase 3 Documentation (API, OAuth & Email)
+- **API Documentation:**
+  - [public_html/docs/api/index.html](public_html/docs/api/index.html) - Interactive HTML documentation
+  - [public_html/docs/api/API_DOCUMENTATION.md](public_html/docs/api/API_DOCUMENTATION.md) - Complete Markdown reference
+  - [.claude/API_ANALYSIS.md](.claude/API_ANALYSIS.md) - Security audit and gap analysis
+  - [.claude/API_DOCUMENTATION_SUMMARY.md](.claude/API_DOCUMENTATION_SUMMARY.md) - Documentation summary
+- **Delegate Email Sending:**
+  - [_docs/SHARED_MAILBOXES_AND_AUTH_MODES.md](_docs/SHARED_MAILBOXES_AND_AUTH_MODES.md) - Complete feature guide ⭐ START HERE
+  - [_docs/MICROSOFT_DELEGATE_MAILBOX_SETUP.md](_docs/MICROSOFT_DELEGATE_MAILBOX_SETUP.md) - Azure AD configuration
+  - [_docs/DELEGATE_MAILBOX_ARCHITECTURE.md](_docs/DELEGATE_MAILBOX_ARCHITECTURE.md) - Technical architecture
+  - [_docs/DUAL_MODE_IMPLEMENTATION_SUMMARY.md](_docs/DUAL_MODE_IMPLEMENTATION_SUMMARY.md) - Implementation details
+  - [.claude/IMPLEMENTATION_COMPLETE.md](.claude/IMPLEMENTATION_COMPLETE.md) - Setup and testing guide
+- **OAuth Integration:**
+  - [_docs/OAUTH_INTEGRATION_EXAMPLES.md](_docs/OAUTH_INTEGRATION_EXAMPLES.md) - OAuth integration guide for third-party services
+- **Database:**
+  - [_sql/README.md](_sql/README.md) - Complete SQL installation instructions
+  - [.claude/DATABASE_SCHEMA_STATUS.md](.claude/DATABASE_SCHEMA_STATUS.md) - Schema documentation
 
 ### Development & Version Management
 - [VERSION_MANAGEMENT.md](_docs/VERSION_MANAGEMENT.md) - Complete version management guide
@@ -818,9 +963,11 @@ See [PROJECT_PROGRESS.md](PROJECT_PROGRESS.md) for detailed development roadmap 
 - [CLAUDE_NOTES.md](.claude/CLAUDE_NOTES.md) - Development patterns, conventions, and troubleshooting
 - [PROJECT_PROGRESS.md](PROJECT_PROGRESS.md) - Detailed development roadmap and progress tracking
 
+### System Status
+- [.claude/REQUIREMENTS_STATUS.md](.claude/REQUIREMENTS_STATUS.md) - Overall requirements completion (~90%)
+- [PROJECT_PROGRESS.md](PROJECT_PROGRESS.md) - Detailed development roadmap and progress
+
 ### Coming Soon
-- [Technical Documentation](docs/TECHNICAL.md) (Coming Soon)
-- [API Documentation](docs/API.md) (Coming Soon)
 - [User Guide](docs/USER_GUIDE.md) (Coming Soon)
 - [Privacy Policy](docs/PRIVACY.md) (Coming Soon)
 - [Terms of Service](docs/TERMS.md) (Coming Soon)
