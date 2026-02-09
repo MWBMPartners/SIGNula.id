@@ -10,20 +10,21 @@
 
 **SIGNula** is a comprehensive, universal single sign-on (SSO) authentication system designed to provide seamless user authentication across multiple web and mobile applications. Built with security, scalability, and user experience as top priorities, SIGNula offers a modern authentication solution for today's interconnected digital ecosystem.
 
-**Current Status:** Core Platform Complete ✅ | Public Site Complete ✅ | Security Enhanced ✅
+**Current Status:** Core Platform Complete ✅ | Security 95% ✅ | Multi-Tier Admin ✅
 
-**Latest Version:** 2.2.0-beta (February 4, 2026)
+**Latest Version:** 2.2.0-beta (February 9, 2026)
 
 **Completed Phases:**
 - ✅ Phase 1-3: Core Authentication & API (100%)
+- ✅ Phase 3.4: Security Enhancements - Rate Limiting & API Keys (95%)
+- ✅ Phase 3.5: Multi-Tier Admin System (100%)
 - ✅ Phase 4: Public Web Interface (100%)
 - ✅ Phase 5: Organization Management (100%)
 - ✅ Phase 6: Support Ticket System (100%)
 - ✅ Phase 7: Admin Dashboard - Email (100%)
 
 **In Progress:**
-- 🟡 Security Enhancement UI (75%)
-- 🟡 Full Admin Dashboard (40%)
+- 🟢 Full Admin Dashboard (80%)
 - 🟡 Testing & QA (45%)
 
 ### ✨ Key Features
@@ -87,23 +88,35 @@
   - **Rate Limiting System**
     - Token bucket algorithm with progressive blocking
     - Multi-tier support (IP, User, API Key)
-    - Per-endpoint limits
-    - Burst protection
-    - Automatic cleanup
+    - Per-endpoint limits with burst protection
+    - Admin monitoring dashboard with one-click unblock
   - **API Key Management**
     - SHA-256 secure key hashing
     - Test/Live environment separation
     - IP whitelisting with CIDR support
-    - Permissions and scopes
-    - 90-day usage tracking
-    - Automatic expiration
+    - Self-service management for partners
   - AES-256-CBC encryption for sensitive data
   - Argon2id password hashing
   - CSRF protection
   - Brute force protection
-  - Comprehensive activity logging
-  - Security event monitoring
+  - Comprehensive activity and audit logging
   - **Security Score: 95%**
+
+- **🏢 Multi-Tier Admin System** ✅
+  - **Three Admin Levels:** Super Admin, Root Admin, Team Members
+  - **6-Tier Role Hierarchy:** super-admin, root-admin, admin, developer, support, finance
+  - **Feature Toggle System**
+    - Global enable/disable by super admins
+    - Per-partner overrides
+    - Partner control permissions (can partners toggle?)
+  - **Team Management**
+    - Email-based invitations (secure tokens, 7-day expiry)
+    - Role assignment and management
+    - Ownership transfer with multi-step confirmation
+  - **Complete Partner Isolation** (multi-tenancy ready)
+  - **Database Triggers** enforce ONE root admin per partner
+  - **Full Audit Trail** for all admin actions
+  - **All UI** — zero command-line required
 
 - **📱 Responsive Design**
   - Mobile-first approach
@@ -128,71 +141,71 @@ SIGNula.id/
 ├── _config/                 # Configuration files
 │   ├── config.php          # Main configuration bootstrap
 │   └── database.php        # Database connection handler
+├── _backend/               # Backend classes (outside web root)
+│   ├── AccessControl.php   # Role-based access control (RBAC)
+│   ├── Database.php        # Database connection handler
+│   ├── SessionManager.php  # Session management
+│   ├── ActivityLogger.php  # Activity logging
+│   ├── RateLimiter.php     # Rate limiting engine
+│   ├── APIKeyManager.php   # API key management
+│   ├── RateLimitMiddleware.php  # Rate limit middleware
+│   └── APIKeyMiddleware.php     # API key auth middleware
 ├── _includes/              # Reusable PHP components
 │   ├── auth/               # Authentication classes
-│   │   ├── Auth.php       # Core authentication system
-│   │   ├── WebAuthnHandler.php  # WebAuthn/PassKey handler
-│   │   └── PasswordlessLoginHandler.php  # Passwordless email auth
 │   ├── layout/             # Layout components
-│   │   ├── header.php     # Common header
-│   │   ├── footer.php     # Common footer
-│   │   └── settings-sidebar.php  # Settings navigation
 │   ├── security/           # Security utilities
-│   │   └── SecurityUtils.php
 │   ├── email/              # Email services
-│   │   └── EmailService.php
-│   ├── api/                # API handlers
-│   ├── database/           # Database utilities
 │   └── utils/              # Utility classes
-│       ├── ActivityLogger.php
-│       └── ErrorLogger.php
-├── _lib/                   # Third-party libraries
-│   ├── vendor/            # Composer packages (if used)
-│   └── oauth/             # OAuth libraries
+├── _database/              # Database files (outside web root)
+│   ├── migrations/         # Database migrations (001-009)
+│   ├── archive/            # Deprecated schema files
+│   └── signula_complete_install_v2.2.0.sql  # Complete install (121KB)
+├── _docs/                  # Documentation
+│   ├── MULTI_TIER_ADMIN_IMPLEMENTATION.md
+│   ├── DEPLOYMENT_GUIDE.md
+│   ├── SECURITY_TESTING_GUIDE.md
+│   └── SECURITY_DEPLOYMENT_GUIDE.md
+├── _scripts/               # Build and utility scripts
+├── _tests/                 # Test files
 ├── _private/               # Private files (outside web root)
-│   ├── auth.php.example   # Database credentials template
-│   ├── keys/              # Encryption keys
-│   ├── logs/              # Application logs
-│   ├── backups/           # Database backups
-│   └── templates/         # Email templates
-│       └── email/
-├── _database/              # Database files
-│   └── migrations/        # Database migrations
-│       ├── 001_initial_schema.sql
-│       ├── 002_mfa_system.sql
-│       ├── 003_oauth_integration.sql
-│       ├── 004_email_system.sql
-│       └── 005_webauthn_passkeys.sql
-├── _tests/                # Test files
-│   └── verify-phase1-setup.php
 ├── public_html/            # Public web directory
-│   ├── assets/            # Static assets
-│   │   ├── css/
-│   │   ├── js/
-│   │   ├── images/
-│   │   └── fonts/
-│   ├── api/               # API endpoints
-│   │   └── webauthn/     # WebAuthn API endpoints
-│   │       ├── register-options.php
-│   │       ├── register-verify.php
-│   │       ├── auth-options.php
-│   │       └── auth-verify.php
-│   ├── auth/              # Authentication pages
-│   │   ├── login.php
-│   │   ├── register.php
-│   │   ├── passkey-register.php
-│   │   ├── passkey-login.php
-│   │   ├── passwordless-request.php
-│   │   └── passwordless-login.php
-│   └── settings/          # Account settings pages
-│       ├── index.php     # Settings dashboard
-│       ├── profile.php   # Profile management
-│       ├── security.php  # Security settings
-│       └── passkeys.php  # PassKey management
+│   ├── assets/             # Static assets (css, js, images)
+│   ├── api/                # RESTful API endpoints (31+)
+│   ├── auth/               # Authentication pages
+│   ├── settings/           # Account settings (8 pages)
+│   ├── admin/              # Admin dashboard
+│   │   ├── index.php       # Admin dashboard
+│   │   ├── features/       # Feature toggle management
+│   │   │   └── global.php  # Super admin feature toggles
+│   │   ├── partners/       # Partner management
+│   │   │   └── list.php    # Admin partner management
+│   │   ├── security/       # Security monitoring
+│   │   │   └── rate-limits.php  # Rate limit dashboard
+│   │   ├── system/         # System management
+│   │   │   ├── health.php  # System health dashboard
+│   │   │   ├── migrations.php  # Migration deployment
+│   │   │   └── admin-migration.php  # Admin migration tool
+│   │   └── api/            # Admin APIs
+│   │       ├── deploy-migration.php
+│   │       └── feature-actions.php
+│   └── partners/           # Partner portal
+│       ├── register.php    # Partner registration
+│       ├── dashboard.php   # Partner dashboard
+│       ├── api-keys.php    # API key management
+│       ├── accept-invite.php  # Accept team invitation
+│       ├── admin/          # Partner admin panel
+│       │   ├── index.php   # Partner admin dashboard
+│       │   ├── team.php    # Team management
+│       │   ├── features.php  # Feature toggles
+│       │   └── transfer-ownership.php  # Ownership transfer
+│       └── api/            # Partner APIs
+│           ├── team-actions.php
+│           └── partner-feature-actions.php
 ├── alpha_html/             # Alpha version directory
 ├── beta_html/              # Beta version directory
 ├── .gitignore
 ├── README.md
+├── CHANGELOG.md
 └── PROJECT_PROGRESS.md     # Development roadmap
 ```
 
@@ -240,9 +253,18 @@ If you already have a SIGNula installation and need to apply new migrations:
 # Apply individual migrations as needed
 mysql -u your_username -p signula < _database/migrations/007_rate_limiting.sql
 mysql -u your_username -p signula < _database/migrations/008_partner_api_keys.sql
+mysql -u your_username -p signula < _database/migrations/009_multi_tier_admin.sql
 ```
 
-See [_docs/SECURITY_DEPLOYMENT_GUIDE.md](_docs/SECURITY_DEPLOYMENT_GUIDE.md) for detailed migration instructions with verification steps.
+**Option C: Deploy via Admin UI (Recommended for existing installations)**
+
+If your SIGNula instance is running, deploy migrations via the admin dashboard:
+1. Log in as an admin user
+2. Navigate to `/admin/system/migrations.php`
+3. Click "Deploy Migration" for each pending migration
+4. Verify success via real-time progress tracking
+
+See [_docs/DEPLOYMENT_GUIDE.md](_docs/DEPLOYMENT_GUIDE.md) for comprehensive deployment and testing guide.
 
 **Documentation:** All database files are in [_database/](_database/) with migrations in [_database/migrations/](_database/migrations/).
 
