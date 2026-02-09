@@ -196,6 +196,76 @@ $stats = [
             </div>
         </div>
 
+        <!-- User & Settings Management -->
+        <h3 class="text-white mb-3"><i class="fas fa-cogs me-2"></i>Users & Settings</h3>
+        <div class="row mb-4">
+            <div class="col-md-3 mb-3">
+                <a href="users/" class="text-decoration-none">
+                    <div class="feature-card">
+                        <div class="feature-icon text-white" style="background: linear-gradient(135deg, #667eea, #764ba2);">
+                            <i class="fas fa-users-cog"></i>
+                        </div>
+                        <h5>User Management</h5>
+                        <p class="text-muted">Manage user accounts, statuses, tiers, and super admin access.</p>
+                        <span class="badge bg-primary"><?php echo number_format($stats['totalUsers']); ?> Users</span>
+                    </div>
+                </a>
+            </div>
+            <div class="col-md-3 mb-3">
+                <a href="settings/" class="text-decoration-none">
+                    <div class="feature-card">
+                        <div class="feature-icon text-white" style="background: linear-gradient(135deg, #11998e, #38ef7d);">
+                            <i class="fas fa-cogs"></i>
+                        </div>
+                        <h5>System Settings</h5>
+                        <p class="text-muted">View and edit all system configuration values by category.</p>
+                        <span class="badge bg-success">Manage</span>
+                    </div>
+                </a>
+            </div>
+            <div class="col-md-3 mb-3">
+                <a href="settings/oauth.php" class="text-decoration-none">
+                    <div class="feature-card">
+                        <div class="feature-icon text-white" style="background: linear-gradient(135deg, #f093fb, #f5576c);">
+                            <i class="fas fa-plug"></i>
+                        </div>
+                        <h5>OAuth Providers</h5>
+                        <p class="text-muted">Configure Google, Microsoft, Apple, and other SSO providers.</p>
+                        <span class="badge bg-info">Configure</span>
+                    </div>
+                </a>
+            </div>
+            <div class="col-md-3 mb-3">
+                <a href="logs/" class="text-decoration-none">
+                    <div class="feature-card">
+                        <div class="feature-icon text-white" style="background: linear-gradient(135deg, #eb3349, #f45c43);">
+                            <i class="fas fa-file-alt"></i>
+                        </div>
+                        <h5>System Logs</h5>
+                        <p class="text-muted">View activity, error, and admin audit logs with filtering.</p>
+                        <span class="badge bg-danger">View Logs</span>
+                    </div>
+                </a>
+            </div>
+        </div>
+
+        <!-- Feature Management -->
+        <h3 class="text-white mb-3"><i class="fas fa-toggle-on me-2"></i>Feature Management</h3>
+        <div class="row mb-4">
+            <div class="col-md-4 mb-3">
+                <a href="features/global.php" class="text-decoration-none">
+                    <div class="feature-card">
+                        <div class="feature-icon text-white" style="background: linear-gradient(135deg, #fa709a, #fee140);">
+                            <i class="fas fa-toggle-on"></i>
+                        </div>
+                        <h5>Global Feature Toggles</h5>
+                        <p class="text-muted">Enable/disable features globally and control partner access.</p>
+                        <span class="badge bg-warning text-dark">Manage Features</span>
+                    </div>
+                </a>
+            </div>
+        </div>
+
         <!-- Security Status -->
         <?php if (!$securityFeatures['rateLimiting'] || !$securityFeatures['apiKeys']): ?>
         <div class="alert alert-warning">
