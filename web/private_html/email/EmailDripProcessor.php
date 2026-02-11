@@ -19,7 +19,8 @@
  * php EmailDripProcessor.php -v --limit=50
  *
  * Cron Setup:
- * */15 * * * * php /path/to/EmailDripProcessor.php >> /var/log/drip-processor.log 2>&1
+ * (every 15 min) php /path/to/EmailDripProcessor.php >> /var/log/drip-processor.log 2>&1
+ * Crontab entry: star-slash-15 * * * * php /path/to/EmailDripProcessor.php >> /var/log/drip-processor.log 2>&1
  *
  * @package    SIGNula
  * @subpackage Email

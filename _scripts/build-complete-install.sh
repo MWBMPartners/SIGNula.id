@@ -2,12 +2,12 @@
 ###############################################################################
 # Build Complete Installation SQL Script
 #
-# Purpose: Generate signula_complete_install_v2.2.0.sql from base + migrations
+# Purpose: Generate signula_complete_install_v2.2.3.sql from base + migrations
 #
 # Copyright © 2025-2026 MWBM Partners Ltd (t/a MWservices). All rights reserved.
 #
-# Version: 1.0.0
-# Date: February 4, 2026
+# Version: 1.1.0
+# Date: February 11, 2026
 #
 # Usage: bash _scripts/build-complete-install.sh
 #
@@ -25,12 +25,12 @@ NC='\033[0m'
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 DB_DIR="$PROJECT_ROOT/_database"
-OUTPUT_FILE="$DB_DIR/signula_complete_install_v2.2.0.sql"
+OUTPUT_FILE="$DB_DIR/signula_complete_install_v2.2.3.sql"
 
 cd "$PROJECT_ROOT"
 
 echo -e "${BLUE}╔══════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${BLUE}║     Building Complete Installation SQL v2.2.0              ║${NC}"
+echo -e "${BLUE}║     Building Complete Installation SQL v2.2.3              ║${NC}"
 echo -e "${BLUE}╚══════════════════════════════════════════════════════════════╝${NC}"
 echo ""
 
@@ -47,10 +47,10 @@ cat > "$OUTPUT_FILE" << 'EOF'
 --
 -- 📁 SIGNula Universal Login System - Complete Installation Script
 -- ============================================================================
--- Version: 2.2.0-beta
--- Date: 2026-02-04
+-- Version: 2.2.3-beta
+-- Date: 2026-02-11
 -- Description: Complete database schema for SIGNula universal authentication
--- Includes: All features through v2.2.0-beta (RESTful API, rate limiting, partner keys)
+-- Includes: All features through v2.2.3-beta (all 9 migrations consolidated)
 --
 -- Supports: MySQL 8.0+, MariaDB 10.5+
 -- Character Set: utf8mb4 (full Unicode support including emojis)
@@ -70,9 +70,10 @@ cat > "$OUTPUT_FILE" << 'EOF'
 --   ✅ WebAuthn passkeys
 --   ✅ RESTful API with rate limiting
 --   ✅ Partner API key management
+--   ✅ Multi-tier admin system (RBAC, feature toggles, triggers)
 --
 -- Installation:
---   mysql -u your_username -p your_database < signula_complete_install_v2.2.0.sql
+--   mysql -u your_username -p your_database < signula_complete_install_v2.2.3.sql
 --
 -- ============================================================================
 
@@ -96,8 +97,16 @@ EOF
 
 echo -e "${BLUE}📄 Extracting base schema from v2.0.1...${NC}"
 
+# 📦 Base schema lives in archive (superseded by consolidated v2.2.3)
+BASE_SCHEMA="$DB_DIR/archive/signula_complete_install_v2.0.1.sql"
+if [ ! -f "$BASE_SCHEMA" ]; then
+    echo -e "${YELLOW}⚠️  Base schema not found at: $BASE_SCHEMA${NC}"
+    echo -e "${YELLOW}   The consolidated v2.2.3 install already exists and does not need rebuilding.${NC}"
+    exit 1
+fi
+
 # Extract everything from v2.0.1 after the USE statement (skip header and setup)
-sed -n '/^USE `signula`;/,$p' "$DB_DIR/signula_complete_install_v2.0.1.sql" | tail -n +2 >> "$OUTPUT_FILE"
+sed -n '/^USE `signula`;/,$p' "$BASE_SCHEMA" | tail -n +2 >> "$OUTPUT_FILE"
 
 echo -e "${GREEN}✅ Base schema added${NC}"
 echo ""
@@ -225,6 +234,20 @@ if [ -f "$DB_DIR/migrations/008_partner_api_keys.sql" ]; then
     echo "" >> "$OUTPUT_FILE"
 fi
 
+# Multi-Tier Admin System (009)
+echo "" >> "$OUTPUT_FILE"
+echo "-- ============================================================================" >> "$OUTPUT_FILE"
+echo "-- 🏢 MULTI-TIER ADMIN SYSTEM" >> "$OUTPUT_FILE"
+echo "-- ============================================================================" >> "$OUTPUT_FILE"
+echo "" >> "$OUTPUT_FILE"
+
+if [ -f "$DB_DIR/migrations/009_multi_tier_admin.sql" ]; then
+    echo -e "   ${GREEN}✓${NC} 009_multi_tier_admin.sql"
+    # Extract ALTER TABLE, CREATE TABLE, INSERT INTO, CREATE INDEX, DELIMITER blocks, CREATE VIEW
+    sed -n '/^ALTER TABLE/,/;/p; /^CREATE TABLE/,/^);/p; /^INSERT INTO/,/;/p; /^CREATE INDEX/p; /^DELIMITER/,/^DELIMITER ;/p; /^CREATE OR REPLACE VIEW/,/;/p' "$DB_DIR/migrations/009_multi_tier_admin.sql" >> "$OUTPUT_FILE"
+    echo "" >> "$OUTPUT_FILE"
+fi
+
 # Add footer
 cat >> "$OUTPUT_FILE" << 'EOF'
 
@@ -237,7 +260,7 @@ SET FOREIGN_KEY_CHECKS = 1;
 
 -- Verify installation
 SELECT
-    'SIGNula v2.2.0-beta database installation complete!' AS status,
+    'SIGNula v2.2.3-beta database installation complete!' AS status,
     DATABASE() AS database_name,
     COUNT(*) AS table_count
 FROM information_schema.tables
@@ -254,12 +277,12 @@ echo ""
 
 # Get file size
 FILE_SIZE=$(ls -lh "$OUTPUT_FILE" | awk '{print $5}')
-echo -e "${GREEN}✅ Created: signula_complete_install_v2.2.0.sql${NC}"
+echo -e "${GREEN}✅ Created: signula_complete_install_v2.2.3.sql${NC}"
 echo -e "${GREEN}📦 Size: $FILE_SIZE${NC}"
 echo ""
 
 echo -e "${YELLOW}📋 Test installation:${NC}"
-echo "   mysql -u your_username -p < _database/signula_complete_install_v2.2.0.sql"
+echo "   mysql -u your_username -p < _database/signula_complete_install_v2.2.3.sql"
 echo ""
 
 exit 0

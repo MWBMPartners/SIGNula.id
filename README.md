@@ -1,18 +1,18 @@
 # SIGNula.ID - Universal Login System
 
-![Version](https://img.shields.io/badge/version-2.2.0--beta-blue)
+![Version](https://img.shields.io/badge/version-2.2.3--beta-blue)
 ![PHP](https://img.shields.io/badge/PHP-8.3%2B-777BB4?logo=php)
 ![MySQL](https://img.shields.io/badge/MySQL-8.0%2B-4479A1?logo=mysql)
 ![License](https://img.shields.io/badge/license-Proprietary-red)
-![Security](https://img.shields.io/badge/security-95%25-brightgreen)
+![Security](https://img.shields.io/badge/security-100%25-brightgreen)
 
 ## 📋 Overview
 
 **SIGNula** is a comprehensive, universal single sign-on (SSO) authentication system designed to provide seamless user authentication across multiple web and mobile applications. Built with security, scalability, and user experience as top priorities, SIGNula offers a modern authentication solution for today's interconnected digital ecosystem.
 
-**Current Status:** Core Platform Complete ✅ | Security 95% ✅ | Multi-Tier Admin ✅
+**Current Status:** Core Platform Complete ✅ | Security 100% ✅ | Multi-Tier Admin ✅
 
-**Latest Version:** 2.2.0-beta (February 9, 2026)
+**Latest Version:** 2.2.3-beta (February 11, 2026)
 
 **Completed Phases:**
 - ✅ Phase 1-3: Core Authentication & API (100%)
@@ -99,7 +99,7 @@
   - CSRF protection
   - Brute force protection
   - Comprehensive activity and audit logging
-  - **Security Score: 95%**
+  - **Security Score: 100%**
 
 - **🏢 Multi-Tier Admin System** ✅
   - **Three Admin Levels:** Super Admin, Root Admin, Team Members
@@ -182,7 +182,7 @@ SIGNula.id/
 ├── _database/              # Database files (outside web root)
 │   ├── migrations/         # Database migrations (001-009)
 │   ├── archive/            # Deprecated schema files
-│   └── signula_complete_install_v2.2.0.sql  # Complete install (121KB)
+│   └── signula_complete_install_v2.2.3.sql  # Complete install (all migrations)
 ├── _docs/                  # Documentation
 │   ├── MULTI_TIER_ADMIN_IMPLEMENTATION.md
 │   ├── DEPLOYMENT_GUIDE.md
@@ -261,11 +261,11 @@ cd SIGNula.id
 
 **Option A: Complete Installation (Recommended for new installations) ⭐**
 
-Use the comprehensive installation script that includes everything through v2.2.0-beta:
+Use the comprehensive installation script that includes everything through v2.2.3-beta:
 
 ```bash
 # Single command installs complete database with all features
-mysql -u your_username -p < _database/signula_complete_install_v2.2.0.sql
+mysql -u your_username -p < _database/signula_complete_install_v2.2.3.sql
 ```
 
 This creates the `signula` database with:
@@ -275,6 +275,7 @@ This creates the `signula` database with:
 - ✅ WebAuthn/PassKeys & passwordless login
 - ✅ Blog/news system & support tickets
 - ✅ Rate limiting & API key management
+- ✅ Multi-tier admin system (RBAC, feature toggles, triggers)
 - ✅ All default settings and configurations
 
 **Option B: Manual Migration (For upgrading existing installations)**
@@ -1027,7 +1028,7 @@ See [PROJECT_PROGRESS.md](PROJECT_PROGRESS.md) for detailed development roadmap 
   - [_docs/OAUTH_INTEGRATION_EXAMPLES.md](_docs/OAUTH_INTEGRATION_EXAMPLES.md) - OAuth integration guide for third-party services
 - **Database:**
   - [_database/](_database/) - All database files (complete installation + migrations)
-  - [_database/signula_complete_install_v2.2.0.sql](_database/signula_complete_install_v2.2.0.sql) - Complete installation (121KB)
+  - [_database/signula_complete_install_v2.2.3.sql](_database/signula_complete_install_v2.2.3.sql) - Complete installation (all migrations through 009)
   - [_database/migrations/](_database/migrations/) - Individual migration files
   - [_docs/SECURITY_DEPLOYMENT_GUIDE.md](_docs/SECURITY_DEPLOYMENT_GUIDE.md) - Database deployment instructions
 

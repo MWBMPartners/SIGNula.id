@@ -4,12 +4,12 @@
     Code style and quality checker
 
     Usage:
-        vendor/bin/phpcs                      # Check all files
-        vendor/bin/phpcs path/to/file.php    # Check specific file
-        vendor/bin/phpcbf                     # Auto-fix issues where possible
+        vendor/bin/phpcs                      (Check all files)
+        vendor/bin/phpcs path/to/file.php    (Check specific file)
+        vendor/bin/phpcbf                     (Auto-fix issues where possible)
 
     Installation:
-        composer require --dev squizlabs/php_codesniffer
+        composer require squizlabs/php_codesniffer (with dev flag)
 -->
 <ruleset name="SIGNula">
     <description>SIGNula PHP Coding Standards</description>

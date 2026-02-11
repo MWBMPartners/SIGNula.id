@@ -20,6 +20,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [2.2.3-beta] - 2026-02-11
 
+### Added - PHP CLI Local Validation & Code Quality
+
+- **PHP CLI (8.4.17)** installed locally via Homebrew for syntax validation
+- **Full codebase validation** across all 206 files (PHP, JSON, JS, CSS, HTML, XML, SQL, Shell)
+- **Consolidated database install** - `signula_complete_install_v2.2.3.sql` replaces v2.2.0, includes all migrations through 009
+
+### Changed - Database File Cleanup
+
+- **Archived superseded SQL files** to `_database/archive/` for a clean directory structure:
+  - `signula_complete_install_v2.0.1.sql` (superseded by v2.2.3)
+  - `signula_complete_install_v2.2.0.sql` (superseded by v2.2.3)
+  - `signula_email_system_addon_v2.1.0.sql` (now included in v2.2.3)
+  - `001_initial_schema.sql` (superseded by v2.2.3)
+  - `002_organizations_migration.sql` (superseded by v2.2.3)
+- **`_database/` root now contains only:** `signula_complete_install_v2.2.3.sql`, `migrations/`, and `archive/`
+- **Updated `build-complete-install.sh`** to reference archived base schema path
+
+### Fixed - Codebase Syntax Validation (12 fixes across 9 files)
+
+**PHP (2 fixes):**
+
+- **EmailDripProcessor.php:22**: Cron example `*/15` inside `/* */` block comment prematurely closed the comment block
+- **public_html_landing/index.php:169**: Unescaped double quotes in `type="submit"` inside double-quoted `echo` string
+
+**XML (2 fixes):**
+
+- **phpcs.xml:12**: Double hyphens (`--`) inside XML comment (illegal per XML spec) - rewrote to avoid `--`
+- **phpunit.xml:8**: Double hyphens (`--`) inside XML comment - rewrote to avoid `--`
+
+**SQL (8 fixes):**
+
+- **signula_complete_install_v2.2.0.sql:885-891**: Removed 7 incomplete INSERT stubs (no VALUES clauses, unbalanced parentheses)
+- **002_organizations_migration.sql:335**: Escaped apostrophe `You\'re` in SQL string changed to `You are`
+- **001_email_system_upgrade.sql:35,108,302**: Three `don't` apostrophes in SQL comments changed to `do not`
+- **007_rate_limiting.sql:107**: `don't` in SQL comment changed to `do not`
+- **009_multi_tier_admin.sql:262**: `partner's` in SQL comment changed to `partner`
+- **signula_email_system_addon_v2.1.0.sql:29**: `we're` in SQL comment changed to `we are`
+
 ### Fixed - MFA Login Flow (Critical Bug)
 
 - **mfa/verify.php**: Added missing `Auth::loginOAuth()` call after MFA verification — users with MFA enabled were never actually logged in after entering their code
@@ -886,7 +924,8 @@ MAJOR.MINOR.PATCH-prerelease+build
 
 ---
 
-[Unreleased]: https://github.com/MWBMPartners/SIGNula.id/compare/v2.2.2-beta...HEAD
+[Unreleased]: https://github.com/MWBMPartners/SIGNula.id/compare/v2.2.3-beta...HEAD
+[2.2.3-beta]: https://github.com/MWBMPartners/SIGNula.id/compare/v2.2.2-beta...v2.2.3-beta
 [2.2.2-beta]: https://github.com/MWBMPartners/SIGNula.id/compare/v2.2.1-beta...v2.2.2-beta
 [2.2.1-beta]: https://github.com/MWBMPartners/SIGNula.id/compare/v2.2.0-beta...v2.2.1-beta
 [2.2.0-beta]: https://github.com/MWBMPartners/SIGNula.id/compare/v2.1.0-beta...v2.2.0-beta

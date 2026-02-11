@@ -104,7 +104,7 @@ INSERT INTO tblRateLimitConfig (identifierType, endpoint, tier, requestsPerHour,
 -- 4. Settings for Rate Limiting
 -- =====================================================
 
--- Insert rate limiting settings if they don't exist
+-- Insert rate limiting settings if they do not exist
 INSERT IGNORE INTO tblSettings (settingKey, settingValue, settingType, isSensitive, category, description) VALUES
 ('rate_limiting.enabled', '1', 'boolean', 0, 'security', 'Enable/disable rate limiting globally'),
 ('rate_limiting.cleanup_interval_hours', '24', 'integer', 0, 'security', 'How often to clean up old rate limit records (hours)'),

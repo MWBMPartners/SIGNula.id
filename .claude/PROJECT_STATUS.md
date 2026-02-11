@@ -446,10 +446,10 @@ SIGNula is a comprehensive universal single sign-on (SSO) authentication system 
 
 **Complete Installation File:**
 
-- ✅ **signula_complete_install_v2.2.0.sql** (121KB)
-  - Single-file installation for all features through v2.2.0-beta
-  - Includes: Core auth, OAuth, email, blog, support, rate limiting, API keys
-  - Eliminates need to run 12+ individual migrations for fresh installs
+- ✅ **signula_complete_install_v2.2.3.sql**
+  - Single-file installation for all features through v2.2.3-beta
+  - Includes: Core auth, OAuth, email, blog, support, rate limiting, API keys, multi-tier admin
+  - All 9 migrations consolidated into single importable file
   - Properly documented with feature list and usage instructions
   - Generated via automated build script
 
@@ -515,7 +515,7 @@ SIGNula is a comprehensive universal single sign-on (SSO) authentication system 
 
 ### Code Quality
 
-- **Lines of Code:** ~36,000+
+- **Lines of Code:** ~37,000+
   - Core: ~18,500 lines
   - API: ~4,500 lines
   - Delegate Email: ~1,800 lines
@@ -531,11 +531,12 @@ SIGNula is a comprehensive universal single sign-on (SSO) authentication system 
 
 ### Database
 
-- **Tables:** 30 (core: 14, email: 6, OAuth: 2, security: 4, organizations: 4)
-- **Views:** 2
+- **Tables:** 35 (core: 14, email: 6, OAuth: 2, security: 4, organizations: 4, multi-tier: 5)
+- **Views:** 3
 - **Stored Procedures:** 4+
-- **Indexes:** 70+
-- **Migrations:** 8 complete
+- **Triggers:** 2 (root admin enforcement)
+- **Indexes:** 80+
+- **Migrations:** 9 complete
 
 ### Security
 
@@ -618,25 +619,38 @@ SIGNula is a comprehensive universal single sign-on (SSO) authentication system 
 
 ## 📂 Database Status
 
-**Complete Installation Files:**
+**Complete Installation (Fresh Installs):**
 
-- `_sql/signula_complete_install_v2.0.1.sql` - Core system (14 tables)
-- `_sql/signula_email_system_addon_v2.1.0.sql` - Email + delegate mailbox (7 tables)
+- `_database/signula_complete_install_v2.2.3.sql` - All 35 tables, 3 views, 2 triggers, all 9 migrations consolidated
 
-**Migrations Available:**
+**Migrations (Upgrading Existing Installs):**
 
-- 001_initial_schema.sql
-- 002_organizations_migration.sql
-- 003_oauth_multi_account_support.sql
-- 004_email_recurring_schedules.sql
-- 005_webauthn_passkeys.sql
-- 006_delegate_mailbox_support.sql
-- 007_rate_limiting.sql
-- 008_partner_api_keys.sql
-- 009_multi_tier_admin.sql ⭐ NEW
+- `_database/migrations/001_email_system_upgrade.sql`
+- `_database/migrations/002_email_ab_testing.sql`
+- `_database/migrations/003_email_drip_campaigns.sql`
+- `_database/migrations/003_oauth_multi_account_support.sql`
+- `_database/migrations/004_contact_submissions.sql`
+- `_database/migrations/004_email_recurring_schedules.sql`
+- `_database/migrations/005_blog_system.sql`
+- `_database/migrations/005_webauthn_passkeys.sql`
+- `_database/migrations/006_delegate_mailbox_support.sql`
+- `_database/migrations/006_support_system.sql`
+- `_database/migrations/007_rate_limiting.sql`
+- `_database/migrations/008_partner_api_keys.sql`
+- `_database/migrations/009_multi_tier_admin.sql`
+
+**Archived (Superseded by v2.2.3):**
+
+- `_database/archive/signula_complete_install_v2.0.1.sql`
+- `_database/archive/signula_complete_install_v2.2.0.sql`
+- `_database/archive/signula_email_system_addon_v2.1.0.sql`
+- `_database/archive/001_initial_schema.sql`
+- `_database/archive/002_organizations_migration.sql`
+- `_database/archive/email_schema.sql`
 
 **Total Tables:** 35
-**Total Views:** 2
+**Total Views:** 3
+**Total Triggers:** 2
 **Total Procedures:** 4+
 
 **See:** [DATABASE_SCHEMA_STATUS.md](archive/DATABASE_SCHEMA_STATUS.md) (archived)

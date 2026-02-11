@@ -259,7 +259,7 @@ INSERT INTO tblFeatureToggles (featureKey, featureName, featureDescription, isEn
 -- ============================================================================
 
 -- For each existing partner, create a root admin entry
--- This assumes the partner's email matches a user in tblUsers
+-- This assumes the partner email matches a user in tblUsers
 INSERT INTO tblPartnerTeamMembers (partnerID, userID, role, isRootAdmin, status)
 SELECT p.partnerID, u.userID, 'root-admin', TRUE, 'active'
 FROM tblPartners p

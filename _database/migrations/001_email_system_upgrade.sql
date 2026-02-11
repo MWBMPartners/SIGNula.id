@@ -32,7 +32,7 @@ START TRANSACTION;
 -- 📬 Upgrade tblEmailQueue
 -- ============================================================================
 
--- Add new columns to tblEmailQueue if they don't exist
+-- Add new columns to tblEmailQueue if they do not exist
 
 -- CC/BCC/Attachments support
 ALTER TABLE `tblEmailQueue`
@@ -105,7 +105,7 @@ ALTER TABLE `tblEmailQueue`
 -- 📋 Upgrade tblEmailTemplates
 -- ============================================================================
 
--- Add new columns to tblEmailTemplates if they don't exist
+-- Add new columns to tblEmailTemplates if they do not exist
 
 -- Template versioning
 ALTER TABLE `tblEmailTemplates`
@@ -299,7 +299,7 @@ VALUES
 ('gmail_api', 5),
 ('smtp', 5);
 
--- Insert default email templates (only if they don't exist)
+-- Insert default email templates (only if they do not exist)
 INSERT IGNORE INTO `tblEmailTemplates`
 (`templateKey`, `templateName`, `description`, `subject`, `bodyHTML`, `bodyText`, `category`, `trackingEnabled`, `requiredVariables`)
 VALUES

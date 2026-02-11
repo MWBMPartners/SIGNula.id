@@ -166,7 +166,7 @@ html[data-theme="light"] .theme-toggle .sun {
   <?php
    echo "<!--<form class=\"notify-form\" onsubmit=\"subscribe(event)\">";
    echo " <input type=\"email\" id=\"email\" placeholder=\"Enter your email to get notified\" required />";
-   echo " <button type="submit">Notify Me</button>";
+   echo " <button type=\"submit\">Notify Me</button>";
    echo "</form>-->";
   ?>
   <div class="footer">&copy; <?php if (date("Y")>"2025"){echo "2025-".date("Y");}else{echo date("Y");}?>  MWBM Partners Ltd</div>
