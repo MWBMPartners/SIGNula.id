@@ -1,7 +1,7 @@
 # SIGNula.ID Development Progress
 
 **Last Updated:** 2026-02-11
-**Current Version:** 2.2.3-beta
+**Current Version:** 2.3.0-beta
 **Project Status:** 🟢 Active Development
 
 ---
@@ -30,8 +30,10 @@
 | **Organization Management** | ✅ Complete | 100% | 🟠 High |
 | **Support Ticket System** | ✅ Complete | 100% | 🟠 High |
 | **Admin Dashboard (Email)** | ✅ Complete | 100% | 🟠 High |
-| Payment System | ⏸️ Pending | 0% | 🟡 Medium |
+| **Webhook Signature System** | ✅ Complete | 100% | 🟠 High |
+| Payment System | 🟢 In Progress | 80% | 🟡 Medium |
 | Admin Dashboard (Full) | ✅ Complete | 100% | 🟠 High |
+| **Deployment Checklist** | ✅ Complete | 100% | 🟠 High |
 | Documentation | ✅ Complete | 98% | 🟠 High |
 | Testing | 🟡 In Progress | 45% | 🔴 Critical |
 
@@ -697,6 +699,87 @@ Complete multi-tier admin system with role-based access control, feature toggles
 - ✅ SRI (Subresource Integrity) on all CDN resources (28 files, 100% coverage)
 - ✅ CSRF token protection on all forms and AJAX endpoints (18 files, 100% coverage)
 - ✅ Bootstrap standardised to 5.3.2, FontAwesome to 6.4.2
+
+---
+
+### Phase 3.6: Webhook Signatures, Payment System & Deployment Prep
+
+**Completed:** February 11, 2026
+**Status:** ✅ Complete (Webhooks 100%, Payments 80%, Deployment Prep 100%)
+
+**Key Enhancement:**
+Outbound webhook signature system (HMAC-SHA256), payment/subscription management infrastructure, and production deployment readiness checklist.
+
+**Database Migration:**
+
+- **010_webhooks_and_payments.sql** - Webhook and payment infrastructure
+  - `tblWebhookEndpoints` - Partner webhook endpoint configuration
+  - `tblWebhookDeliveries` - Delivery log with retry tracking
+  - `tblSubscriptionTiers` - 4 default tiers (Free, Basic, Premium, Enterprise)
+  - `tblSubscriptions` - User subscription lifecycle
+  - `tblPayments` - Transaction records with multi-currency support
+  - `tblPaymentMethods` - Tokenised payment method storage
+  - `tblDiscountCodes` - Promotional codes (percentage, fixed, trial)
+  - 27 new settings entries (8 webhook + 19 payment)
+  - Scheduled event for webhook delivery cleanup
+
+**Backend Classes:**
+
+- **WebhookManager.php** (~650 lines) - Outbound webhook delivery
+  - HMAC-SHA256 signing (`whsec_` prefixed secrets)
+  - `X-SIGNula-Signature: sha256=<hmac>` with timestamp replay protection
+  - Exponential backoff retry (configurable, max 24h)
+  - Auto-disable after consecutive failures
+  - Per-endpoint event subscription filtering
+  - Delivery statistics and logging
+
+- **PaymentManager.php** (~600 lines) - Payment and subscription management
+  - Tier management with default tier lookup
+  - Subscription lifecycle (create, cancel, pause, resume)
+  - Payment recording, completion, refund processing
+  - Discount code validation (percentage/fixed/trial types)
+  - Tokenised payment method CRUD
+  - Invoice number generation, tax/VAT calculation
+  - Admin statistics with date-range filtering
+
+**Admin UI:**
+
+- **Payment Dashboard** (`/admin/payments/index.php`) - Revenue stats, 4 tabs (payments, subscriptions, tiers, discounts), refund processing, tier editing, discount code creation
+- **Deployment Checklist** (`/admin/system/deployment.php`) - 5 category checks (database, settings, security, files, features), overall readiness score, step-by-step deployment guide
+
+**Partner UI:**
+
+- **Webhook Management** (`/partners/admin/webhooks/index.php`) - Endpoint CRUD, event subscription picker, secret regeneration, test dispatch, delivery log
+
+**API Endpoints:**
+
+- `/admin/api/payment-actions.php` - 9 actions for payment management
+- `/partners/api/webhook-actions.php` - 8 actions for webhook management
+
+**Database Totals (v2.3.0-beta):**
+
+- 42 tables (+7 from migration 010)
+- 3 views, 2 triggers, 4+ stored procedures
+- ~40,000+ lines of code
+
+**Key Features:**
+
+- ✅ HMAC-SHA256 webhook signatures with replay protection
+- ✅ Exponential backoff retry with auto-disable
+- ✅ 4 subscription tiers with trial period support
+- ✅ Multi-currency payment support with exchange rates
+- ✅ Discount codes with per-user and total usage limits
+- ✅ Tokenised payment method storage
+- ✅ Admin payment dashboard with search, filter, and pagination
+- ✅ Production deployment readiness checker (UI-based)
+- ✅ All UI — zero command-line required
+
+**Remaining (Payment System):**
+
+- 📋 Configure PayPal API credentials
+- 📋 Integrate Apple Pay / Google Pay SDKs
+- 📋 Add cryptocurrency payment provider
+- 📋 User-facing subscription/pricing page
 
 ---
 

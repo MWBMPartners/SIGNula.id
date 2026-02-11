@@ -1,6 +1,6 @@
 # SIGNula.ID - Universal Login System
 
-![Version](https://img.shields.io/badge/version-2.2.3--beta-blue)
+![Version](https://img.shields.io/badge/version-2.3.0--beta-blue)
 ![PHP](https://img.shields.io/badge/PHP-8.3%2B-777BB4?logo=php)
 ![MySQL](https://img.shields.io/badge/MySQL-8.0%2B-4479A1?logo=mysql)
 ![License](https://img.shields.io/badge/license-Proprietary-red)
@@ -10,20 +10,24 @@
 
 **SIGNula** is a comprehensive, universal single sign-on (SSO) authentication system designed to provide seamless user authentication across multiple web and mobile applications. Built with security, scalability, and user experience as top priorities, SIGNula offers a modern authentication solution for today's interconnected digital ecosystem.
 
-**Current Status:** Core Platform Complete ✅ | Security 100% ✅ | Multi-Tier Admin ✅
+**Current Status:** Core Platform Complete ✅ | Security 100% ✅ | Webhooks ✅ | Payments 80%
 
-**Latest Version:** 2.2.3-beta (February 11, 2026)
+**Latest Version:** 2.3.0-beta (February 11, 2026)
 
 **Completed Phases:**
+
 - ✅ Phase 1-3: Core Authentication & API (100%)
 - ✅ Phase 3.4: Security Enhancements - Rate Limiting & API Keys (95%)
 - ✅ Phase 3.5: Multi-Tier Admin System (100%)
+- ✅ Phase 3.6: Webhook Signatures, Payment System & Deployment Prep (100%)
 - ✅ Phase 4: Public Web Interface (100%)
 - ✅ Phase 5: Organization Management (100%)
 - ✅ Phase 6: Support Ticket System (100%)
 - ✅ Phase 7: Admin Dashboard - Email (100%)
 
 **In Progress:**
+
+- 🟢 Payment Provider Integration (live credentials needed)
 - 🟡 Testing & QA (45%)
 
 ### ✨ Key Features

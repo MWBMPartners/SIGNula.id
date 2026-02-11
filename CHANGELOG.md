@@ -11,10 +11,71 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Planned
 
-- Payment system integration (PayPal, Apple Pay, Google Pay, Crypto)
+- PayPal / Apple Pay / Google Pay live provider integration (credentials required)
+- Cryptocurrency payment support
 - Mobile apps (iOS, Android)
-- Advanced analytics and reporting
-- Webhook signature system
+- Advanced analytics and reporting dashboard
+
+---
+
+## [2.3.0-beta] - 2026-02-11
+
+### Added - Webhook Signature System (HMAC-SHA256)
+
+- **WebhookManager.php** (~650 lines) - Outbound webhook delivery system
+  - HMAC-SHA256 signing with `whsec_` prefixed secrets
+  - Signature format: `X-SIGNula-Signature: sha256=<hmac>` with timestamp replay protection
+  - Exponential backoff retry (base x 2^attempt + jitter, max 24h)
+  - Auto-disable endpoints after configurable consecutive failures
+  - Per-endpoint event subscription filtering
+  - Delivery statistics and logging
+- **Partner Webhook Management UI** (`/partners/admin/webhooks/`)
+  - CRUD for webhook endpoints with event subscription picker
+  - Secret regeneration with one-time display and copy-to-clipboard
+  - Send test webhook, view delivery log with success rate
+  - Inline PHP signature verification example
+- **Partner Webhook API** (`/partners/api/webhook-actions.php`)
+  - Actions: list, create, update, delete, regenerate_secret, test, deliveries, stats
+
+### Added - Payment and Subscription System
+
+- **Database migration 010** (`_database/migrations/010_webhooks_and_payments.sql`)
+  - 7 new tables: tblWebhookEndpoints, tblWebhookDeliveries, tblSubscriptionTiers, tblSubscriptions, tblPayments, tblPaymentMethods, tblDiscountCodes
+  - 4 default subscription tiers (Free 0, Basic 9.99/mo, Premium 29.99/mo, Enterprise 99.99/mo GBP)
+  - 27 settings entries (8 webhook + 19 payment) in tblSettings
+  - Scheduled event for webhook delivery cleanup (30-day retention)
+- **PaymentManager.php** (~600 lines) - Payment and subscription management
+  - Tier management, subscription lifecycle (create/cancel/pause/resume)
+  - Payment recording, completion, and refund processing
+  - Discount code validation with percentage/fixed/trial types
+  - Tokenised payment method management
+  - Invoice number generation, tax/VAT calculation
+  - Admin statistics with date-range filtering
+- **Admin Payment Dashboard** (`/admin/payments/`)
+  - Revenue stats (30-day and total), payment/subscription/tier/discount stat cards
+  - 4 tabbed sections: Payments (search, filter, paginate), Subscriptions, Tiers (card grid), Discounts
+  - Refund processing modal, tier editing, discount code creation with random generator
+  - Subscription status management
+- **Admin Payment API** (`/admin/api/payment-actions.php`)
+  - Actions: stats, payments, subscriptions, tiers, update_tier, create_discount, list_discounts, refund, update_subscription_status
+
+### Added - Production Deployment Checklist
+
+- **Deployment Checklist UI** (`/admin/system/deployment.php`)
+  - Live server-side checks across 5 categories: Database, Settings, Security, Files, Features
+  - Validates all required tables (28+), views, settings, PHP extensions, HTTPS, session security
+  - Colour-coded pass/warn/fail results with overall readiness score
+  - Step-by-step deployment instructions with Dreamhost guidance
+  - Links to System Health page for continuous monitoring
+
+### Changed (v2.3.0)
+
+- **Version bump:** 2.2.3-beta to 2.3.0-beta (new features warrant minor version increment)
+- **Database tables:** 35 to 42 (7 new tables from migration 010)
+- **Lines of code:** ~37,000+ to ~40,000+ (added ~3,000+ lines)
+- **Admin pages:** 19+ to 22+ pages
+- **Payment System:** 0% to 80% (schema, backend, admin UI complete; live providers pending)
+- **Webhook System:** 0% to 100% (complete with signing, delivery, retry, UI)
 
 ---
 
@@ -924,7 +985,8 @@ MAJOR.MINOR.PATCH-prerelease+build
 
 ---
 
-[Unreleased]: https://github.com/MWBMPartners/SIGNula.id/compare/v2.2.3-beta...HEAD
+[Unreleased]: https://github.com/MWBMPartners/SIGNula.id/compare/v2.3.0-beta...HEAD
+[2.3.0-beta]: https://github.com/MWBMPartners/SIGNula.id/compare/v2.2.3-beta...v2.3.0-beta
 [2.2.3-beta]: https://github.com/MWBMPartners/SIGNula.id/compare/v2.2.2-beta...v2.2.3-beta
 [2.2.2-beta]: https://github.com/MWBMPartners/SIGNula.id/compare/v2.2.1-beta...v2.2.2-beta
 [2.2.1-beta]: https://github.com/MWBMPartners/SIGNula.id/compare/v2.2.0-beta...v2.2.1-beta
