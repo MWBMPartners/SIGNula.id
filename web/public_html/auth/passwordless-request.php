@@ -30,26 +30,34 @@ $success = null;
 
 // 📝 Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    try {
-        $email = $_POST['email'] ?? '';
+    // 🛡️ Verify CSRF token
+    if (!SecurityUtils::verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+        $error = 'Invalid or expired security token. Please refresh and try again.';
+    } else {
+        try {
+            $email = $_POST['email'] ?? '';
 
-        if (empty($email)) {
-            $error = 'Please enter your email address';
-        } else {
-            $handler = new PasswordlessLoginHandler();
-            $result = $handler->sendLoginLink($email, 'login');
-
-            if ($result['success']) {
-                $success = $result['message'];
+            if (empty($email)) {
+                $error = 'Please enter your email address';
             } else {
-                $error = $result['error'];
+                $handler = new PasswordlessLoginHandler();
+                $result = $handler->sendLoginLink($email, 'login');
+
+                if ($result['success']) {
+                    $success = $result['message'];
+                } else {
+                    $error = $result['error'];
+                }
             }
+        } catch (Exception $e) {
+            error_log("Passwordless request error: " . $e->getMessage());
+            $error = 'An error occurred. Please try again.';
         }
-    } catch (Exception $e) {
-        error_log("Passwordless request error: " . $e->getMessage());
-        $error = 'An error occurred. Please try again.';
     }
 }
+
+// 🛡️ Generate CSRF token for forms
+$csrfToken = SecurityUtils::generateCSRFToken();
 
 // 🎨 Include header
 include SIGNULA_ROOT . '/private_html/layout/header.php';
@@ -82,6 +90,7 @@ include SIGNULA_ROOT . '/private_html/layout/header.php';
                         </div>
                     <?php else: ?>
                         <form method="POST" action="">
+                            <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrfToken); ?>">
                             <div class="mb-4">
                                 <label for="email" class="form-label">Email Address</label>
                                 <input

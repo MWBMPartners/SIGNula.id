@@ -201,6 +201,13 @@ try {
     $action = $input['action'] ?? '';
     $migration = $input['migration'] ?? '';
 
+    // 🛡️ Verify CSRF token for state-changing requests
+    $csrfToken = $input['csrf_token'] ?? $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
+    if (!SecurityUtils::verifyCSRFToken($csrfToken)) {
+        echo json_encode(['success' => false, 'error' => 'Invalid or expired CSRF token. Please refresh the page.']);
+        exit;
+    }
+
     // Validate migration name
     if (!preg_match('/^\d{3}_[a-z_]+\.sql$/', $migration)) {
         throw new Exception('Invalid migration name format');

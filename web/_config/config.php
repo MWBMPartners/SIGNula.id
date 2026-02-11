@@ -258,11 +258,21 @@ if (!headers_sent()) {
     // Referrer policy
     header('Referrer-Policy: strict-origin-when-cross-origin');
 
-    // Content Security Policy (adjust as needed)
-    // header('Content-Security-Policy: default-src \'self\'');
+    // 🔒 Content Security Policy — controls which resources the browser is allowed to load
+    // @see https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+    // @see https://content-security-policy.com/
+    header("Content-Security-Policy: "
+        . "default-src 'self'; "                                                                    // 🛡️ Default: only allow same-origin
+        . "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; " // 📜 Scripts: self + inline (Bootstrap needs it) + CDNs
+        . "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com; " // 🎨 Styles: self + inline + CDNs + Google Fonts
+        . "font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com; "               // 🔤 Fonts: FontAwesome + Google Fonts
+        . "img-src 'self' data: https:; "                                                           // 🖼️ Images: self + data URIs (avatars) + any HTTPS
+        . "connect-src 'self'"                                                                      // 🔗 AJAX/Fetch: same-origin only
+    );
 
-    // HTTPS enforcement (uncomment in production with SSL)
-    // header('Strict-Transport-Security: max-age=31536000; includeSubDomains');
+    // 🔐 HTTP Strict Transport Security — force HTTPS for all future requests
+    // @see https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+    header('Strict-Transport-Security: max-age=31536000; includeSubDomains');
 
     // Permissions policy
     header('Permissions-Policy: geolocation=(), microphone=(), camera=()');

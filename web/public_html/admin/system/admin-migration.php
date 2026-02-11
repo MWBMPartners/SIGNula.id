@@ -36,28 +36,33 @@ $success = false;
 
 // Handle migration
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['migrate'])) {
-    $selectedUsers = $_POST['users'] ?? [];
-
-    if (empty($selectedUsers)) {
-        $message = 'Please select at least one user to migrate';
+    // 🛡️ Verify CSRF token
+    if (!SecurityUtils::verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+        $message = 'Invalid or expired security token. Please refresh and try again.';
     } else {
-        $migratedCount = 0;
+        $selectedUsers = $_POST['users'] ?? [];
 
-        foreach ($selectedUsers as $userID) {
-            $stmt = $db->prepare("UPDATE tblUsers SET isSuperAdmin = 1 WHERE userID = ? AND isAdmin = 1");
-            $stmt->bind_param('i', $userID);
-            if ($stmt->execute()) {
-                $migratedCount++;
+        if (empty($selectedUsers)) {
+            $message = 'Please select at least one user to migrate';
+        } else {
+            $migratedCount = 0;
+
+            foreach ($selectedUsers as $userID) {
+                $stmt = $db->prepare("UPDATE tblUsers SET isSuperAdmin = 1 WHERE userID = ? AND isAdmin = 1");
+                $stmt->bind_param('i', $userID);
+                if ($stmt->execute()) {
+                    $migratedCount++;
+                }
             }
-        }
 
-        if ($migratedCount > 0) {
-            $success = true;
-            $message = "Successfully migrated $migratedCount user(s) to Super Admin";
+            if ($migratedCount > 0) {
+                $success = true;
+                $message = "Successfully migrated $migratedCount user(s) to Super Admin";
 
-            // Reload if current user was migrated
-            if (in_array($userInfo['userID'], $selectedUsers)) {
-                header("Refresh: 3; url=/admin/");
+                // Reload if current user was migrated
+                if (in_array($userInfo['userID'], $selectedUsers)) {
+                    header("Refresh: 3; url=/admin/");
+                }
             }
         }
     }
@@ -70,6 +75,9 @@ $adminsToMigrate = $db->query("
     WHERE isAdmin = 1 AND (isSuperAdmin IS NULL OR isSuperAdmin = 0)
     ORDER BY username
 ");
+
+// 🛡️ Generate CSRF token for forms
+$csrfToken = SecurityUtils::generateCSRFToken();
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -77,8 +85,8 @@ $adminsToMigrate = $db->query("
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Migration - SIGNula</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" integrity="sha512-z3gLpd7yknf1YoNbCzqRKc4qyor8gaKU1qmn+CShxbuBusANI9QpRohGBreCFkKxLhei6S9CQXFEbbKuqLg0DA==" crossorigin="anonymous">
     <style>
         body { background: linear-gradient(135deg, #667eea, #764ba2); min-height: 100vh; }
         .migration-card { max-width: 800px; margin: 50px auto; background: white; border-radius: 15px; box-shadow: 0 10px 40px rgba(0,0,0,0.3); }
@@ -108,6 +116,7 @@ $adminsToMigrate = $db->query("
 
                 <?php if ($adminsToMigrate->num_rows > 0): ?>
                 <form method="POST">
+                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrfToken); ?>">
                     <h5 class="mb-3">Select users to convert to Super Admin:</h5>
                     <p class="text-muted">These users currently have <code>isAdmin = 1</code> but haven't been migrated to the new system.</p>
 

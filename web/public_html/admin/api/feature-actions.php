@@ -36,6 +36,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $action = $input['action'] ?? '';
 }
 
+// 🛡️ Verify CSRF token for state-changing requests
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $csrfToken = $input['csrf_token'] ?? $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
+    if (!SecurityUtils::verifyCSRFToken($csrfToken)) {
+        echo json_encode(['success' => false, 'error' => 'Invalid or expired CSRF token. Please refresh the page.']);
+        exit;
+    }
+}
+
 try {
     switch ($action) {
         case 'toggle_global':

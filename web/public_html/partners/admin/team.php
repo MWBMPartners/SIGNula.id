@@ -82,8 +82,8 @@ $canInvite = ($maxTeamMembers == 0 || $teamCount < $maxTeamMembers);
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Team Management - <?php echo htmlspecialchars($partner['companyName']); ?></title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" integrity="sha512-z3gLpd7yknf1YoNbCzqRKc4qyor8gaKU1qmn+CShxbuBusANI9QpRohGBreCFkKxLhei6S9CQXFEbbKuqLg0DA==" crossorigin="anonymous">
     <style>
         body { background-color: #f8f9fa; }
         .team-header { background: linear-gradient(135deg, #667eea, #764ba2); color: white; padding: 2rem; border-radius: 10px; margin-bottom: 2rem; }
@@ -348,7 +348,9 @@ $canInvite = ($maxTeamMembers == 0 || $teamCount < $maxTeamMembers);
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-C6RzsynM9kWDrMNeT87bh95OGNyZPhcTNXj1NW7RuBCsyN/o0jlpcV8Qyq46cDfL" crossorigin="anonymous"></script>
+    <!-- 🔐 CSRF Token for secure AJAX requests -->
+    <script>const csrfToken = '<?php echo SecurityUtils::generateCSRFToken(); ?>';</script>
     <script>
         const partnerID = <?php echo $selectedPartnerID; ?>;
         const inviteModal = new bootstrap.Modal(document.getElementById('inviteModal'));
@@ -382,7 +384,8 @@ $canInvite = ($maxTeamMembers == 0 || $teamCount < $maxTeamMembers);
                         action: 'invite',
                         partnerID: partnerID,
                         email: email,
-                        role: role
+                        role: role,
+                        csrf_token: csrfToken
                     })
                 });
 
@@ -418,7 +421,8 @@ $canInvite = ($maxTeamMembers == 0 || $teamCount < $maxTeamMembers);
                     body: JSON.stringify({
                         action: 'update_role',
                         memberID: memberID,
-                        role: role
+                        role: role,
+                        csrf_token: csrfToken
                     })
                 });
 
@@ -447,7 +451,8 @@ $canInvite = ($maxTeamMembers == 0 || $teamCount < $maxTeamMembers);
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         action: 'remove',
-                        memberID: memberID
+                        memberID: memberID,
+                        csrf_token: csrfToken
                     })
                 });
 
@@ -475,7 +480,8 @@ $canInvite = ($maxTeamMembers == 0 || $teamCount < $maxTeamMembers);
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         action: 'revoke',
-                        invitationID: invitationID
+                        invitationID: invitationID,
+                        csrf_token: csrfToken
                     })
                 });
 

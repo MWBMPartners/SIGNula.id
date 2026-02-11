@@ -45,6 +45,10 @@ if ($token) {
 
 // Handle acceptance
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accept']) && $invitation) {
+    // 🛡️ Verify CSRF token
+    if (!SecurityUtils::verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+        $message = 'Invalid or expired security token. Please refresh and try again.';
+    } else {
     // Must be logged in
     if (!$sessionManager->isLoggedIn()) {
         header('Location: /auth/login.php?redirect=' . urlencode($_SERVER['REQUEST_URI']));
@@ -134,7 +138,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accept']) && $invitat
             $message = $e->getMessage();
         }
     }
+    } // end CSRF else
 }
+
+// 🛡️ Generate CSRF token for forms
+$csrfToken = SecurityUtils::generateCSRFToken();
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -142,8 +150,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accept']) && $invitat
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Accept Team Invitation - SIGNula</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" integrity="sha512-z3gLpd7yknf1YoNbCzqRKc4qyor8gaKU1qmn+CShxbuBusANI9QpRohGBreCFkKxLhei6S9CQXFEbbKuqLg0DA==" crossorigin="anonymous">
     <style>
         body {
             background: linear-gradient(135deg, #667eea, #764ba2);
@@ -242,6 +250,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accept']) && $invitat
                     ?>
                     <!-- Logged in with correct account -->
                     <form method="POST">
+                        <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrfToken); ?>">
                         <div class="d-grid gap-2">
                             <button type="submit" name="accept" class="btn btn-primary btn-lg">
                                 <i class="fas fa-check me-2"></i>Accept Invitation
@@ -337,6 +346,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accept']) && $invitat
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-C6RzsynM9kWDrMNeT87bh95OGNyZPhcTNXj1NW7RuBCsyN/o0jlpcV8Qyq46cDfL" crossorigin="anonymous"></script>
 </body>
 </html>

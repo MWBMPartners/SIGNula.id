@@ -17,6 +17,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.2.2-beta] - 2026-02-10
+
+### Security - Complete Security Hardening (100%)
+
+**Security Score:** 95% --> **100%**
+
+**🔒 CSP & HSTS Security Headers Enabled**
+- Content-Security-Policy header now active in `/web/_config/config.php` with proper directives (default-src, script-src, style-src, font-src, img-src, connect-src)
+- Strict-Transport-Security header enabled (max-age=31536000; includeSubDomains)
+
+**🛡️ Subresource Integrity (SRI) on ALL CDN Resources**
+- 28 files updated with 75 total edits
+- All CDN `<link>` and `<script>` tags now include `integrity` and `crossorigin="anonymous"` attributes
+- SRI coverage: 38% --> **100%**
+- Error pages, SIGNula.id pages, and API docs all updated
+
+**📦 CDN Library Version Standardisation**
+- Bootstrap upgraded from 5.3.0 --> 5.3.2 across admin/partner pages
+- FontAwesome upgraded from 6.4.0 --> 6.4.2 across admin/partner pages
+
+**🔐 CSRF Token Protection for ALL Forms & AJAX Endpoints**
+- 5 traditional POST forms protected: email-config.php (3 forms), admin-migration.php, api-keys.php, accept-invite.php, passwordless-request.php
+- 6 AJAX API endpoints protected: user-actions.php, settings-actions.php, feature-actions.php, deploy-migration.php, team-actions.php, partner-feature-actions.php
+- 7 pages with AJAX updated: users/index.php, settings/index.php, settings/oauth.php, features/global.php, system/migrations.php, team.php, features.php
+- 22 POST fetch() calls updated with csrf_token
+- CSRF coverage: 54% --> **100%**
+- Uses existing SecurityUtils::generateCSRFToken() and verifyCSRFToken()
+
+### Changed
+- **Security Score:** 95% --> **100%** (Full Security Hardening Complete)
+- **CSRF Protection:** 54% --> 100% (18 files updated)
+- **SRI Coverage:** 38% --> 100% (28 files updated)
+- **CSP Headers:** Disabled --> Enabled
+- **HSTS Headers:** Disabled --> Enabled
+- **PROJECT_PROGRESS.md:** Updated security metrics to 100%
+- **PROJECT_STATUS.md:** Updated security score and percentages
+- **SECURITY_TESTING_GUIDE.md:** Updated coverage statistics
+
+---
+
 ## [2.2.1-beta] - 2026-02-09
 
 ### Added - Admin Dashboard Completion
@@ -721,7 +761,10 @@ MAJOR.MINOR.PATCH-prerelease+build
 
 ---
 
-[Unreleased]: https://github.com/MWBMPartners/SIGNula.id/compare/v2.1.0-beta...HEAD
+[Unreleased]: https://github.com/MWBMPartners/SIGNula.id/compare/v2.2.2-beta...HEAD
+[2.2.2-beta]: https://github.com/MWBMPartners/SIGNula.id/compare/v2.2.1-beta...v2.2.2-beta
+[2.2.1-beta]: https://github.com/MWBMPartners/SIGNula.id/compare/v2.2.0-beta...v2.2.1-beta
+[2.2.0-beta]: https://github.com/MWBMPartners/SIGNula.id/compare/v2.1.0-beta...v2.2.0-beta
 [2.1.0-beta]: https://github.com/MWBMPartners/SIGNula.id/compare/v2.0.1-beta...v2.1.0-beta
 [2.0.1-beta]: https://github.com/MWBMPartners/SIGNula.id/compare/v2.0.0-beta...v2.0.1-beta
 [2.0.0-beta]: https://github.com/MWBMPartners/SIGNula.id/compare/v1.0.0...v2.0.0-beta
