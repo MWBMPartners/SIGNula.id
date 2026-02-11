@@ -190,8 +190,8 @@ if ($purpose === 'email') {
         error_log('OAuth authorize error: ' . $e->getMessage());
         ErrorLogger::logError('Exception', $e->getMessage(), $e->getFile(), $e->getLine());
 
-        // 🔙 Redirect to login with error
-        $_SESSION['error'] = 'OAuth error: ' . $e->getMessage();
+        // 🔙 Redirect to login with error (don't expose internal details)
+        $_SESSION['error'] = 'Unable to connect to the authentication provider. Please try again.';
         header('Location: /login');
         exit;
     }

@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Planned
+
 - Payment system integration (PayPal, Apple Pay, Google Pay, Crypto)
 - Mobile apps (iOS, Android)
 - Advanced analytics and reporting
@@ -19,37 +20,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [2.2.3-beta] - 2026-02-11
 
+### Fixed - MFA Login Flow (Critical Bug)
+
+- **mfa/verify.php**: Added missing `Auth::loginOAuth()` call after MFA verification — users with MFA enabled were never actually logged in after entering their code
+- **mfa/verify.php**: Fixed `ActivityLogger::log()` calls to use correct 6-parameter signature (was using old 3-parameter format)
+- **mfa/verify.php**: Cleaned up `mfa_remember_me` session variable after use
+- **mfa/verify.php**: Replaced hardcoded relative URLs (`../login.php`, `../$redirect`) with clean `redirect()` calls
+- **mfa/verify.php**: Standardized FontAwesome CDN to 6.4.2 (was 6.5.1)
+
+### Security Hardening
+
+- **Auth.php**: Added `session_regenerate_id(true)` in `completeLogin()` to prevent session fixation attacks
+- **config.php**: Added `sanitizeRedirectUrl()` helper to prevent open redirect vulnerabilities (OWASP)
+- **login.php**: All `$_GET['redirect']` values now validated via `sanitizeRedirectUrl()` — rejects absolute URLs, protocol-relative URLs, and javascript: URIs
+- **callback.php**: Error messages no longer expose internal exception details to users — generic messages shown, details logged server-side
+- **callback.php**: Moved email pre-fill from URL parameter to session variable to avoid PII in browser history/logs
+- **authorize.php**: Error messages no longer expose internal exception details to users
+
 ### Fixed - OAuth Login Flows
 
 **"Sign in with Google/Microsoft/Apple/Facebook" now functional end-to-end.**
 
 10 critical integration bugs fixed across 6 files:
 
-**🔐 Auth.php**
+#### 🔐 Auth.php
+
 - Added public `loginOAuth()` method to wrap private `completeLogin()` for OAuth callback use
 
-**🗄️ OAuth.php**
+#### 🗄️ OAuth.php
+
 - Fixed table name: `tblUserLinkedAccounts` → `tblOAuthAccounts` (matches migration 003)
 - Rewrote `linkAccount()` INSERT/UPDATE to match actual schema columns (removed non-existent `emailVerified`, `accountData` columns; added `scopes` column)
 - Uses `VALUES()` syntax in ON DUPLICATE KEY UPDATE for cleaner queries
 
-**🔧 authorize.php**
+#### 🔧 authorize.php
+
 - Replaced non-existent `bootstrap.php` require with `config.php`
 - Allow unauthenticated access for `purpose=signin` (was blocking all sign-in attempts)
 - Replaced undefined functions (`isUserLoggedIn()`, `getCurrentUserID()`, `getCurrentUser()`) with `Auth::` static methods
 - Fixed `ActivityLogger::log()` parameter order
 
-**🔧 callback.php**
+#### 🔧 callback.php
+
 - Replaced non-existent `bootstrap.php` require with `config.php`
 - Replaced `Auth::completeLogin()` (private) with `Auth::loginOAuth()` (public)
 - Replaced non-existent `Database::insert()` with `Database::query()` + `Database::getLastInsertId()`
 
-**🔗 login.php**
+#### 🔗 login.php
+
 - Added `$_GET['oauth_error']` handling to display OAuth errors from callback redirects
 - Added session-based `info`/`success` message display for OAuth flows
 - Added `purpose=signin` to all 4 OAuth button URLs
 
-**🔗 register.php**
+#### 🔗 register.php
+
 - Added `purpose=signin` to all 4 OAuth button URLs
 
 ---
@@ -60,21 +84,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **Security Score:** 95% --> **100%**
 
-**🔒 CSP & HSTS Security Headers Enabled**
+#### 🔒 CSP & HSTS Security Headers Enabled
+
 - Content-Security-Policy header now active in `/web/_config/config.php` with proper directives (default-src, script-src, style-src, font-src, img-src, connect-src)
 - Strict-Transport-Security header enabled (max-age=31536000; includeSubDomains)
 
-**🛡️ Subresource Integrity (SRI) on ALL CDN Resources**
+#### 🛡️ Subresource Integrity (SRI) on ALL CDN Resources
+
 - 28 files updated with 75 total edits
 - All CDN `<link>` and `<script>` tags now include `integrity` and `crossorigin="anonymous"` attributes
 - SRI coverage: 38% --> **100%**
 - Error pages, SIGNula.id pages, and API docs all updated
 
-**📦 CDN Library Version Standardisation**
+#### 📦 CDN Library Version Standardisation
+
 - Bootstrap upgraded from 5.3.0 --> 5.3.2 across admin/partner pages
 - FontAwesome upgraded from 6.4.0 --> 6.4.2 across admin/partner pages
 
-**🔐 CSRF Token Protection for ALL Forms & AJAX Endpoints**
+#### 🔐 CSRF Token Protection for ALL Forms & AJAX Endpoints
+
 - 5 traditional POST forms protected: email-config.php (3 forms), admin-migration.php, api-keys.php, accept-invite.php, passwordless-request.php
 - 6 AJAX API endpoints protected: user-actions.php, settings-actions.php, feature-actions.php, deploy-migration.php, team-actions.php, partner-feature-actions.php
 - 7 pages with AJAX updated: users/index.php, settings/index.php, settings/oauth.php, features/global.php, system/migrations.php, team.php, features.php
@@ -83,6 +111,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Uses existing SecurityUtils::generateCSRFToken() and verifyCSRFToken()
 
 ### Changed
+
 - **Security Score:** 95% --> **100%** (Full Security Hardening Complete)
 - **CSRF Protection:** 54% --> 100% (18 files updated)
 - **SRI Coverage:** 38% --> 100% (28 files updated)
@@ -98,7 +127,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added - Admin Dashboard Completion
 
-**🖥️ User Management Interface** (`/admin/users/index.php`, ~900 lines)
+#### 🖥️ User Management Interface (`/admin/users/index.php`, ~900 lines)
+
 - Search users by name, email, username, userID
 - Filter by status (All, Active, Inactive, Locked)
 - Filter by subscription tier (All, Free, Basic, Premium, Enterprise)
@@ -107,7 +137,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Quick actions: View details, change status, unlock account, reset password
 - Bulk operations support framework
 
-**⚙️ System Settings Management** (`/admin/settings/index.php`, ~950 lines)
+#### ⚙️ System Settings Management (`/admin/settings/index.php`, ~950 lines)
+
 - Category-based organization (7 tabs):
   - General (site name, maintenance mode)
   - Security (session, password, rate limiting)
@@ -123,7 +154,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Real-time updates via AJAX
 - Setting validation and type enforcement
 
-**🔗 OAuth Provider Configuration** (`/admin/settings/oauth.php`, ~850 lines)
+#### 🔗 OAuth Provider Configuration (`/admin/settings/oauth.php`, ~850 lines)
+
 - 9 OAuth provider cards:
   - Google (Personal & Workspace)
   - Microsoft (Personal & 365)
@@ -141,7 +173,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Scope management
 - Status indicators (enabled/disabled/unconfigured)
 
-**📊 System Logs Viewer** (`/admin/logs/index.php`, ~1,200 lines)
+#### 📊 System Logs Viewer (`/admin/logs/index.php`, ~1,200 lines)
+
 - Three-tab interface:
   - Activity Log (user activities, logins, changes)
   - Error Log (PHP errors, exceptions, warnings)
@@ -159,7 +192,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Color-coded severity indicators
 - Real-time log updates
 
-**🔧 Backend APIs**
+#### 🔧 Backend APIs
+
 - **User Management API** (`/admin/api/user-actions.php`, ~650 lines)
   - `list` - Get paginated user list with search/filters
   - `get` - Get single user details
@@ -175,7 +209,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `delete` - Remove setting
   - `reveal_sensitive` - Temporarily reveal encrypted value
 
-**📝 Admin Dashboard Navigation Updates** (`/admin/index.php`)
+#### 📝 Admin Dashboard Navigation Updates (`/admin/index.php`)
+
 - Added "Users & Settings" section with 4 cards:
   - User Management (search, filter, manage)
   - System Settings (configuration management)
@@ -184,7 +219,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added "Feature Management" section with 1 card:
   - Global Features (super admin feature toggles)
 
-### Changed
+### Changed (v2.2.1)
+
 - **Admin Dashboard Progress:** 80% → **100%**
 - **PROJECT_PROGRESS.md:** Updated completion metrics and next steps
 - **PROJECT_STATUS.md:** Updated overall completion from 96% to 98%
@@ -192,6 +228,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Admin Pages:** 15+ → 19+ pages
 
 ### Features
+
 - ✅ **Comprehensive User Management** - Search, filter, paginate, and manage all users
 - ✅ **Flexible Settings System** - Category-based organization with inline editing
 - ✅ **OAuth Provider Management** - Configure 9 providers with test connections
@@ -202,6 +239,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ✅ **Role-Based Access** - Super admin required for all pages
 
 ### Security
+
 - ✅ Super admin authentication required for all admin endpoints
 - ✅ CSRF token validation on all state-changing operations
 - ✅ Input validation and sanitization
@@ -215,7 +253,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added - Phase 3.5: Multi-Tier Admin System
 
-**🏢 Multi-Tier Admin Architecture** ✅
+#### 🏢 Multi-Tier Admin Architecture ✅
+
 - **AccessControl.php** (300+ lines) - Centralised role-based permission system
   - 6-tier role hierarchy (super-admin=100, root-admin=80, admin=60, developer=40, support=30, finance=20)
   - Super admin, partner admin, root admin verification
@@ -223,7 +262,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Admin action audit logging
   - Team size limit enforcement per tier (Free: 5, Basic: 10, Premium: 25, Enterprise: unlimited)
 
-**📊 Database Migration (009_multi_tier_admin.sql)**
+#### 📊 Database Migration (009_multi_tier_admin.sql)
+
 - `tblPartnerTeamMembers` - Team member roles and permissions with root admin enforcement
 - `tblFeatureToggles` - Global feature management (14 default features in 4 categories)
 - `tblPartnerFeatures` - Per-partner feature overrides
@@ -232,7 +272,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Database triggers enforcing ONE root admin per partner
 - Active membership views
 
-**🖥️ Admin UI Components (10 pages, ~4,500+ lines)**
+#### 🖥️ Admin UI Components (10 pages, ~4,500+ lines)
 
 1. **Partner Admin Dashboard** (`/partners/admin/index.php`)
    - Multi-partner selector, role badges (👑 for Root Admin)
@@ -274,19 +314,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
    - Selective migration with checkbox interface
    - Safe to run multiple times
 
-**🔧 Backend APIs (3 endpoints)**
+#### 🔧 Backend APIs (3 endpoints)
+
 - `/partners/api/team-actions.php` - Invite, update role, remove, revoke
 - `/partners/api/partner-feature-actions.php` - Partner feature toggles
 - `/admin/api/feature-actions.php` - Global feature management + per-partner overrides
 
-**📚 Documentation**
+#### 📚 Documentation
+
 - `_docs/MULTI_TIER_ADMIN_IMPLEMENTATION.md` - Complete implementation guide
 - `_docs/DEPLOYMENT_GUIDE.md` - Step-by-step deployment and testing guide
 - `_docs/SECURITY_TESTING_GUIDE.md` - Security testing and verification guide
 
 ### Added - Phase 3.4 UI: Security Admin Interface
 
-**🛡️ Security Admin UI** ✅
+#### 🛡️ Security Admin UI ✅
+
 - **Partner Registration** (`/partners/register.php`) - Self-service partner signup
 - **Partner Dashboard** (`/partners/dashboard.php`) - Partner overview and management
 - **API Key Management** (`/partners/api-keys.php`) - Self-service key lifecycle
@@ -296,7 +339,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Migration Deployment** (`/admin/system/migrations.php`) - One-click migration deployment via UI
 - **Deploy Migration API** (`/admin/api/deploy-migration.php`) - Backend for UI migrations
 
-### Changed
+### Changed (v2.2.0)
+
 - **Security Score:** 80% → **95%** (Production Ready)
 - **PROJECT_PROGRESS.md** - Added Phase 3.5, updated security status and metrics
 - **PROJECT_STATUS.md** - Updated completion to 96%, added multi-tier admin section
@@ -308,7 +352,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added - Phase 3.4: Security Enhancements (Rate Limiting & API Keys)
 
-**🔐 Rate Limiting System** ✅
+#### 🔐 Rate Limiting System ✅
+
 - **RateLimiter.php** (500+ lines) - Enterprise-grade rate limiting engine
   - Token bucket algorithm implementation
   - Progressive blocking system (1min → 5min → 15min → 1hr → 24hr)
@@ -325,7 +370,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Progressive blocking enforcement
   - Configurable tier-based limits
 
-**🔑 API Key Management System** ✅
+#### 🔑 API Key Management System ✅
+
 - **APIKeyManager.php** (700+ lines) - Secure partner authentication
   - SHA-256 secure key hashing (never stores plaintext keys)
   - Environment separation (sk_live_xxx for production, sk_test_xxx for development)
@@ -346,7 +392,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - HTTP 401/403 responses for authentication failures
   - Partner context injection for controllers
 
-**📊 Database Migrations**
+#### 📊 Database Migrations
+
 - **007_rate_limiting.sql** - Rate limiting infrastructure
   - `tblRateLimits` - Request tracking and violation records
   - `tblRateLimitConfig` - Multi-tier configuration (13 default configs)
@@ -362,7 +409,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Scheduled events for automatic key expiration and log cleanup
   - Test partner record for development
 
-**🛠️ Development Tools**
+#### 🛠️ Development Tools
+
 - **_scripts/generate_test_api_key.php** (350+ lines) - CLI key generator
   - Generate test and live API keys
   - Partner validation and selection
@@ -371,7 +419,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Security notes and monitoring queries
   - Command-line arguments (--live, --partner-id, --name, --expires)
 
-**📚 Documentation**
+#### 📚 Documentation (Security)
+
 - **_docs/SECURITY_DEPLOYMENT_GUIDE.md** (600+ lines) - Complete deployment guide
   - Step-by-step migration deployment
   - Verification queries for each step
@@ -382,7 +431,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Production security checklist
   - Unblocking procedures
 
-### Changed
+### Changed (v2.2.0 Initial)
+
 - **public_html/api/v1/index.php** - Enhanced with security middleware
   - Rate limiting applied to ALL API requests
   - API key authentication middleware initialized
@@ -403,6 +453,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Eliminates manual copyright management overhead
 
 ### Added - Infrastructure & Organization
+
 - **signula_complete_install_v2.2.0.sql** (121KB) - Complete database installation file
   - Consolidated all migrations through v2.2.0-beta into single file
   - Includes all features: auth, OAuth, email, blog, support, rate limiting, API keys
@@ -414,7 +465,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Organized by feature area with clear section headers
   - Includes copyright headers and proper documentation
 - **_scripts/reorganize-database-files.sh** - Database reorganization utility
-  - Automated migration from web/_database/ to _database/
+  - Automated migration from `web/_database/` to `_database/`
   - Creates backup before making changes
   - Consolidates duplicate directories
   - Updates .gitignore automatically
@@ -426,10 +477,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Rate Limiting Configuration
 
-**Default Limits by Tier:**
+#### Default Limits by Tier
 
 | Tier | Type | Requests/Hour | Requests/Minute | Burst (10s) |
-|------|------|--------------|-----------------|-------------|
+| ------ | ------ | -------------- | ----------------- | ------------- |
 | **Default** | IP (Unauthenticated) | 100 | 10 | 20 |
 | **Free** | User | 500 | 50 | 30 |
 | **Free** | API Key | 1,000 | 100 | 50 |
@@ -440,13 +491,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 | **Enterprise** | User | 50,000 | 5,000 | 500 |
 | **Enterprise** | API Key | 100,000 | 5,000 | 1,000 |
 
-**Strict Endpoint Limits** (Brute Force Prevention):
+#### Strict Endpoint Limits (Brute Force Prevention)
+
 - `/api/v1/auth/login` - 20/hour, 5/min, 10 burst
 - `/api/v1/auth/register` - 10/hour, 2/min, 5 burst
 - `/api/v1/auth/forgot-password` - 5/hour, 1/min, 3 burst (5-minute window)
 - `/api/v1/auth/reset-password` - 10/hour, 2/min, 5 burst
 
 ### Security Improvements
+
 - **Security Score:** 80% → **95%+** (when fully deployed)
 - ✅ Rate limit protection on ALL API endpoints
 - ✅ Partner authentication via secure API keys
@@ -458,6 +511,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ✅ Comprehensive monitoring and analytics
 
 ### Benefits
+
 - 🛡️ **Enterprise-Grade Protection** - Rate limiting prevents API abuse and DoS attacks
 - 🔐 **Secure Partner Integration** - SHA-256 hashed API keys with granular permissions
 - 📊 **Complete Visibility** - 90-day usage logs with response time analytics
@@ -467,6 +521,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 🌍 **Scalable** - Supports thousands of partners and millions of requests
 
 ### Pending (UI Development)
+
 - Partner registration page
 - API key management dashboard (partner view)
 - Admin dashboard for partner management
@@ -474,6 +529,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Usage analytics visualization
 
 ### Documentation Quality
+
 - **Security Documentation:** 95% complete (A grade)
 - **Deployment Guide:** 100% complete
 - **Code Comments:** Comprehensive inline documentation
@@ -484,6 +540,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [2.1.0-beta] - 2026-02-04
 
 ### Added - Phase 3.3: API Documentation for Partners
+
 - **Comprehensive API Documentation** for third-party partner integration
   - Complete Markdown documentation (`public_html/docs/api/API_DOCUMENTATION.md`, 26KB)
   - Interactive HTML documentation with modern features (`public_html/docs/api/index.html`, 17KB)
@@ -503,51 +560,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Success criteria checklist
 
 ### Added - Phase 3.2: Delegate Email Sending via OAuth
-- **OAuth Token Management Infrastructure**
-  - `OAuthTokenManager.php` (530 lines) - Complete token lifecycle management
-    - Store, retrieve, refresh, and delete OAuth tokens
-    - AES-256 encryption for token security
-    - Automatic token refresh with retry logic
-    - Activity logging for all operations
-  - `OAuthFlowHandler.php` (420 lines) - OAuth 2.0 authorization flow
-    - Authorization initiation with state tokens
-    - Callback processing and token exchange
-    - CSRF protection with state validation
-    - Multi-provider support (Microsoft, Google)
-- **Database Changes**
-  - New table: `tblUserOAuthTokens` - Encrypted OAuth token storage
-  - New column: `sendAsEmail` in `tblEmailQueue` - Specify delegate mailbox
-  - Migration: `006_delegate_mailbox_support.sql`
-  - Comprehensive addon SQL: `_sql/signula_email_system_addon_v2.1.0.sql` (email system + delegate support)
-- **Email Provider Enhancements**
-  - **GmailAPIEmailProvider.php** - Dynamic JWT impersonation for delegate sending
-    - Per-mailbox token caching for performance
-    - Works with existing service account setup
-    - Supports sendAsEmail parameter
-  - **MicrosoftGraphEmailProvider.php** - Dual-mode authentication
-    - Application auth for FREE shared mailboxes (no user license needed)
-    - Delegated auth for user mailboxes via OAuth
-    - Intelligent auth mode detection (AUTO/APPLICATION/DELEGATED)
-    - determineAuthMode() method for smart fallback
-- **User Interface**
-  - `/settings/email-accounts.php` (280 lines) - Email account management page
-    - Connect Microsoft 365 and Google Workspace accounts
-    - View token status, expiration dates, and last usage
-    - Disconnect accounts with confirmation
-    - Responsive Bootstrap design with account cards
-  - `/api/oauth/disconnect.php` (150 lines) - Account disconnect API endpoint
-- **Enhanced OAuth Endpoints**
-  - Updated `/oauth/authorize.php` - Added email delegation routing
-  - Updated `/oauth/callback.php` - Enhanced with delegation callback handling
-  - Preserved existing sign-in functionality
-- **Comprehensive Documentation** (4 guides, ~3,000 lines)
-  - `_docs/SHARED_MAILBOXES_AND_AUTH_MODES.md` - Complete feature guide
-  - `_docs/DUAL_MODE_IMPLEMENTATION_SUMMARY.md` - Implementation overview
-  - `_docs/MICROSOFT_DELEGATE_MAILBOX_SETUP.md` - Azure AD setup guide
-  - `_docs/DELEGATE_MAILBOX_ARCHITECTURE.md` - Technical architecture
-  - `.claude/IMPLEMENTATION_COMPLETE.md` - Setup and testing guide
 
-### Changed
+#### OAuth Token Management Infrastructure
+
+- `OAuthTokenManager.php` (530 lines) - Complete token lifecycle management
+  - Store, retrieve, refresh, and delete OAuth tokens
+  - AES-256 encryption for token security
+  - Automatic token refresh with retry logic
+  - Activity logging for all operations
+- `OAuthFlowHandler.php` (420 lines) - OAuth 2.0 authorization flow
+  - Authorization initiation with state tokens
+  - Callback processing and token exchange
+  - CSRF protection with state validation
+  - Multi-provider support (Microsoft, Google)
+
+#### Database Changes
+
+- New table: `tblUserOAuthTokens` - Encrypted OAuth token storage
+- New column: `sendAsEmail` in `tblEmailQueue` - Specify delegate mailbox
+- Migration: `006_delegate_mailbox_support.sql`
+- Comprehensive addon SQL: `_sql/signula_email_system_addon_v2.1.0.sql` (email system + delegate support)
+
+#### Email Provider Enhancements
+
+- **GmailAPIEmailProvider.php** - Dynamic JWT impersonation for delegate sending
+  - Per-mailbox token caching for performance
+  - Works with existing service account setup
+  - Supports sendAsEmail parameter
+- **MicrosoftGraphEmailProvider.php** - Dual-mode authentication
+  - Application auth for FREE shared mailboxes (no user license needed)
+  - Delegated auth for user mailboxes via OAuth
+  - Intelligent auth mode detection (AUTO/APPLICATION/DELEGATED)
+  - determineAuthMode() method for smart fallback
+
+#### User Interface
+
+- `/settings/email-accounts.php` (280 lines) - Email account management page
+  - Connect Microsoft 365 and Google Workspace accounts
+  - View token status, expiration dates, and last usage
+  - Disconnect accounts with confirmation
+  - Responsive Bootstrap design with account cards
+- `/api/oauth/disconnect.php` (150 lines) - Account disconnect API endpoint
+
+#### Enhanced OAuth Endpoints
+
+- Updated `/oauth/authorize.php` - Added email delegation routing
+- Updated `/oauth/callback.php` - Enhanced with delegation callback handling
+- Preserved existing sign-in functionality
+
+#### Comprehensive Documentation (4 guides, ~3,000 lines)
+
+- `_docs/SHARED_MAILBOXES_AND_AUTH_MODES.md` - Complete feature guide
+- `_docs/DUAL_MODE_IMPLEMENTATION_SUMMARY.md` - Implementation overview
+- `_docs/MICROSOFT_DELEGATE_MAILBOX_SETUP.md` - Azure AD setup guide
+- `_docs/DELEGATE_MAILBOX_ARCHITECTURE.md` - Technical architecture
+- `.claude/IMPLEMENTATION_COMPLETE.md` - Setup and testing guide
+
+### Changed (v2.1.0)
+
 - **EmailService.php** - Added `sendAsEmail` parameter to public API
   - Updated `queueEmail()` method signature
   - Pass delegate mailbox to email queue
@@ -555,7 +625,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **PROJECT_PROGRESS.md** - Added Phase 3.2 and 3.3 sections with complete details
 - **README.md** - Added comprehensive sections for delegate email and API documentation
 
-### Benefits
+### Benefits (v2.1.0)
+
 - 💰 **Cost Savings**: $600+/year using FREE Microsoft 365 shared mailboxes
 - 🔒 **Security**: OAuth 2.0 with encrypted token storage and automatic refresh
 - ⚡ **Performance**: Token caching and intelligent auth mode selection
@@ -563,7 +634,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 🎯 **Flexibility**: Support for both system emails (FREE) and user emails (OAuth)
 - 📚 **Documentation**: Enterprise-grade API documentation ready for partners
 
-### Security
+### Security (v2.1.0)
+
 - AES-256 encryption for OAuth access and refresh tokens
 - State token CSRF protection in OAuth flows
 - Activity logging for all OAuth operations
@@ -571,7 +643,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Automatic token cleanup on revocation
 - HTTPS enforcement for OAuth flows
 
-### Documentation Quality
+### Documentation Quality (v2.1.0)
+
 - API Documentation: 95% (A grade) - was 40%
 - Overall project documentation: 95% complete
 - Partner-ready with interactive web interface
@@ -581,6 +654,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [2.0.1-beta] - 2026-02-03
 
 ### Added
+
 - **OAuth Multi-Account Support**: Users can now link multiple accounts from the same provider
   - `accountType` field to classify accounts (personal, work, school)
   - `emailDomain` field for domain-based filtering
@@ -592,7 +666,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Installation documentation (`_sql/README.md`)
 - Version management system (VERSION file, CHANGELOG.md)
 
-### Changed
+### Changed (v2.0.1)
+
 - **OAuthController.php**: Enhanced to support multiple accounts per provider
   - Removed provider uniqueness restriction
   - Added duplicate external account prevention
@@ -601,7 +676,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **README.md**: Updated database setup section with comprehensive SQL installation options
 - **PROJECT_PROGRESS.md**: Added Phase 3.1 section and updated version to 2.0.1-beta
 
-### Security
+### Security (v2.0.1)
+
 - Prevents same external OAuth account from being linked to multiple SIGNula accounts
 - Maintains encryption for OAuth tokens (AES-256-CBC)
 
@@ -610,6 +686,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [2.0.0-beta] - 2026-02-02
 
 ### Added - Phase 3: RESTful API Enhancement
+
 - **Core API Framework** (~1,700 lines)
   - `Response.php`: Standardized JSON response formatter with 13 HTTP status helpers
   - `Router.php`: RESTful request router with URL parameter extraction
@@ -626,6 +703,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive API documentation in README.md
 
 ### Added - Phase 2: Account Management UI
+
 - **Settings Dashboard** (`/settings/`) with 8 comprehensive pages:
   - Dashboard with statistics and security score
   - Profile management with email change
@@ -642,21 +720,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Testing documentation: `TESTING_GUIDE_PHASE2.md`, `QUICK_TEST_REFERENCE_PHASE2.md`
 
 ### Added - Phase 1.5: Advanced Authentication
-- **WebAuthn/PassKey Support**
-  - Database tables: `tblWebAuthnCredentials`, `tblWebAuthnChallenges`
-  - Backend handler: `WebAuthnHandler.php` (730+ lines)
-  - API endpoints for registration and authentication
-  - User pages: PassKey register, login, management
-- **Passwordless Login**
-  - Database table: `tblPasswordlessTokens`
-  - Backend handler: `PasswordlessLoginHandler.php` (650+ lines)
-  - Magic link generation with secure tokens
-  - User pages: Request link, verify and login
+
+#### WebAuthn/PassKey Support
+
+- Database tables: `tblWebAuthnCredentials`, `tblWebAuthnChallenges`
+- Backend handler: `WebAuthnHandler.php` (730+ lines)
+- API endpoints for registration and authentication
+- User pages: PassKey register, login, management
+
+#### Passwordless Login
+
+- Database table: `tblPasswordlessTokens`
+- Backend handler: `PasswordlessLoginHandler.php` (650+ lines)
+- Magic link generation with secure tokens
+- User pages: Request link, verify and login
+
 - Database migration: `005_webauthn_passkeys.sql`
 - Stored procedure: `cleanupExpiredAuthTokens()`
 - Comprehensive testing documentation with 60+ test cases
 
-### Features
+### Features (v2.0.0)
+
 - ✅ CORS support with configurable origins
 - ✅ Pagination (25-100 items per page)
 - ✅ Request ID tracking for logging correlation
@@ -668,7 +752,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ✅ Real-time security score calculation
 - ✅ Activity log export functionality
 
-### Security
+### Security (v2.0.0)
+
 - Input validation on all API endpoints
 - SQL injection protection via prepared statements
 - Argon2id password hashing
@@ -684,6 +769,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.0] - 2024-11-15
 
 ### Added - Phase 1: Core Foundation
+
 - **Database Schema** (27 tables, 2 views, 4 stored procedures)
   - Core user accounts with UUID support
   - Multi-factor authentication (TOTP, Email OTP, SMS, Push, Backup Codes)
@@ -740,6 +826,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Primary account selection
 
 ### Documentation
+
 - Project README with installation guide
 - Database schema documentation
 - API endpoint structure
@@ -752,7 +839,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 This project uses [Semantic Versioning](https://semver.org/):
 
-```
+```text
 MAJOR.MINOR.PATCH-prerelease+build
 ```
 
@@ -763,6 +850,7 @@ MAJOR.MINOR.PATCH-prerelease+build
 - **build**: Build metadata (optional)
 
 ### Examples
+
 - `1.0.0` - First stable release
 - `1.1.0` - Minor feature addition
 - `1.1.1` - Bug fix
@@ -809,6 +897,6 @@ MAJOR.MINOR.PATCH-prerelease+build
 
 ---
 
-**Copyright © 2025-2026 MWBM Partners Ltd (t/a MWservices). All rights reserved.**
+**Copyright (c) 2025-2026 MWBM Partners Ltd (t/a MWservices). All rights reserved.**
 
 This documentation is proprietary and confidential. Unauthorized copying, distribution, or use is strictly prohibited.

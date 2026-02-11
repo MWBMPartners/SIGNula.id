@@ -25,7 +25,7 @@ require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . '_config' . DIRECTORY_S
 // 🔐 Check if user has pending MFA verification
 if (empty($_SESSION['mfa_user_id']) || empty($_SESSION['mfa_required'])) {
     // No pending MFA verification - redirect to login
-    header('Location: ../login.php');
+    redirect('/login');
     exit;
 }
 
@@ -54,12 +54,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     // Try TOTP first
                     if (MFA::verifyTOTP($userID, $code)) {
                         $verified = true;
-                        ActivityLogger::log($userID, 'mfa_totp_login_success', 'User verified TOTP during login');
+                        ActivityLogger::log($userID, 'mfa_totp_verified', 'auth', 'info',
+                            'User verified TOTP during login', ['method' => 'totp']);
                     }
                     // Try backup code if TOTP fails
                     elseif (MFA::verifyBackupCode($userID, $code)) {
                         $verified = true;
-                        ActivityLogger::log($userID, 'mfa_backup_code_login_success', 'User verified backup code during login');
+                        ActivityLogger::log($userID, 'mfa_backup_code_verified', 'auth', 'info',
+                            'User verified backup code during login', ['method' => 'backup_code']);
 
                         // Warn about remaining backup codes
                         $remaining = MFA::getRemainingBackupCodes($userID);
@@ -69,8 +71,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
 
                     if ($verified) {
-                        // 🎉 MFA verification successful
-                        unset($_SESSION['mfa_user_id'], $_SESSION['mfa_required']);
+                        // 🎉 MFA verification successful — retrieve remember-me preference
+                        $rememberMe = $_SESSION['mfa_remember_me'] ?? false;
+
+                        // 🧹 Clean up MFA session data
+                        unset($_SESSION['mfa_user_id'], $_SESSION['mfa_required'], $_SESSION['mfa_remember_me']);
 
                         // 🍪 Trust device if requested
                         if ($trustDevice) {
@@ -78,15 +83,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             MFA::trustDevice($userID, $deviceFingerprint);
                         }
 
-                        // ✅ Complete login
-                        $redirect = $_SESSION['redirect_after_login'] ?? 'dashboard.php';
+                        // 🔐 Complete login — create session in database and PHP
+                        Auth::loginOAuth($userID, $rememberMe);
+
+                        // ✅ Redirect to intended destination
+                        $redirect = $_SESSION['redirect_after_login'] ?? '/dashboard';
                         unset($_SESSION['redirect_after_login']);
 
-                        header('Location: ../' . $redirect);
-                        exit;
+                        redirect($redirect);
                     } else {
                         $error = 'Invalid verification code. Please try again.';
-                        ActivityLogger::log($userID, 'mfa_verification_failed', 'Failed MFA verification attempt');
+                        ActivityLogger::log($userID, 'mfa_verification_failed', 'auth', 'warning',
+                            'Failed MFA verification attempt', ['user_id' => $userID]);
                     }
                     break;
 
@@ -103,10 +111,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 case 'cancel':
                     // ❌ Cancel login
-                    unset($_SESSION['mfa_user_id'], $_SESSION['mfa_required'], $_SESSION['redirect_after_login']);
+                    unset($_SESSION['mfa_user_id'], $_SESSION['mfa_required'], $_SESSION['mfa_remember_me'], $_SESSION['redirect_after_login']);
                     session_destroy();
-                    header('Location: ../login.php?cancelled=1');
-                    exit;
+                    redirect('/login?cancelled=1');
                     break;
             }
 
@@ -139,8 +146,8 @@ $pageTitle = 'Two-Factor Authentication';
           integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN" crossorigin="anonymous">
 
     <!-- 🎨 Font Awesome -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"
-          integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css"
+          integrity="sha512-z3gLpd7yknf1YoNbCzqRKc4qyor8gaKU1qmn+CShxbuBusANI9QpRohGBreCFkKxLhei6S9CQXFEbbKuqLg0DA==" crossorigin="anonymous">
 
     <!-- 🎨 Custom CSS -->
     <link rel="stylesheet" href="../assets/css/style.css">

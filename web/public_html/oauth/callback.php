@@ -270,9 +270,11 @@ try {
 
                 } else {
                     // ⚠️ Email not verified - require manual linking
+                    // Store email in session (not URL) to avoid exposing PII in browser history/logs
                     $_SESSION['info'] = 'An account with this email already exists. Please log in with your password and link your ' .
                                        $oauth->getDisplayName() . ' account from account settings.';
-                    redirect('/login?email=' . urlencode($userData['email']));
+                    $_SESSION['prefill_email'] = $userData['email'];
+                    redirect('/login');
                 }
 
             } else {
@@ -352,8 +354,9 @@ try {
     error_log('OAuth callback error: ' . $e->getMessage());
     ErrorLogger::logError('Exception', $e->getMessage(), $e->getFile(), $e->getLine());
 
-    // 👤 User-friendly error message
-    $error = 'Authentication failed: ' . $e->getMessage();
+    // 👤 User-friendly error message (don't expose internal details to users)
+    // Detailed error is already logged above via error_log() and ErrorLogger
+    $error = 'Authentication failed. Please try again or use a different sign-in method.';
 
     // 🔙 Redirect to login with error
     redirect('/login?oauth_error=' . urlencode($error));

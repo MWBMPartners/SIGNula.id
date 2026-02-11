@@ -543,6 +543,45 @@ function redirect(string $url, int $statusCode = 302): void
 }
 
 /**
+ * 🛡️ Sanitize a redirect URL to prevent open redirect attacks
+ *
+ * Only allows relative paths starting with '/' (not '//' which is protocol-relative).
+ * Rejects absolute URLs, javascript: URIs, and data: URIs.
+ * Returns the fallback URL if the input is unsafe.
+ *
+ * @param string $url The redirect URL to validate
+ * @param string $fallback Safe fallback URL (default: '/dashboard')
+ * @return string A safe redirect URL
+ * @see https://cheatsheetseries.owasp.org/cheatsheets/Unvalidated_Redirects_and_Forwards_Cheat_Sheet.html
+ */
+function sanitizeRedirectUrl(string $url, string $fallback = '/dashboard'): string
+{
+    $url = trim($url);
+
+    // ❌ Reject empty URLs
+    if ($url === '') {
+        return $fallback;
+    }
+
+    // ❌ Reject protocol-relative URLs (//evil.com) and absolute URLs
+    if (preg_match('#^(https?://|//|[a-z]+:)#i', $url)) {
+        return $fallback;
+    }
+
+    // ✅ Must start with a single forward slash (relative path)
+    if ($url[0] !== '/') {
+        return $fallback;
+    }
+
+    // ❌ Reject double slashes after the first character (//evil.com disguised)
+    if (isset($url[1]) && $url[1] === '/') {
+        return $fallback;
+    }
+
+    return $url;
+}
+
+/**
  * ✅ JSON response helper
  *
  * @param bool $success Success status

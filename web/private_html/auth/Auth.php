@@ -469,6 +469,10 @@ class Auth
 
             $sessionID = Database::getLastInsertId();
 
+            // 🔄 Regenerate session ID to prevent session fixation attacks
+            // @see https://www.php.net/manual/en/function.session-regenerate-id.php
+            session_regenerate_id(true);
+
             // 💾 Store in PHP session
             $_SESSION['user_id'] = $userID;
             $_SESSION['session_id'] = $sessionID;

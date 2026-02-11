@@ -17,7 +17,7 @@ require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . '_config' . DIRECTORY_SEPA
 
 // 🔄 Redirect if already logged in
 if (Auth::isAuthenticated()) {
-    $redirectTo = $_GET['redirect'] ?? '/dashboard';
+    $redirectTo = sanitizeRedirectUrl($_GET['redirect'] ?? '/dashboard');
     redirect($redirectTo);
 }
 
@@ -63,7 +63,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     redirect('/verify-required?just_logged_in=1');
                 } else {
                     // Successful login with verified email
-                    $redirectTo = $_GET['redirect'] ?? '/dashboard';
+                    $redirectTo = sanitizeRedirectUrl($_GET['redirect'] ?? '/dashboard');
                     redirect($redirectTo);
                 }
             }
@@ -156,7 +156,12 @@ $pageTitle = 'Sign In - SIGNula';
                             required
                             autofocus
                             autocomplete="username"
-                            value="<?php echo htmlspecialchars($_POST['identifier'] ?? ''); ?>"
+                            value="<?php
+                                // 📧 Pre-fill from POST data or session (OAuth flow sets prefill_email)
+                                $prefillEmail = $_SESSION['prefill_email'] ?? '';
+                                if ($prefillEmail) { unset($_SESSION['prefill_email']); }
+                                echo htmlspecialchars($_POST['identifier'] ?? $prefillEmail);
+                            ?>"
                         >
                     </div>
                     <div class="invalid-feedback"></div>
