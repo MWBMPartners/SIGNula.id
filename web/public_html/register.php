@@ -290,7 +290,7 @@ $pageTitle = 'Create Account - SIGNula';
             <!-- 🔗 OAuth Registration Buttons -->
             <div class="oauth-buttons" style="display: flex; flex-direction: column; gap: 0.75rem;">
                 <!-- Google Sign Up -->
-                <a href="/oauth/authorize?provider=google" class="oauth-btn oauth-btn-google" style="display: flex; align-items: center; justify-content: center; padding: 0.75rem 1rem; border: 1px solid #ddd; border-radius: 0.5rem; text-decoration: none; font-weight: 500; transition: all 0.2s; background: white; color: #333;">
+                <a href="/oauth/authorize?provider=google&amp;purpose=signin" class="oauth-btn oauth-btn-google" style="display: flex; align-items: center; justify-content: center; padding: 0.75rem 1rem; border: 1px solid #ddd; border-radius: 0.5rem; text-decoration: none; font-weight: 500; transition: all 0.2s; background: white; color: #333;">
                     <svg style="width: 20px; height: 20px; margin-right: 0.75rem;" viewBox="0 0 24 24">
                         <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
                         <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
@@ -301,7 +301,7 @@ $pageTitle = 'Create Account - SIGNula';
                 </a>
 
                 <!-- Microsoft Sign Up -->
-                <a href="/oauth/authorize?provider=microsoft" class="oauth-btn oauth-btn-microsoft" style="display: flex; align-items: center; justify-content: center; padding: 0.75rem 1rem; border: 1px solid #ddd; border-radius: 0.5rem; text-decoration: none; font-weight: 500; transition: all 0.2s; background: white; color: #333;">
+                <a href="/oauth/authorize?provider=microsoft&amp;purpose=signin" class="oauth-btn oauth-btn-microsoft" style="display: flex; align-items: center; justify-content: center; padding: 0.75rem 1rem; border: 1px solid #ddd; border-radius: 0.5rem; text-decoration: none; font-weight: 500; transition: all 0.2s; background: white; color: #333;">
                     <svg style="width: 20px; height: 20px; margin-right: 0.75rem;" viewBox="0 0 23 23">
                         <path fill="#f35325" d="M1 1h10v10H1z"/>
                         <path fill="#81bc06" d="M12 1h10v10H12z"/>
@@ -312,13 +312,13 @@ $pageTitle = 'Create Account - SIGNula';
                 </a>
 
                 <!-- Apple Sign Up -->
-                <a href="/oauth/authorize?provider=apple" class="oauth-btn oauth-btn-apple" style="display: flex; align-items: center; justify-content: center; padding: 0.75rem 1rem; border: 1px solid #000; border-radius: 0.5rem; text-decoration: none; font-weight: 500; transition: all 0.2s; background: #000; color: white;">
+                <a href="/oauth/authorize?provider=apple&amp;purpose=signin" class="oauth-btn oauth-btn-apple" style="display: flex; align-items: center; justify-content: center; padding: 0.75rem 1rem; border: 1px solid #000; border-radius: 0.5rem; text-decoration: none; font-weight: 500; transition: all 0.2s; background: #000; color: white;">
                     <i class="fab fa-apple" style="font-size: 20px; margin-right: 0.75rem;"></i>
                     Sign up with Apple
                 </a>
 
                 <!-- Facebook Sign Up -->
-                <a href="/oauth/authorize?provider=facebook" class="oauth-btn oauth-btn-facebook" style="display: flex; align-items: center; justify-content: center; padding: 0.75rem 1rem; border: 1px solid #1877f2; border-radius: 0.5rem; text-decoration: none; font-weight: 500; transition: all 0.2s; background: #1877f2; color: white;">
+                <a href="/oauth/authorize?provider=facebook&amp;purpose=signin" class="oauth-btn oauth-btn-facebook" style="display: flex; align-items: center; justify-content: center; padding: 0.75rem 1rem; border: 1px solid #1877f2; border-radius: 0.5rem; text-decoration: none; font-weight: 500; transition: all 0.2s; background: #1877f2; color: white;">
                     <i class="fab fa-facebook" style="font-size: 20px; margin-right: 0.75rem;"></i>
                     Sign up with Facebook
                 </a>

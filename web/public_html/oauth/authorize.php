@@ -20,22 +20,24 @@
  * ============================================================================
  */
 
-// 🚀 Initialize SIGNula
-define('SIGNULA_INIT', true);
-require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'bootstrap.php';
+// 🚀 Initialize SIGNula (config.php defines SIGNULA_INIT and loads all classes)
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . '_config' . DIRECTORY_SEPARATOR . 'config.php';
 
-// 🔐 Require authentication
-if (!isUserLoggedIn()) {
-    header('Location: /login?redirect=' . urlencode($_SERVER['REQUEST_URI']));
-    exit;
-}
-
-$userID = getCurrentUserID();
-
-// 📝 Get parameters
+// 📝 Get parameters (read purpose BEFORE auth check)
 $provider = $_GET['provider'] ?? '';
 $mailboxEmail = $_GET['mailbox'] ?? '';
 $purpose = $_GET['purpose'] ?? 'email';  // 'email' or 'signin'
+
+// 🔐 Require authentication for email delegation only
+// Sign-in purpose must allow unauthenticated users (that's the whole point!)
+if ($purpose === 'email') {
+    if (!Auth::isAuthenticated()) {
+        header('Location: /login?redirect=' . urlencode($_SERVER['REQUEST_URI']));
+        exit;
+    }
+}
+
+$userID = Auth::isAuthenticated() ? Auth::getCurrentUserID() : null;
 
 // ✅ Validate provider
 if (empty($provider)) {
@@ -47,7 +49,7 @@ if ($purpose === 'email') {
     // 📧 Email delegation authorization
     if (empty($mailboxEmail)) {
         // Use user's email if not specified
-        $user = getCurrentUser();
+        $user = Auth::getCurrentUser();
         $mailboxEmail = $user['email'] ?? '';
     }
 
@@ -170,15 +172,14 @@ if ($purpose === 'email') {
         // 🔗 Generate authorization URL
         $authUrl = $oauth->getAuthorizationUrl();
 
-        // 📝 Log activity
-        ActivityLogger::log(
-            'oauth_initiated',
-            $userID,
-            json_encode([
-                'provider' => $provider,
-                'purpose' => 'signin'
-            ])
-        );
+        // 📝 Log activity (only if user is authenticated)
+        if ($userID) {
+            ActivityLogger::log($userID, 'oauth_initiated', 'auth', 'info',
+                "OAuth authorization initiated for {$provider}", [
+                    'provider' => $provider,
+                    'purpose' => 'signin'
+                ]);
+        }
 
         // 🚀 Redirect to provider's authorization page
         header('Location: ' . $authUrl);

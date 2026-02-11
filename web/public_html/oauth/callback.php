@@ -21,9 +21,8 @@
  * ============================================================================
  */
 
-// 🚀 Bootstrap the application
-define('SIGNULA_INIT', true);
-require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'bootstrap.php';
+// 🚀 Initialize SIGNula (config.php defines SIGNULA_INIT and loads all classes)
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . '_config' . DIRECTORY_SEPARATOR . 'config.php';
 
 // 📝 Handle OAuth callback
 $error = null;
@@ -228,7 +227,7 @@ try {
             $oauth->linkAccount($existingUserID, $userData, $tokenData);
 
             // 🔐 Complete login
-            Auth::completeLogin($existingUserID, false);
+            Auth::loginOAuth($existingUserID, false);
 
             // 📝 Log activity
             ActivityLogger::log($existingUserID, 'oauth_login', 'auth', 'info',
@@ -259,7 +258,7 @@ try {
                     $oauth->linkAccount($userID, $userData, $tokenData);
 
                     // 🔐 Complete login
-                    Auth::completeLogin($userID, false);
+                    Auth::loginOAuth($userID, false);
 
                     // 📝 Log activity
                     ActivityLogger::log($userID, 'oauth_auto_linked', 'auth', 'info',
@@ -319,11 +318,13 @@ try {
 
                 $emailVerified = $userData['email_verified'] ? 1 : 0;
 
-                $userID = Database::insert(
+                Database::query(
                     $insertQuery,
                     [$userUUID, $username, $userData['email'], $displayName, $emailVerified],
                     'ssssi'
                 );
+
+                $userID = Database::getLastInsertId();
 
                 if (!$userID) {
                     throw new RuntimeException('Failed to create user account');
@@ -337,7 +338,7 @@ try {
                     "New account created via {$provider}", ['provider' => $provider]);
 
                 // 🔐 Complete login
-                Auth::completeLogin($userID, false);
+                Auth::loginOAuth($userID, false);
 
                 // ✅ Redirect to dashboard with welcome message
                 $_SESSION['success'] = 'Welcome to SIGNula! Your account has been created successfully.';

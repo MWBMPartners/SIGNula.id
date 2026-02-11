@@ -17,6 +17,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.2.3-beta] - 2026-02-11
+
+### Fixed - OAuth Login Flows
+
+**"Sign in with Google/Microsoft/Apple/Facebook" now functional end-to-end.**
+
+10 critical integration bugs fixed across 6 files:
+
+**🔐 Auth.php**
+- Added public `loginOAuth()` method to wrap private `completeLogin()` for OAuth callback use
+
+**🗄️ OAuth.php**
+- Fixed table name: `tblUserLinkedAccounts` → `tblOAuthAccounts` (matches migration 003)
+- Rewrote `linkAccount()` INSERT/UPDATE to match actual schema columns (removed non-existent `emailVerified`, `accountData` columns; added `scopes` column)
+- Uses `VALUES()` syntax in ON DUPLICATE KEY UPDATE for cleaner queries
+
+**🔧 authorize.php**
+- Replaced non-existent `bootstrap.php` require with `config.php`
+- Allow unauthenticated access for `purpose=signin` (was blocking all sign-in attempts)
+- Replaced undefined functions (`isUserLoggedIn()`, `getCurrentUserID()`, `getCurrentUser()`) with `Auth::` static methods
+- Fixed `ActivityLogger::log()` parameter order
+
+**🔧 callback.php**
+- Replaced non-existent `bootstrap.php` require with `config.php`
+- Replaced `Auth::completeLogin()` (private) with `Auth::loginOAuth()` (public)
+- Replaced non-existent `Database::insert()` with `Database::query()` + `Database::getLastInsertId()`
+
+**🔗 login.php**
+- Added `$_GET['oauth_error']` handling to display OAuth errors from callback redirects
+- Added session-based `info`/`success` message display for OAuth flows
+- Added `purpose=signin` to all 4 OAuth button URLs
+
+**🔗 register.php**
+- Added `purpose=signin` to all 4 OAuth button URLs
+
+---
+
 ## [2.2.2-beta] - 2026-02-10
 
 ### Security - Complete Security Hardening (100%)

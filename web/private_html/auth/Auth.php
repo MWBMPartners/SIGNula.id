@@ -512,6 +512,24 @@ class Auth
     }
 
     /**
+     * 🔑 Complete OAuth Login
+     *
+     * Public wrapper around completeLogin() for use by the OAuth callback handler.
+     * Creates a session for a user who has been authenticated via an OAuth provider.
+     *
+     * @param int  $userID     The authenticated user's ID
+     * @param bool $rememberMe Whether to set a persistent remember-me cookie
+     *
+     * @return bool True if login session was created successfully
+     *
+     * @see https://www.php.net/manual/en/function.session-regenerate-id.php
+     */
+    public static function loginOAuth(int $userID, bool $rememberMe = false): bool
+    {
+        return self::completeLogin($userID, $rememberMe);
+    }
+
+    /**
      * ❌ Handle Failed Login Attempt
      *
      * Increments failed login counter and locks account if necessary.

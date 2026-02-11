@@ -380,25 +380,26 @@ abstract class OAuth
                 $expiresAt = date('Y-m-d H:i:s', time() + $tokenData['expires_in']);
             }
 
-            // 💾 Store in database
+            // 💾 Store in database (tblOAuthAccounts — see migration 003)
+            // @see _database/migrations/003_oauth_accounts.sql
+            $scopes = implode(' ', $this->scopes);
+
             $query = "
-                INSERT INTO tblUserLinkedAccounts
+                INSERT INTO tblOAuthAccounts
                 (userID, provider, providerUserID, email, displayName,
                  accessToken, refreshToken, tokenExpiresAt, profilePicture,
-                 emailVerified, accountData, createdAt)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+                 scopes, linkedAt)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
                 ON DUPLICATE KEY UPDATE
-                accessToken = ?,
-                refreshToken = ?,
-                tokenExpiresAt = ?,
-                displayName = ?,
-                profilePicture = ?,
-                emailVerified = ?,
-                accountData = ?,
+                accessToken = VALUES(accessToken),
+                refreshToken = VALUES(refreshToken),
+                tokenExpiresAt = VALUES(tokenExpiresAt),
+                displayName = VALUES(displayName),
+                profilePicture = VALUES(profilePicture),
+                scopes = VALUES(scopes),
+                lastUsedAt = NOW(),
                 updatedAt = NOW()
             ";
-
-            $accountDataJson = json_encode($userData);
 
             Database::query(
                 $query,
@@ -412,18 +413,9 @@ abstract class OAuth
                     $encryptedRefreshToken,
                     $expiresAt,
                     $userData['avatar'] ?? null,
-                    $userData['email_verified'] ? 1 : 0,
-                    $accountDataJson,
-                    // ON DUPLICATE KEY UPDATE values
-                    $encryptedAccessToken,
-                    $encryptedRefreshToken,
-                    $expiresAt,
-                    $userData['name'],
-                    $userData['avatar'] ?? null,
-                    $userData['email_verified'] ? 1 : 0,
-                    $accountDataJson
+                    $scopes
                 ],
-                'issssssssisssssss'
+                'isssssssss'
             );
 
             // 📝 Log activity
@@ -453,7 +445,7 @@ abstract class OAuth
     {
         try {
             $result = Database::fetchOne(
-                "SELECT userID FROM tblUserLinkedAccounts WHERE provider = ? AND providerUserID = ?",
+                "SELECT userID FROM tblOAuthAccounts WHERE provider = ? AND providerUserID = ?",
                 [$this->providerName, $providerUserID],
                 'ss'
             );
