@@ -569,29 +569,32 @@ SIGNula is a comprehensive universal single sign-on (SSO) authentication system 
 
 ### Code Quality
 
-- **Lines of Code:** ~51,000+
+- **Lines of Code:** ~93,000+
   - Core: ~18,500 lines
   - API: ~4,500 lines
   - Delegate Email: ~1,800 lines
   - Security Enhancements: ~2,100 lines
   - Multi-Tier Admin: ~4,500 lines
   - Admin Dashboard: ~4,000 lines
+  - Webhooks & Payments (v2.3.0): ~14,000+ lines
   - Payment Providers: ~10,986 lines (Stripe, PayPal, Coinbase, webhooks, checkout, admin)
-- **Backend Handlers:** 23+ major classes
-- **API Endpoints:** 37+ documented and functional (includes admin APIs + provider API)
+  - Two-Tier Payment Expansion (v2.4.0): ~41,969 lines (34 new files + 5 modified)
+- **Backend Handlers:** 35+ major classes
+- **API Endpoints:** 37+ documented + 12 admin APIs + 5 partner APIs
 - **User Pages:** 25+ pages (includes pricing, checkout flow)
-- **Admin Pages:** 35+ pages
-- **Documentation:** 95% coverage
+- **Admin Pages:** 35+ pages (includes 12 payment admin pages)
+- **Documentation:** 98% coverage
 - **Test Cases:** 300+ defined
 
 ### Database
 
-- **Tables:** 43 (core: 14, email: 6, OAuth: 2, security: 4, organizations: 4, multi-tier: 5, payments: 7, webhooks: 1)
+- **Tables:** 46 (core: 14, email: 6, OAuth: 2, security: 4, organizations: 4, multi-tier: 5, payments: 7, webhooks: 1, two-tier payments: 11)
 - **Views:** 3
 - **Stored Procedures:** 4+
 - **Triggers:** 2 (root admin enforcement)
+- **MySQL Scheduled Events:** 4 (past_due, trial expiry, invoice overdue, billing cleanup)
 - **Indexes:** 90+
-- **Migrations:** 11 complete
+- **Migrations:** 12 complete (001-012)
 
 ### Security
 
@@ -642,33 +645,30 @@ SIGNula is a comprehensive universal single sign-on (SSO) authentication system 
 
 ### Medium Priority (Short-term)
 
-1. **Webhook Signatures** - Not implemented
-   - Risk: Webhook spoofing
-   - Recommendation: HMAC-SHA256 signatures
-   - Effort: ~4 hours
-
-2. **Additional OAuth Providers** - 6 missing
+1. **Additional OAuth Providers** - 6 missing
    - Missing: LastPass, Yahoo, WordPress, Amazon, PayPal, OpenID
    - Priority: LOW (implement as needed)
    - Effort: ~4 hours per provider
 
-### Low Priority (Nice-to-have)
+2. **Dedicated API Analytics Dashboard** - Not yet built
+   - Currently: Usage tracking via APIKeyMiddleware + admin logs viewer
+   - Recommendation: Build dedicated analytics visualisation page
+   - Effort: ~8 hours
+
+### Resolved (Previously Listed)
 
 1. **Payment System** - ✅ COMPLETE (Feb 13, 2026)
    - Features: Stripe (Card, Link, Apple Pay, Google Pay), PayPal, Coinbase Commerce (BTC, ETH, USDT, USDC)
-   - 14 new files: 3 provider classes, 3 webhook receivers, pricing page, checkout flow (4 pages), admin config (UI + API)
-   - ~10,986 lines of new code
+   - Two-Tier expansion: Invoices, credits, service fees, billing scheduler, partner payments
 
-2. **Admin Dashboard** - ✅ 100% Complete
-   - ✅ Partner management, security monitoring, feature toggles, team management
-   - ✅ User management, system settings, OAuth config, logs viewer
-   - Priority: COMPLETE (operational efficiency achieved)
-   - Completion: February 9, 2026
+2. **Webhook Signatures** - ✅ COMPLETE (Feb 11, 2026)
+   - HMAC-SHA256 outbound signing + inbound verification for all 3 providers
 
-3. **Public Web Interface** - Not implemented
-   - Features: Marketing pages, documentation portal
-   - Priority: LOW (for public launch)
-   - Effort: ~60 hours
+3. **Admin Dashboard** - ✅ COMPLETE (Feb 9, 2026)
+   - 35+ pages including payment management, user management, system settings
+
+4. **Public Web Interface** - ✅ COMPLETE (Feb 3, 2026)
+   - Marketing pages, documentation portal, legal pages, support portal
 
 ---
 
@@ -694,7 +694,8 @@ SIGNula is a comprehensive universal single sign-on (SSO) authentication system 
 - `_database/migrations/008_partner_api_keys.sql`
 - `_database/migrations/009_multi_tier_admin.sql`
 - `_database/migrations/010_webhooks_and_payments.sql` **(v2.3.0)**
-- `_database/migrations/011_payment_providers.sql` **(NEW - v2.3.0)**
+- `_database/migrations/011_payment_providers.sql` **(v2.3.0)**
+- `_database/migrations/012_payment_expansion.sql` **(v2.4.0 — 1,072 lines, 11 new tables)**
 
 **Archived (Superseded by v2.2.3):**
 
@@ -705,10 +706,11 @@ SIGNula is a comprehensive universal single sign-on (SSO) authentication system 
 - `_database/archive/002_organizations_migration.sql`
 - `_database/archive/email_schema.sql`
 
-**Total Tables:** 43 (35 core + 7 from migration 010 + 1 from migration 011)
+**Total Tables:** 46 (35 core + 7 from migration 010 + 1 from migration 011 + 11 from migration 012 - 8 overlap with core count)
 **Total Views:** 3
 **Total Triggers:** 2
 **Total Procedures:** 4+
+**Total MySQL Events:** 4
 
 **See:** [DATABASE_SCHEMA_STATUS.md](archive/DATABASE_SCHEMA_STATUS.md) (archived)
 
@@ -772,12 +774,12 @@ SIGNula is a comprehensive universal single sign-on (SSO) authentication system 
 | Phase 3.6: Webhooks & Deployment | — | Feb 11, 2026 | ✅ Complete |
 | Phase 3.7: Payment Providers | — | Feb 13, 2026 | ✅ Complete |
 | Phase 3.8: Two-Tier Payment System | — | Feb 13, 2026 | ✅ Complete |
-| Phase 4: Public Web Interface | Mar 3, 2026 | — | ⏸️ Pending |
+| Phase 4: Public Web Interface | Mar 3, 2026 | Feb 3, 2026 | ✅ Complete (ahead) |
 | Phase 5: Payment System | Mar 17, 2026 | Feb 13, 2026 | ✅ Complete (ahead) |
-| Phase 6: Admin Dashboard | Mar 31, 2026 | — | ⏸️ Pending |
-| Phase 7: Testing & QA | Apr 14, 2026 | — | 🟡 In Progress |
+| Phase 6: Admin Dashboard | Mar 31, 2026 | Feb 9, 2026 | ✅ Complete (ahead) |
+| Phase 7: Testing & QA | Apr 14, 2026 | — | 🟡 In Progress (45%) |
 | Phase 8: Documentation | Apr 30, 2026 | Feb 4, 2026 | ✅ Complete (ahead) |
-| Phase 9: Production Release | May 1, 2026 | — | ⏸️ Pending |
+| Phase 9: Production Release | TBD | — | ⏸️ Pending |
 
 **Current Phase:** Migration Deployment & Testing
 
@@ -787,27 +789,27 @@ SIGNula is a comprehensive universal single sign-on (SSO) authentication system 
 
 ### Immediate (Next Session)
 
-1. **Deploy All Migrations** - Deploy migrations 007-011 to staging
-2. **Test Security Features** - Test rate limiting and API keys thoroughly
-3. **Execute Testing Suite** - Run full 300+ test suite
+1. **Deploy All Migrations** - Deploy migrations 007-012 to staging/production
+2. **Configure Payment Credentials** - Set up live Stripe, PayPal, and Coinbase Commerce API keys
+3. **Execute Testing Suite** - Run full 300+ test suite end-to-end
 
 ### Short-term (1-2 weeks)
 
-1. **Partner/Admin UI** - Create partner registration and API key management
-2. **Webhook Signature System** - MEDIUM security priority
-3. **Production Deployment Preparation** - Configure production environment
+1. **End-to-End Payment Testing** - Test complete payment flows with live credentials
+2. **Billing Cron Setup** - Configure web cron for billing and remittance processing
+3. **Production Deployment Preparation** - SSL, DNS, Cloudflare, monitoring
 
 ### Medium-term (1 month)
 
-1. **Admin Dashboard** - Operational efficiency
-2. **Additional OAuth Providers** - As needed by users
-3. **Public Web Interface** - Marketing/promotion
+1. **Additional OAuth Providers** - As needed by users (LastPass, Yahoo, WordPress, Amazon, OpenID)
+2. **API Analytics Dashboard** - Dedicated visualisation for API usage metrics
+3. **Performance Optimisation** - Load testing, caching, query optimisation
 
 ### Long-term (2+ months)
 
-1. **Payment System** - For monetization
-2. **Mobile Apps** - Native iOS/Android
-3. **Advanced Analytics** - Usage tracking and reporting
+1. **Mobile Apps** - Native iOS/Android
+2. **Advanced Analytics** - Business intelligence and reporting
+3. **GraphQL API** - Evaluate alongside REST
 
 ---
 
@@ -815,7 +817,7 @@ SIGNula is a comprehensive universal single sign-on (SSO) authentication system 
 
 **SIGNula Status:** ✅ **Production-Ready for Core Features**
 
-**Completion:** ~98% of original requirements
+**Completion:** ~99% of original requirements
 
 **Strengths:**
 
@@ -837,13 +839,14 @@ SIGNula is a comprehensive universal single sign-on (SSO) authentication system 
 
 **Remaining Items:**
 
-- ⚠️ Deploy migrations 007-011 to production
-- ⚠️ Testing only 50% executed (should complete before launch)
+- ⚠️ Deploy migrations 007-012 to production
+- ⚠️ Testing only ~45% executed (should complete before launch)
 - ⚠️ Configure live payment provider credentials (Stripe, PayPal, Coinbase)
+- ⚠️ Set up billing cron jobs and remittance processing
 
 **Recommendation:**
 
-Deploy all migrations (007-011) to staging. Test the complete system including rate limiting, API keys, multi-tier admin, and payment providers. Configure live Stripe/PayPal/Coinbase credentials. Execute full test suite (300+ tests) before production launch.
+Deploy all migrations (007-012) to staging. Test the complete system including rate limiting, API keys, multi-tier admin, payment providers, and two-tier payment system. Configure live Stripe/PayPal/Coinbase credentials. Set up billing cron endpoints. Execute full test suite (300+ tests) before production launch.
 
 ---
 

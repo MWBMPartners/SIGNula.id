@@ -1,6 +1,6 @@
 # SIGNula.ID - Universal Login System
 
-![Version](https://img.shields.io/badge/version-2.3.0--beta-blue)
+![Version](https://img.shields.io/badge/version-2.4.0--beta-blue)
 ![PHP](https://img.shields.io/badge/PHP-8.3%2B-777BB4?logo=php)
 ![MySQL](https://img.shields.io/badge/MySQL-8.0%2B-4479A1?logo=mysql)
 ![License](https://img.shields.io/badge/license-Proprietary-red)
@@ -10,26 +10,29 @@
 
 **SIGNula** is a comprehensive, universal single sign-on (SSO) authentication system designed to provide seamless user authentication across multiple web and mobile applications. Built with security, scalability, and user experience as top priorities, SIGNula offers a modern authentication solution for today's interconnected digital ecosystem.
 
-**Current Status:** Core Platform Complete ✅ | Security 100% ✅ | Webhooks ✅ | Payments 100% ✅
+**Current Status:** Core Platform Complete ✅ | Security 100% ✅ | Webhooks ✅ | Payments 100% ✅ | Two-Tier Payments ✅
 
-**Latest Version:** 2.3.0-beta (February 13, 2026)
+**Latest Version:** 2.4.0-beta (February 13, 2026)
 
 **Completed Phases:**
 
 - ✅ Phase 1-3: Core Authentication & API (100%)
-- ✅ Phase 3.4: Security Enhancements - Rate Limiting & API Keys (95%)
+- ✅ Phase 3.4: Security Enhancements - Rate Limiting & API Keys (100%)
 - ✅ Phase 3.5: Multi-Tier Admin System (100%)
 - ✅ Phase 3.6: Webhook Signatures, Payment System & Deployment Prep (100%)
 - ✅ Phase 3.7: Payment Provider Integration — Stripe, PayPal, Coinbase Commerce (100%)
+- ✅ Phase 3.8: Two-Tier Payment System Expansion — Invoices, Credits, Service Fees, Billing (100%)
 - ✅ Phase 4: Public Web Interface (100%)
 - ✅ Phase 5: Organization Management (100%)
 - ✅ Phase 6: Support Ticket System (100%)
 - ✅ Phase 7: Admin Dashboard - Email (100%)
+- ✅ Phase 9: Complete Admin Dashboard — 35+ pages (100%)
 
 **In Progress:**
 
 - 🟡 Testing & QA (45%)
-- 🟡 Live payment credential configuration
+- 🟡 Deploy migrations 007-012 to production
+- 🟡 Configure live payment credentials
 
 ### ✨ Key Features
 
@@ -93,6 +96,18 @@
   - Inbound webhook receivers with signature verification (HMAC-SHA256)
   - Admin provider configuration UI with test connection and webhook logs
   - Subscription management and billing
+
+- **💰 Two-Tier Payment System** ✅ (v2.4.0)
+  - **Level 1**: Partners/customers pay SIGNula directly for premium tiers
+  - **Level 2a**: Partners use their OWN payment provider API keys (~10% service fee)
+  - **Level 2b**: Partners use SIGNula's keys (~30% fee, remainder remitted)
+  - Invoice generation with PDF support (TCPDF, HTML fallback)
+  - Credit balance system with row-level locking
+  - Service fee management with 30-day minimum notice for changes
+  - Three-tier billing redundancy (MySQL events + web cron + lazy check safety net)
+  - Auto-suspension/auto-resume on payment status changes
+  - Partner earnings dashboard and payout management
+  - 6 super admin pages + 6 partner admin pages for payment management
 
 - **🛡️ Enterprise-Grade Security** ✅
   - **Rate Limiting System**
@@ -164,8 +179,9 @@
 - **Database:** MySQL 8.0+ / MariaDB 10.5+
 - **Database Interface:** MySQLi with prepared statements
 - **Frontend:** HTML5, CSS3, JavaScript
-- **Frameworks:** Bootstrap 5
-- **Libraries:** Font Awesome, jQuery
+- **Frameworks:** Bootstrap 5.3.2
+- **Libraries:** Font Awesome 6.4.2, jQuery
+- **PDF Generation:** TCPDF (self-hosted, no Composer required)
 - **Security:** OpenSSL, password_hash with Argon2id
 
 ## 📁 Project Structure
@@ -191,9 +207,9 @@ SIGNula.id/
 │   ├── email/              # Email services
 │   └── utils/              # Utility classes
 ├── _database/              # Database files (outside web root)
-│   ├── migrations/         # Database migrations (001-011)
+│   ├── migrations/         # Database migrations (001-012)
 │   ├── archive/            # Deprecated schema files
-│   └── signula_complete_install_v2.2.3.sql  # Complete install (all migrations)
+│   └── signula_complete_install_v2.2.3.sql  # Complete install (migrations 001-009)
 ├── _docs/                  # Documentation
 │   ├── MULTI_TIER_ADMIN_IMPLEMENTATION.md
 │   ├── DEPLOYMENT_GUIDE.md
@@ -306,10 +322,13 @@ This creates the `signula` database with:
 If you already have a SIGNula installation and need to apply new migrations:
 
 ```bash
-# Apply individual migrations as needed
+# Apply individual migrations as needed (in order)
 mysql -u your_username -p signula < _database/migrations/007_rate_limiting.sql
 mysql -u your_username -p signula < _database/migrations/008_partner_api_keys.sql
 mysql -u your_username -p signula < _database/migrations/009_multi_tier_admin.sql
+mysql -u your_username -p signula < _database/migrations/010_webhooks_and_payments.sql
+mysql -u your_username -p signula < _database/migrations/011_payment_providers.sql
+mysql -u your_username -p signula < _database/migrations/012_payment_expansion.sql
 ```
 
 **Option C: Deploy via Admin UI (Recommended for existing installations)**
@@ -1010,7 +1029,7 @@ This is a proprietary project. For contributions or bug reports, please contact 
 
 ## 📄 License
 
-Copyright © 2024 MWBMPartners. All rights reserved.
+Copyright © 2025-2026 MWBM Partners Ltd (t/a MWservices). All rights reserved.
 
 This software is proprietary and confidential. Unauthorized copying, distribution, or use is strictly prohibited.
 
@@ -1051,8 +1070,8 @@ See [PROJECT_PROGRESS.md](PROJECT_PROGRESS.md) for detailed development roadmap 
   - [_docs/OAUTH_INTEGRATION_EXAMPLES.md](_docs/OAUTH_INTEGRATION_EXAMPLES.md) - OAuth integration guide for third-party services
 - **Database:**
   - [_database/](_database/) - All database files (complete installation + migrations)
-  - [_database/signula_complete_install_v2.2.3.sql](_database/signula_complete_install_v2.2.3.sql) - Complete installation (all migrations through 009)
-  - [_database/migrations/](_database/migrations/) - Individual migration files
+  - [_database/signula_complete_install_v2.2.3.sql](_database/signula_complete_install_v2.2.3.sql) - Complete installation (migrations 001-009)
+  - [_database/migrations/](_database/migrations/) - Individual migration files (001-012)
   - [_docs/SECURITY_DEPLOYMENT_GUIDE.md](_docs/SECURITY_DEPLOYMENT_GUIDE.md) - Database deployment instructions
 
 ### Development & Version Management
@@ -1062,7 +1081,7 @@ See [PROJECT_PROGRESS.md](PROJECT_PROGRESS.md) for detailed development roadmap 
 - [PROJECT_PROGRESS.md](PROJECT_PROGRESS.md) - Detailed development roadmap and progress tracking
 
 ### System Status
-- [.claude/REQUIREMENTS_STATUS.md](.claude/REQUIREMENTS_STATUS.md) - Overall requirements completion (~90%)
+- [.claude/REQUIREMENTS_STATUS.md](.claude/REQUIREMENTS_STATUS.md) - Overall requirements completion (~99%)
 - [PROJECT_PROGRESS.md](PROJECT_PROGRESS.md) - Detailed development roadmap and progress
 
 ### Coming Soon

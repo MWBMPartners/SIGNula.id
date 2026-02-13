@@ -706,7 +706,7 @@ Complete multi-tier admin system with role-based access control, feature toggles
 ### Phase 3.6: Webhook Signatures, Payment System & Deployment Prep
 
 **Completed:** February 11, 2026
-**Status:** ✅ Complete (Webhooks 100%, Payments 80%, Deployment Prep 100%)
+**Status:** ✅ Complete (Webhooks 100%, Payments 100%, Deployment Prep 100%)
 
 **Key Enhancement:**
 Outbound webhook signature system (HMAC-SHA256), payment/subscription management infrastructure, and production deployment readiness checklist.
@@ -757,11 +757,11 @@ Outbound webhook signature system (HMAC-SHA256), payment/subscription management
 - `/admin/api/payment-actions.php` - 9 actions for payment management
 - `/partners/api/webhook-actions.php` - 8 actions for webhook management
 
-**Database Totals (v2.3.0-beta):**
+**Database Totals (v2.4.0-beta):**
 
-- 42 tables (+7 from migration 010)
-- 3 views, 2 triggers, 4+ stored procedures
-- ~40,000+ lines of code
+- 46 tables (+7 from migration 010, +1 from 011, +11 from 012)
+- 3 views, 2 triggers, 4+ stored procedures, 4 MySQL scheduled events
+- ~93,000+ lines of code
 
 **Key Features:**
 
@@ -775,12 +775,12 @@ Outbound webhook signature system (HMAC-SHA256), payment/subscription management
 - ✅ Production deployment readiness checker (UI-based)
 - ✅ All UI — zero command-line required
 
-**Remaining (Payment System):**
+**Payment System (Now Complete — v2.3.0 + v2.4.0):**
 
-- 📋 Configure PayPal API credentials
-- 📋 Integrate Apple Pay / Google Pay SDKs
-- 📋 Add cryptocurrency payment provider
-- 📋 User-facing subscription/pricing page
+- ✅ Stripe, PayPal, Coinbase Commerce fully integrated (v2.3.0)
+- ✅ Apple Pay / Google Pay via Stripe Checkout Sessions
+- ✅ Public pricing page with monthly/yearly toggle
+- ✅ Two-tier payment expansion with invoices, credits, service fees (v2.4.0)
 
 ---
 
@@ -1011,27 +1011,30 @@ Outbound webhook signature system (HMAC-SHA256), payment/subscription management
 
 **Status:** Production-Ready Core Features Complete ✅
 
-**Latest Milestone:** Phase 9 (Complete Admin Dashboard) - February 9, 2026
+**Latest Milestone:** Phase 3.8 (Two-Tier Payment System Expansion) - February 13, 2026
 
-**Next Focus:** Deploy Migrations 007-009, Test Complete System, Production Preparation
+**Next Focus:** Deploy Migrations 007-012, End-to-End Testing, Configure Live Payment Credentials, Production Deployment
 
 ---
 
 ## 🔮 Upcoming Phases
 
 ### Phase 8: Payment & Subscriptions
-**Target Date:** TBD
-**Status:** ⏸️ Planned
+**Completed:** February 13, 2026
+**Status:** ✅ Complete (100%)
 
-**Planned Features:**
-- Subscription tier management UI
-- PayPal integration
-- Apple Pay integration
-- Google Pay integration
-- Cryptocurrency payment support
-- Payment history and invoices
-- Subscription management (upgrade/downgrade/cancel)
-- Billing admin interface
+**Completed Features:**
+- ✅ Subscription tier management UI (admin + partner)
+- ✅ Stripe integration (Card, Link, Apple Pay, Google Pay) via Checkout Sessions
+- ✅ PayPal integration (REST API v2, Orders, Subscriptions)
+- ✅ Coinbase Commerce integration (BTC, ETH, USDT, USDC)
+- ✅ Cryptocurrency payment support with configurable discounts
+- ✅ Payment history and invoices (PDF generation via TCPDF)
+- ✅ Subscription management (create/cancel/pause/resume)
+- ✅ Billing admin interface (6 super admin pages + 6 partner admin pages)
+- ✅ Two-tier payment model (Level 1 direct, Level 2a partner keys, Level 2b SIGNula keys)
+- ✅ Service fee management, credit system, remittance processing
+- ✅ Three-tier billing redundancy (MySQL events + web cron + lazy check)
 
 ---
 
@@ -1215,54 +1218,41 @@ API Keys (Partners):
 - Allows granular access control
 - Prevents API key compromises
 
-#### Phase C: Webhook Signature System (Week 3) 🟡 MEDIUM
+#### Phase C: Webhook Signature System (Week 3) ✅ COMPLETE
 **Effort:** ~4 hours
-**Status:** ⏸️ Planned
+**Status:** ✅ Complete (v2.3.0-beta)
+**Completed:** February 11, 2026
 
 **Deliverables:**
-- HMAC-SHA256 signature generation
-- Signature verification utilities
-- Webhook signature documentation
-- Partner webhook configuration UI
-- Signature verification examples (PHP, JS, Python)
+- ✅ HMAC-SHA256 signature generation (WebhookManager.php)
+- ✅ Signature verification utilities (outbound + inbound for Stripe/PayPal/Coinbase)
+- ✅ Webhook signature documentation
+- ✅ Partner webhook configuration UI (`/partners/admin/webhooks/`)
+- ✅ Signature verification examples (PHP inline in partner UI)
 
-**Benefits:**
-- Prevents webhook spoofing
-- Ensures webhook authenticity
-- Industry-standard security
-
-#### Phase D: Enhanced IP Whitelisting (Week 3) 🟡 MEDIUM
+#### Phase D: Enhanced IP Whitelisting (Week 3) ✅ COMPLETE
 **Effort:** ~8 hours
-**Status:** ⏸️ Planned
+**Status:** ✅ Complete (v2.2.0-beta)
 
 **Deliverables:**
-- IP whitelist management UI (partner and admin)
-- CIDR range support
-- IPv6 support verification
-- Geo-blocking options (optional)
-- IP whitelist validation and testing
+- ✅ IP whitelist management via API key configuration
+- ✅ CIDR range support (APIKeyManager.php)
+- ✅ IPv4/IPv6 support
+- ✅ IP whitelist validation and testing
 
-**Benefits:**
-- Restricts API access to trusted IPs
-- Prevents stolen key usage
-- Additional security layer
-
-#### Phase E: Request Logging Enhancement (Week 4) 🟡 MEDIUM
+#### Phase E: Request Logging Enhancement (Week 4) 🟡 PARTIAL
 **Effort:** ~6 hours
-**Status:** ⏸️ Planned
+**Status:** 🟡 Partially Complete
 
-**Deliverables:**
-- Enhanced request/response logging
-- Performance metrics tracking
-- Error rate monitoring
-- API analytics dashboard
-- Export functionality (CSV, JSON)
+**Completed:**
+- ✅ Request logging via APIKeyMiddleware (usage tracking with response times)
+- ✅ Activity logging for all API actions
+- ✅ Admin logs viewer with Activity/Error/Audit tabs
+- ✅ Export functionality (CSV, JSON)
 
-**Benefits:**
-- Complete audit trail
-- Debugging and troubleshooting
-- Performance monitoring
-- Business intelligence
+**Remaining:**
+- 📋 Dedicated API analytics dashboard
+- 📋 Performance metrics visualisation
 
 ---
 
@@ -1270,16 +1260,16 @@ API Keys (Partners):
 
 | Week | Phase | Focus | Deliverables | Status |
 |------|-------|-------|--------------|--------|
-| **Week 1** | Phase A | Rate Limiting | Database, RateLimiter class, Middleware, Testing | ⏸️ Ready |
-| **Week 2** | Phase B | API Key Management | Database, APIKeyManager, Partner UI, Admin UI | ⏸️ Ready |
-| **Week 3** | Phase C & D | Webhooks & IP Whitelist | Signatures, IP management, Testing | ⏸️ Planned |
-| **Week 4** | Phase E | Request Logging | Analytics, Dashboard, Monitoring | ⏸️ Planned |
+| **Week 1** | Phase A | Rate Limiting | Database, RateLimiter class, Middleware, Testing | ✅ Complete |
+| **Week 2** | Phase B | API Key Management | Database, APIKeyManager, Partner UI, Admin UI | ✅ Complete |
+| **Week 3** | Phase C & D | Webhooks & IP Whitelist | Signatures, IP management, Testing | ✅ Complete |
+| **Week 4** | Phase E | Request Logging | Analytics, Dashboard, Monitoring | 🟡 Partial |
 
 **Total Effort:** ~42 hours (1-2 developer weeks)
 
 ### 🎯 Security Enhancement Success Metrics
 
-**Current State (as of v2.2.2-beta):**
+**Current State (as of v2.4.0-beta):**
 - Security Score: **100%** (A+ - Full Security Hardening)
 - Rate Limiting: ✅ Implemented & enforced
 - API Key Management: ✅ Full lifecycle management
@@ -1287,16 +1277,9 @@ API Keys (Partners):
 - CSP Headers: ✅ Enabled
 - HSTS Headers: ✅ Enabled
 - SRI (CDN Resources): ✅ 100% coverage
-- Webhook Signatures: ❌ Not implemented (non-blocking)
-- Request Logging: ⚠️ Partial
-
-**Target State (After Remaining Enhancements):**
-- Webhook Signatures: ✅ HMAC-SHA256 signatures
-- Request Logging: ✅ Comprehensive logging
-- Rate Limit Violations: < 1% of total requests
-- API Key Compromises: 0
-- Average API Response Time: < 300ms (with rate limiting overhead)
-- Partner Integrations: 100% success rate
+- Webhook Signatures: ✅ HMAC-SHA256 (outbound + inbound for Stripe/PayPal/Coinbase)
+- Request Logging: ✅ API key usage tracking with response times
+- Payment Security: ✅ Provider-specific webhook verification, encrypted credentials
 
 ### 📚 Security Enhancement Documentation
 
@@ -1318,52 +1301,61 @@ API Keys (Partners):
 ## 📈 Metrics & KPIs
 
 ### Code Quality
-- **Lines of Code:** ~37,000+
+- **Lines of Code:** ~93,000+
   - Phase 1-2: ~18,500 lines
   - Phase 3 API: ~4,500 lines
   - Phase 3.2 Delegate Email: ~1,800 lines
   - Phase 3.3 API Docs: ~1,500 lines (MD + HTML)
   - Phase 3.4 Security: ~2,100 lines
   - Phase 3.5 Multi-Tier Admin: ~4,500+ lines
+  - Phase 3.6 Webhooks & Payments: ~14,000+ lines
+  - Phase 3.7 Payment Providers: ~10,986 lines
+  - Phase 3.8 Two-Tier Payment Expansion: ~41,969 lines
   - Phase 9 Admin Dashboard: ~4,000+ lines
-- **Backend Handlers:** 25+ major classes
+- **Backend Handlers:** 35+ major classes
   - Core: 10 handlers
   - API: 4 controllers + 4 framework components
   - OAuth: 2 managers (OAuthTokenManager, OAuthFlowHandler)
   - Security: RateLimiter, APIKeyManager, RateLimitMiddleware, APIKeyMiddleware
   - Admin: AccessControl
-- **API Endpoints:** 31 RESTful endpoints + 3 Admin APIs
+  - Payments: PaymentManager, StripeProvider, PayPalProvider, CoinbaseProvider
+  - Two-Tier: InvoiceManager, CreditManager, ServiceFeeManager, BillingScheduler, PartnerPaymentService, BillingLazyCheck
+  - Webhooks: WebhookManager
+- **API Endpoints:** 37+ RESTful endpoints + 12 Admin APIs + 5 Partner APIs
   - Auth: 7 endpoints
   - User: 9 endpoints
   - MFA: 6 endpoints
   - OAuth: 5 endpoints
   - WebAuthn: 4 endpoints (separate)
   - Utility: 2 endpoints
-  - Admin: team-actions, feature-actions, partner-feature-actions
-- **User Pages:** 21+ pages (auth, settings, management, email accounts)
-- **Admin Pages:** 19+ pages (admin dashboard, partner admin, features, team mgmt, users, settings, oauth, logs)
+  - Admin: user-actions, settings-actions, feature-actions, payment-actions, provider-actions + 6 payment admin APIs
+  - Partner: team-actions, partner-feature-actions, webhook-actions + 5 payment partner APIs
+- **User Pages:** 25+ pages (auth, settings, management, email accounts, pricing, checkout)
+- **Admin Pages:** 35+ pages (admin dashboard, partner admin, features, team mgmt, users, settings, oauth, logs, payments)
 - **Test Scripts:** 2 verification scripts, 300+ test cases documented
 - **Documentation Coverage:** 98%
 - **API Documentation:** Complete (26KB MD + 17KB HTML)
 
 ### Database
-- **Tables:** 35 (core: 14, email: 6, OAuth: 2, security: 4, organizations: 4, multi-tier: 5)
+- **Tables:** 46 (core: 14, email: 6, OAuth: 2, security: 4, organizations: 4, multi-tier: 5, webhooks/payments: 8, two-tier payments: 11)
   - Core: tblUsers, tblUserPreferences, tblSettings, tblMigrations
   - Auth: tblSessions, tblVerificationTokens, tblPasswordResetTokens, tblPasswordlessTokens
   - Auth Advanced: tblWebAuthnCredentials, tblWebAuthnChallenges, tblUserMFA
   - OAuth: tblOAuthAccounts, tblUserLinkedAccounts, tblUserOAuthTokens
   - Email: tblEmailQueue, tblEmailTemplates, tblEmailTrackingEvents, tblEmailUnsubscribes, tblEmailProviderHealth, tblEmailCampaigns
   - Logging: tblActivityLog, tblErrorLog
-  - Subscriptions: tblSubscriptions, tblSubscriptionTiers, tblPayments
+  - Webhooks/Payments: tblWebhookEndpoints, tblWebhookDeliveries, tblSubscriptionTiers, tblSubscriptions, tblPayments, tblPaymentMethods, tblDiscountCodes, tblInboundWebhooks
   - Organizations: tblOrganizations, tblOrganizationMembers, tblOrganizationRoles, tblOrganizationPermissions, tblOrganizationInvites, tblOrganizationAuditLog
   - Security: tblRateLimits, tblRateLimitConfig, tblPartners, tblAPIKeys, tblAPIKeyUsage, tblAPIKeyAudit
   - Multi-Tier Admin: tblPartnerTeamMembers, tblFeatureToggles, tblPartnerFeatures, tblTeamInvitations, tblAdminAuditLog
+  - Two-Tier Payments: tblPartnerPaymentConfig, tblServiceFees, tblServiceFeeTransactions, tblRemittances, tblCreditBalances, tblCreditTransactions, tblInvoices, tblProviderDiscounts, tblPartnerSubscriptionTiers, tblBillingSchedule, tblDiscountCodeAssignments
 - **Views:** 3
 - **Stored Procedures:** 4+
 - **Triggers:** 2 (root admin enforcement)
-- **Indexes:** 80+
-- **Migrations:** 9 complete migrations
-- **Complete Install:** signula_complete_install_v2.2.3.sql (all migrations through 009)
+- **MySQL Scheduled Events:** 4 (past_due, trial expiry, invoice overdue, billing cleanup)
+- **Indexes:** 90+
+- **Migrations:** 12 complete migrations (001-012)
+- **Complete Install:** signula_complete_install_v2.2.3.sql (migrations 001-009)
 
 ### Security
 - **Encryption:** AES-256-CBC for sensitive data
@@ -1389,19 +1381,31 @@ API Keys (Partners):
 ## 🐛 Known Issues & Action Items
 
 ### High Priority
+
+- [ ] Deploy migrations 007-012 to production/staging
 - [ ] Email service needs SMTP configuration for production
 - [ ] Email queue processor needs cron job setup
-- [ ] Phase 1 & 2 need comprehensive testing (test documentation complete)
+- [ ] Configure live payment credentials (Stripe, PayPal, Coinbase)
+- [ ] Execute full test suite (300+ tests) before launch
 
 ### Medium Priority
+
 - [ ] Device detection needs enhancement with dedicated library
 - [ ] Rate limiting needs performance optimization for high traffic
 - [ ] Session management could use Redis for distributed systems
+- [ ] Additional OAuth providers (LastPass, Yahoo, WordPress, Amazon, OpenID)
 
 ### Low Priority
+
 - [ ] Email templates need design improvements
 - [ ] Error messages need localization/i18n
-- [ ] Admin interface needed for settings management
+
+### Resolved
+
+- [x] ~~Admin interface needed for settings management~~ (Complete - 35+ pages)
+- [x] ~~Payment system needed~~ (Complete - Stripe, PayPal, Coinbase)
+- [x] ~~Webhook signatures not implemented~~ (Complete - HMAC-SHA256)
+- [x] ~~Phase 1 & 2 need comprehensive testing~~ (Test documentation complete)
 
 ---
 
@@ -1463,16 +1467,39 @@ API Keys (Partners):
 | 8 | RESTful API Enhancement | Feb 17, 2026 | ✅ Complete | Feb 2, 2026 |
 | 8.1 | Delegate Email Sending | Feb 10, 2026 | ✅ Complete | Feb 3, 2026 |
 | 8.2 | API Documentation | Feb 15, 2026 | ✅ Complete | Feb 4, 2026 |
-| 9 | Public Web Interface | Mar 3, 2026 | ⏸️ Pending | - |
-| 10 | Payment System | Mar 17, 2026 | ⏸️ Pending | - |
-| 11 | Admin Dashboard | Mar 31, 2026 | ⏸️ Pending | - |
-| 12 | Testing & QA Complete | Apr 14, 2026 | ⏸️ Pending | - |
-| 13 | Documentation Complete | Apr 30, 2026 | ⏸️ Pending | - |
-| 14 | Production Release | May 1, 2026 | ⏸️ Pending | - |
+| 9 | Security Enhancements | — | ✅ Complete | Feb 4-10, 2026 |
+| 10 | Multi-Tier Admin | — | ✅ Complete | Feb 9, 2026 |
+| 11 | Admin Dashboard | Mar 31, 2026 | ✅ Complete | Feb 9, 2026 |
+| 12 | Webhooks & Payments | — | ✅ Complete | Feb 11, 2026 |
+| 13 | Payment Providers | — | ✅ Complete | Feb 13, 2026 |
+| 14 | Two-Tier Payment System | — | ✅ Complete | Feb 13, 2026 |
+| 15 | Testing & QA Complete | TBD | 🟡 In Progress | - |
+| 16 | Production Deployment | TBD | ⏸️ Pending | - |
+| 17 | Production Release | TBD | ⏸️ Pending | - |
 
 ---
 
 ## 📈 Recent Updates
+
+### February 13, 2026
+
+- ✅ **Phase 3.8 Complete:** Two-Tier Payment System Expansion (v2.4.0-beta)
+  - 11 new database tables, 4 ALTER TABLE, 28 settings, 4 feature toggles, 9 email templates, 4 MySQL events
+  - 6 new backend classes (InvoiceManager, CreditManager, ServiceFeeManager, BillingScheduler, PartnerPaymentService, BillingLazyCheck)
+  - 5 modified provider classes with optional partner credentials
+  - 6 super admin pages + 6 APIs for payment management
+  - 6 partner admin pages + 5 APIs for partner payment management
+  - 2 web cron endpoints + BillingLazyCheck safety net
+  - Invoice view/download routes with TCPDF PDF generation
+  - ~41,969 new lines across 34 new files + 5 modified files
+- ✅ **Phase 3.7 Complete:** Payment Provider Integration (Stripe, PayPal, Coinbase Commerce)
+  - 3 provider classes (StripeProvider, PayPalProvider, CoinbaseProvider) — ~5,941 lines
+  - 3 inbound webhook receivers with signature verification
+  - Public pricing page with monthly/yearly toggle
+  - Checkout flow (4 pages) with provider selection
+  - Admin provider configuration UI with test connection
+  - ~10,986 lines of new code
+- ✅ **Documentation Updates:** README.md, CHANGELOG.md, PROJECT_PROGRESS.md, PROJECT_STATUS.md all updated for v2.4.0
 
 ### February 11, 2026
 

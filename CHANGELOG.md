@@ -90,7 +90,8 @@ This release adds a comprehensive two-tier payment system enabling partners to c
 
 - **~41,969 new lines of code** across 34 new files
 - **5 modified files** (provider classes + PaymentManager + AccessControl)
-- **46 database tables** total (11 new + 35 existing)
+- **46 database tables** total (11 new from migration 012 + 35 core from v2.2.3 complete install)
+- **3 views**, **2 triggers**, **4 MySQL scheduled events**
 - All files pass PHP lint validation
 
 ---
