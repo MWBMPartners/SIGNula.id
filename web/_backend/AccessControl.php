@@ -242,6 +242,90 @@ class AccessControl {
         return $limits[$tier] ?? 5;
     }
 
+    // ========================================================================
+    // 💰 PAYMENT & FINANCE ROLE CHECKS (v2.4.0)
+    // ========================================================================
+
+    /**
+     * 💰 Check if user can manage partner payment settings
+     *
+     * Returns true if the user has finance role or higher for the specified partner,
+     * OR if the user is a super admin.
+     *
+     * Payment management includes: configuring payment providers, managing API keys,
+     * creating subscription tiers, managing discount codes, viewing transactions.
+     *
+     * @param int $partnerID Partner ID
+     * @return bool True if user can manage partner payments
+     *
+     * @since 2.4.0-beta
+     */
+    public function canManagePartnerPayments($partnerID) {
+        // 🔑 Super admins can manage all partner payments
+        if ($this->isSuperAdmin()) {
+            return true;
+        }
+
+        // 💼 Finance role or higher (finance=20, support=30, developer=40, admin=60, root-admin=80)
+        return $this->hasPartnerRole($partnerID, 'finance');
+    }
+
+    /**
+     * 📊 Check if user can view partner financial data
+     *
+     * Returns true if the user has finance role or higher for the specified partner,
+     * OR if the user is a super admin.
+     *
+     * Financial data includes: earnings reports, fee transactions, remittances,
+     * invoices, credit balances, payment history.
+     *
+     * @param int $partnerID Partner ID
+     * @return bool True if user can view partner financials
+     *
+     * @since 2.4.0-beta
+     */
+    public function canViewPartnerFinancials($partnerID) {
+        // 🔑 Super admins can view all financials
+        if ($this->isSuperAdmin()) {
+            return true;
+        }
+
+        // 💼 Finance role or higher has read access to financial data
+        return $this->hasPartnerRole($partnerID, 'finance');
+    }
+
+    /**
+     * 🔒 Require partner payment management access
+     *
+     * Dies with 403 if the user cannot manage partner payments.
+     *
+     * @param int $partnerID Partner ID
+     *
+     * @since 2.4.0-beta
+     */
+    public function requirePartnerPaymentAccess($partnerID) {
+        if (!$this->canManagePartnerPayments($partnerID)) {
+            http_response_code(403);
+            die('Insufficient permissions to manage partner payment settings');
+        }
+    }
+
+    /**
+     * 📊 Require partner financial data access
+     *
+     * Dies with 403 if the user cannot view partner financials.
+     *
+     * @param int $partnerID Partner ID
+     *
+     * @since 2.4.0-beta
+     */
+    public function requirePartnerFinancialAccess($partnerID) {
+        if (!$this->canViewPartnerFinancials($partnerID)) {
+            http_response_code(403);
+            die('Insufficient permissions to view partner financial data');
+        }
+    }
+
     /**
      * Get setting value
      */

@@ -342,6 +342,12 @@ $symbol = $currencySymbols[$currency] ?? $currency . ' ';
                     <i class="fas fa-ticket me-1"></i>Discounts
                 </button>
             </li>
+            <!-- 🔌 Provider config — links to dedicated page -->
+            <li class="nav-item ms-auto">
+                <a href="providers" class="nav-link text-decoration-none">
+                    <i class="fas fa-plug me-1"></i>Providers <i class="fas fa-external-link-alt ms-1 small"></i>
+                </a>
+            </li>
         </ul>
 
         <!-- 📋 TAB CONTENT -->
@@ -937,8 +943,13 @@ $symbol = $currencySymbols[$currency] ?? $currency . ' ';
             'paypal': 'fa-brands fa-paypal',
             'apple_pay': 'fa-brands fa-apple-pay',
             'google_pay': 'fa-brands fa-google-pay',
+            'stripe': 'fa-brands fa-stripe',
+            'link': 'link',
             'credit_card': 'credit-card',
-            'crypto': 'coins'
+            'crypto': 'coins',
+            'crypto_btc': 'fa-brands fa-bitcoin',
+            'crypto_eth': 'fa-brands fa-ethereum',
+            'crypto_usdt': 'coins'
         };
         return icons[(method || '').toLowerCase()] || 'money-bill';
     }

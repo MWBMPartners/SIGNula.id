@@ -34,9 +34,16 @@
  * @see https://developer.apple.com/documentation/apple_pay_on_the_web (Apple Pay)
  * @see https://developers.google.com/pay/api (Google Pay)
  *
+ * v2.4.0 Changes:
+ * - recordPayment(): Added partnerID and paymentContext fields for Level 2 payments
+ * - completePayment(): Integrates with InvoiceManager, BillingScheduler, EmailService
+ * - validateDiscountCode(): Added country validation (cascade: billing → profile → IP)
+ * - Added getProviderDiscount() for provider-specific discounts
+ * - Added getPartnerTier() for partner-defined subscription tiers
+ *
  * @package    SIGNula
  * @subpackage Payments
- * @version    1.0.0
+ * @version    1.1.0
  * @since      2.3.0-beta
  *
  * Copyright (c) 2025-2026 MWBM Partners Ltd (t/a MWservices). All rights reserved.
@@ -412,11 +419,23 @@ class PaymentManager
     /**
      * 💰 Record a payment
      *
+     * Records a new payment in tblPayments. Supports both Level 1 (direct SIGNula payments)
+     * and Level 2 (partner payments) via the partnerID and paymentContext options.
+     *
      * @param int $userID User ID
      * @param float $amount Payment amount
      * @param string $paymentMethod Payment method
      * @param string $paymentProvider Provider name
-     * @param array $options Optional: subscriptionID, transactionID, description, discountCode, metadata
+     * @param array $options Optional parameters:
+     *              - subscriptionID (int): Linked subscription
+     *              - transactionID (string): External transaction ID
+     *              - description (string): Payment description
+     *              - discountCode (string): Applied discount code
+     *              - discountAmount (float): Discount amount
+     *              - currency (string): Currency code (default: from settings)
+     *              - metadata (array): Additional metadata
+     *              - partnerID (int): Partner ID for Level 2 payments (v2.4.0)
+     *              - paymentContext (string): 'signula_direct'|'partner_own_keys'|'partner_signula_keys' (v2.4.0)
      * @return array ['success' => bool, 'paymentID' => int, 'invoiceNumber' => string]
      */
     public static function recordPayment(
@@ -443,13 +462,18 @@ class PaymentManager
             $ipAddress = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
             $userAgent = $_SERVER['HTTP_USER_AGENT'] ?? '';
 
-            // 💾 Insert payment record
+            // 🏢 Level 2 payment context (v2.4.0)
+            $partnerID = $options['partnerID'] ?? null;
+            $paymentContext = $options['paymentContext'] ?? 'signula_direct';
+
+            // 💾 Insert payment record (with partnerID and paymentContext for Level 2 support)
             Database::query(
                 "INSERT INTO tblPayments
                     (userID, subscriptionID, transactionID, paymentMethod, paymentProvider,
                      amount, currency, discountAmount, discountCode, taxAmount, taxRate, netAmount,
-                     status, description, ipAddress, userAgent, invoiceNumber, metadata)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?)",
+                     status, description, ipAddress, userAgent, invoiceNumber, metadata,
+                     partnerID, paymentContext)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?)",
                 [
                     $userID,
                     $options['subscriptionID'] ?? null,
@@ -468,13 +492,15 @@ class PaymentManager
                     $userAgent,
                     $invoiceNumber,
                     isset($options['metadata']) ? json_encode($options['metadata']) : null,
+                    $partnerID,
+                    $paymentContext,
                 ],
-                'iisssddsdddssssss'
+                'iisssddsdddssssssis'
             );
 
             $paymentID = Database::getLastInsertId();
 
-            ActivityLogger::log($userID, 'payment_initiated', 'payment', 'info', 'Payment initiated: ' . $currency . ' ' . number_format($amount, 2), ['paymentID' => $paymentID, 'amount' => $amount, 'currency' => $currency, 'method' => $paymentMethod, 'provider' => $paymentProvider]);
+            ActivityLogger::log($userID, 'payment_initiated', 'payment', 'info', 'Payment initiated: ' . $currency . ' ' . number_format($amount, 2), ['paymentID' => $paymentID, 'amount' => $amount, 'currency' => $currency, 'method' => $paymentMethod, 'provider' => $paymentProvider, 'partnerID' => $partnerID, 'paymentContext' => $paymentContext]);
 
             return [
                 'success' => true,
@@ -492,6 +518,12 @@ class PaymentManager
 
     /**
      * ✅ Complete a payment (mark as successful)
+     *
+     * Enhanced in v2.4.0 to:
+     * - Create formal invoice record via InvoiceManager (if available)
+     * - Send payment receipt email
+     * - Handle auto-resume for suspended accounts via BillingScheduler
+     * - Schedule next billing date for subscription renewals
      *
      * @param int $paymentID Payment ID
      * @param string|null $transactionID External transaction ID from provider
@@ -537,17 +569,110 @@ class PaymentManager
                 );
             }
 
-            ActivityLogger::log((int)$payment['userID'], 'payment_completed', 'payment', 'info', 'Payment completed: ' . $payment['currency'] . ' ' . number_format((float)$payment['amount'], 2), ['paymentID' => $paymentID, 'transactionID' => $transactionID]);
+            $userID = (int)$payment['userID'];
+
+            ActivityLogger::log($userID, 'payment_completed', 'payment', 'info', 'Payment completed: ' . $payment['currency'] . ' ' . number_format((float)$payment['amount'], 2), ['paymentID' => $paymentID, 'transactionID' => $transactionID]);
+
+            // ========================================================================
+            // 📄 v2.4.0: Create formal invoice via InvoiceManager (if available)
+            // ========================================================================
+            $invoiceManagerPath = __DIR__ . DIRECTORY_SEPARATOR . 'InvoiceManager.php';
+            if (file_exists($invoiceManagerPath)) {
+                require_once $invoiceManagerPath;
+
+                if (class_exists('InvoiceManager')) {
+                    try {
+                        $invoiceResult = InvoiceManager::createInvoice(
+                            $userID,
+                            'subscription',
+                            [
+                                [
+                                    'description' => $payment['description'] ?? 'SIGNula Subscription Payment',
+                                    'quantity'    => 1,
+                                    'unitPrice'   => (float)$payment['amount'],
+                                    'total'       => (float)$payment['amount'],
+                                ],
+                            ],
+                            [
+                                'paymentID'      => $paymentID,
+                                'subscriptionID' => $payment['subscriptionID'] ?? null,
+                                'partnerID'      => $payment['partnerID'] ?? null,
+                                'currency'       => $payment['currency'] ?? 'GBP',
+                                'discountAmount' => (float)($payment['discountAmount'] ?? 0),
+                                'taxRate'        => (float)($payment['taxRate'] ?? 0),
+                                'autoIssue'      => true,
+                            ]
+                        );
+
+                        // 📧 Send invoice email if creation succeeded
+                        if ($invoiceResult['success'] ?? false) {
+                            InvoiceManager::sendInvoiceEmail((int)$invoiceResult['invoiceID']);
+                        }
+                    } catch (\Throwable $e) {
+                        // ⚠️ Invoice creation failure should not block payment completion
+                        ActivityLogger::log($userID, 'invoice_creation_warning', 'payment', 'warning', 'Invoice creation failed for payment ' . $paymentID . ': ' . $e->getMessage(), ['paymentID' => $paymentID]);
+                    }
+                }
+            }
+
+            // ========================================================================
+            // 🔄 v2.4.0: Handle auto-resume via BillingScheduler (if available)
+            // ========================================================================
+            if ($payment['subscriptionID']) {
+                $billingSchedulerPath = __DIR__ . DIRECTORY_SEPARATOR . 'BillingScheduler.php';
+                if (file_exists($billingSchedulerPath)) {
+                    require_once $billingSchedulerPath;
+
+                    if (class_exists('BillingScheduler')) {
+                        try {
+                            BillingScheduler::handlePaymentSuccess(
+                                (int)$payment['subscriptionID'],
+                                $paymentID
+                            );
+                        } catch (\Throwable $e) {
+                            // ⚠️ Billing scheduler failure should not block payment completion
+                            ActivityLogger::log($userID, 'billing_scheduler_warning', 'payment', 'warning', 'BillingScheduler post-payment processing failed: ' . $e->getMessage(), ['paymentID' => $paymentID]);
+                        }
+                    }
+                }
+            }
+
+            // 📧 Send payment receipt email
+            if (class_exists('EmailService')) {
+                try {
+                    $user = Database::fetchOne("SELECT email, displayName FROM tblUsers WHERE userID = ?", [$userID], 'i');
+                    if ($user && !empty($user['email'])) {
+                        EmailService::sendTemplateEmail(
+                            $user['email'],
+                            'payment_receipt',
+                            [
+                                'displayName'   => $user['displayName'] ?? 'Customer',
+                                'amount'        => $payment['currency'] . ' ' . number_format((float)$payment['amount'], 2),
+                                'invoiceNumber' => $payment['invoiceNumber'] ?? '',
+                                'paymentMethod' => ucfirst($payment['paymentMethod'] ?? ''),
+                                'paymentDate'   => date('d M Y, H:i'),
+                            ],
+                            $userID,
+                            5
+                        );
+                    }
+                } catch (\Throwable $e) {
+                    // ⚠️ Email failure should not block payment completion
+                    ActivityLogger::log($userID, 'payment_email_warning', 'payment', 'warning', 'Payment receipt email failed: ' . $e->getMessage(), ['paymentID' => $paymentID]);
+                }
+            }
 
             // 🔗 Dispatch webhook
             if (class_exists('WebhookManager')) {
                 WebhookManager::dispatch('payment.completed', [
                     'paymentID' => $paymentID,
-                    'userID' => (int)$payment['userID'],
+                    'userID' => $userID,
                     'amount' => (float)$payment['amount'],
                     'currency' => $payment['currency'],
                     'transactionID' => $transactionID,
                     'invoiceNumber' => $payment['invoiceNumber'],
+                    'partnerID' => $payment['partnerID'] ?? null,
+                    'paymentContext' => $payment['paymentContext'] ?? 'signula_direct',
                 ]);
             }
 
@@ -865,5 +990,100 @@ class PaymentManager
         );
 
         return $setting ? $setting['settingValue'] : (string)$default;
+    }
+
+    // ========================================================================
+    // 🏷️ PROVIDER DISCOUNTS (v2.4.0)
+    // ========================================================================
+
+    /**
+     * 💰 Get provider-specific discount percentage
+     *
+     * Retrieves the discount percentage for a specific payment provider.
+     * Checks partner-specific discount first (from tblProviderDiscounts with partnerID),
+     * then falls back to global discount.
+     *
+     * @param string $provider Payment provider name (stripe, paypal, coinbase)
+     * @param int|null $partnerID Optional partner ID for partner-scoped discounts
+     * @return float Discount percentage (e.g., 5.00 for 5% off)
+     *
+     * @since 2.4.0-beta
+     */
+    public static function getProviderDiscount(string $provider, ?int $partnerID = null): float
+    {
+        // 🔍 Check for partner-specific discount first
+        if ($partnerID !== null) {
+            $partnerDiscount = Database::fetchOne(
+                "SELECT discountPercent FROM tblProviderDiscounts
+                 WHERE provider = ? AND partnerID = ? AND isActive = 1
+                 AND (validFrom IS NULL OR validFrom <= CURDATE())
+                 AND (validUntil IS NULL OR validUntil >= CURDATE())",
+                [$provider, $partnerID],
+                'si'
+            );
+
+            if ($partnerDiscount) {
+                return (float)$partnerDiscount['discountPercent'];
+            }
+        }
+
+        // 🌐 Fall back to global discount
+        $globalDiscount = Database::fetchOne(
+            "SELECT discountPercent FROM tblProviderDiscounts
+             WHERE provider = ? AND partnerID IS NULL AND isActive = 1
+             AND (validFrom IS NULL OR validFrom <= CURDATE())
+             AND (validUntil IS NULL OR validUntil >= CURDATE())",
+            [$provider],
+            's'
+        );
+
+        if ($globalDiscount) {
+            return (float)$globalDiscount['discountPercent'];
+        }
+
+        return 0.00;
+    }
+
+    // ========================================================================
+    // 🏢 PARTNER TIERS (v2.4.0)
+    // ========================================================================
+
+    /**
+     * 🔍 Get a partner-defined subscription tier
+     *
+     * Retrieves a tier from tblPartnerSubscriptionTiers (separate from global tblSubscriptionTiers).
+     *
+     * @param int $partnerTierID Partner tier ID
+     * @return array|null Partner tier record or null
+     *
+     * @since 2.4.0-beta
+     */
+    public static function getPartnerTier(int $partnerTierID): ?array
+    {
+        return Database::fetchOne(
+            "SELECT * FROM tblPartnerSubscriptionTiers WHERE partnerTierID = ? AND isActive = 1",
+            [$partnerTierID],
+            'i'
+        );
+    }
+
+    /**
+     * 📋 Get all partner tiers for a specific partner
+     *
+     * @param int $partnerID Partner ID
+     * @param bool $includeInactive Include inactive tiers
+     * @return array List of partner tier records
+     *
+     * @since 2.4.0-beta
+     */
+    public static function getPartnerTiers(int $partnerID, bool $includeInactive = false): array
+    {
+        $query = "SELECT * FROM tblPartnerSubscriptionTiers WHERE partnerID = ?";
+        if (!$includeInactive) {
+            $query .= " AND isActive = 1";
+        }
+        $query .= " ORDER BY displayOrder ASC";
+
+        return Database::fetchAll($query, [$partnerID], 'i');
     }
 }

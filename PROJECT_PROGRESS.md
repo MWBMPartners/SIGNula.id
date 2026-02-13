@@ -1,7 +1,7 @@
 # SIGNula.ID Development Progress
 
-**Last Updated:** 2026-02-11
-**Current Version:** 2.3.0-beta
+**Last Updated:** 2026-02-13
+**Current Version:** 2.4.0-beta
 **Project Status:** 🟢 Active Development
 
 ---
@@ -10,7 +10,7 @@
 
 | Component | Status | Progress | Priority |
 |-----------|--------|----------|----------|
-| Database Schema | ✅ Complete | 100% | 🔴 Critical |
+| Database Schema (46 tables) | ✅ Complete | 100% | 🔴 Critical |
 | Core Configuration | ✅ Complete | 100% | 🔴 Critical |
 | Authentication System | ✅ Complete | 100% | 🔴 Critical |
 | Security Utilities | ✅ Complete | 100% | 🔴 Critical |
@@ -31,7 +31,8 @@
 | **Support Ticket System** | ✅ Complete | 100% | 🟠 High |
 | **Admin Dashboard (Email)** | ✅ Complete | 100% | 🟠 High |
 | **Webhook Signature System** | ✅ Complete | 100% | 🟠 High |
-| Payment System | 🟢 In Progress | 80% | 🟡 Medium |
+| Payment System | ✅ Complete | 100% | 🟡 Medium |
+| **Two-Tier Payment Expansion** | ✅ Complete | 100% | 🔴 Critical |
 | Admin Dashboard (Full) | ✅ Complete | 100% | 🟠 High |
 | **Deployment Checklist** | ✅ Complete | 100% | 🟠 High |
 | Documentation | ✅ Complete | 98% | 🟠 High |
@@ -783,6 +784,52 @@ Outbound webhook signature system (HMAC-SHA256), payment/subscription management
 
 ---
 
+### Phase 3.8: Two-Tier Payment System Expansion
+
+**Completed:** February 13, 2026
+
+**Key Deliverables:**
+
+**Database:**
+
+- Migration 012: 11 new tables, 4 ALTER TABLE, 28 settings, 4 feature toggles, 9 email templates, 4 MySQL events (1,072 lines)
+
+**Backend Classes (11,065 lines):**
+
+- InvoiceManager.php (2,157 lines) — Invoice CRUD, PDF via TCPDF, email, HTML rendering
+- CreditManager.php (2,068 lines) — Credit balances with row-level locking
+- ServiceFeeManager.php (1,653 lines) — Fee calculation, remittance processing
+- BillingScheduler.php (2,270 lines) — Scheduled billing tasks (charges, reminders, suspensions)
+- PartnerPaymentService.php (2,630 lines) — Level 2 payment orchestration
+- BillingLazyCheck.php (287 lines) — Tier 3 billing safety net
+
+**Modified Classes:**
+
+- StripeProvider.php, PayPalProvider.php, CoinbaseProvider.php — optional partner credentials
+- PaymentManager.php — partner context, invoice creation, provider discounts
+- AccessControl.php — 4 new finance role methods
+
+**Super Admin UI (15,234 lines — 12 files):**
+
+- 6 payment admin pages + 6 API endpoints
+- Service fees, invoices, credits, remittances, billing schedule, provider discounts
+
+**Partner Admin UI (13,664 lines — 11 files):**
+
+- 6 payment pages + 5 API endpoints
+- Payment config, tiers, earnings, invoices, credits, discounts
+
+**Infrastructure:**
+
+- 2 web-accessible cron endpoints (billing + remittance)
+- BillingLazyCheck safety net (Tier 3 redundancy)
+- Invoice view/download routes
+- TCPDF loader for PDF generation
+
+**Total:** ~41,969 new lines across 34 new files + 5 modified files
+
+---
+
 ### Phase 4: Public Web Interface (SIGNula.com)
 **Completed:** February 3, 2026
 
@@ -1529,8 +1576,8 @@ API Keys (Partners):
 
 ---
 
-**Last Updated:** February 11, 2026
-**Current Version:** 2.2.3-beta
+**Last Updated:** February 13, 2026
+**Current Version:** 2.4.0-beta
 
 ---
 

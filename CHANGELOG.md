@@ -11,10 +11,87 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Planned
 
-- PayPal / Apple Pay / Google Pay live provider integration (credentials required)
-- Cryptocurrency payment support
 - Mobile apps (iOS, Android)
 - Advanced analytics and reporting dashboard
+
+---
+
+## [2.4.0-beta] - 2026-02-13
+
+### Added - Two-Tier Payment System Expansion
+
+This release adds a comprehensive two-tier payment system enabling partners to collect payments from THEIR customers through SIGNula, alongside the existing direct payment system.
+
+**Database Migration 012** (`_database/migrations/012_payment_expansion.sql` — 1,072 lines)
+- 11 new tables: tblPartnerPaymentConfig, tblServiceFees, tblServiceFeeTransactions, tblRemittances, tblCreditBalances, tblCreditTransactions, tblInvoices, tblProviderDiscounts, tblPartnerSubscriptionTiers, tblBillingSchedule, tblDiscountCodeAssignments
+- 4 ALTER TABLE statements (tblPayments, tblDiscountCodes, tblPartners, tblSubscriptions)
+- 28 new settings in tblSettings (service fees, credits, invoicing, auto-suspension, remittance, cron)
+- 4 feature toggles (partner_payments, credit_system, partner_custom_tiers, pdf_invoices)
+- 9 email templates (payment_receipt, payment_failed, payment_reminder, subscription_suspended, subscription_restored, service_fee_change, remittance_processed, credit_topup, invoice_issued)
+- 4 MySQL scheduled events (mark past_due, expire trials, mark invoices overdue, cleanup billing schedule)
+
+**New Backend Classes** (11,065 lines total)
+- **InvoiceManager.php** (2,157 lines) — Invoice CRUD, PDF generation via TCPDF, email, HTML rendering, status transitions
+- **CreditManager.php** (2,068 lines) — Credit balance management with row-level locking (SELECT ... FOR UPDATE)
+- **ServiceFeeManager.php** (1,653 lines) — Fee calculation, fee schedules, remittance processing, earnings reports
+- **BillingScheduler.php** (2,270 lines) — Scheduled billing task processor (subscription charges, reminders, auto-suspension, trial expiration)
+- **PartnerPaymentService.php** (2,630 lines) — Level 2 payment orchestration, partner tier management, API key resolution
+- **BillingLazyCheck.php** (287 lines) — Tier 3 billing safety net (processes tasks if cron stale >1 hour)
+
+**Modified Backend Classes** (5 files)
+- **StripeProvider.php** v1.1.0 — Added optional `$credentials` parameter for partner API keys
+- **PayPalProvider.php** v1.1.0 — Added optional `$credentials` parameter + per-client-ID token cache
+- **CoinbaseProvider.php** v1.1.0 — Added optional `$credentials` parameter for partner API keys
+- **PaymentManager.php** v1.1.0 — Added `partnerID`/`paymentContext` to `recordPayment()`, invoice creation in `completePayment()`, country-based discount validation, provider discounts
+- **AccessControl.php** — Added `canManagePartnerPayments()`, `canViewPartnerFinancials()`, `requirePartnerPaymentAccess()`, `requirePartnerFinancialAccess()`
+
+**Super Admin Payment UI** (9,886 lines — 6 pages)
+- `/admin/payments/service-fees.php` — Fee schedule management with 30-day minimum notice
+- `/admin/payments/invoices.php` — Invoice list, view, download PDF, mark paid/void, reissue
+- `/admin/payments/credits.php` — Credit balances and manual adjustments
+- `/admin/payments/remittances.php` — Pending payouts queue, batch processing, earnings reports
+- `/admin/payments/billing-schedule.php` — Scheduler health, pending/failed tasks, auto-refresh
+- `/admin/payments/provider-discounts.php` — Per-provider discount rates (global + partner overrides)
+
+**Super Admin Payment APIs** (5,348 lines — 6 API files)
+- `service-fee-actions.php`, `invoice-actions.php`, `credit-actions.php`, `remittance-actions.php`, `billing-schedule-actions.php`, `provider-discount-actions.php`
+
+**Partner Admin Payment UI** (8,926 lines — 6 pages)
+- `/partners/admin/payment-config.php` — Choose Option 2a/2b per provider, enter API keys, test connection
+- `/partners/admin/tiers.php` — Partner-defined subscription tiers CRUD
+- `/partners/admin/earnings.php` — Revenue dashboard, fee breakdown, payout preferences
+- `/partners/admin/invoices.php` — View/download invoices
+- `/partners/admin/credits.php` — Credit balance, top-up, transaction history
+- `/partners/admin/discounts.php` — Discount codes with country restrictions, per-account assignments
+
+**Partner Admin Payment APIs** (4,738 lines — 5 API files)
+- `payment-config-actions.php`, `tier-actions.php`, `earnings-actions.php`, `credit-actions.php`, `discount-actions.php`
+
+**Web-Accessible Cron Endpoints** (425 lines)
+- `/cron/billing.php` — Token-authenticated billing task processor (subscription charges, reminders, suspensions)
+- `/cron/remittance.php` — Token-authenticated partner payout processor
+
+**Invoice Routes** (340 lines)
+- `/invoices/view/` — HTML invoice viewing (auth + ownership check)
+- `/invoices/download/` — PDF download with HTML fallback
+
+**TCPDF Integration**
+- `web/_lib/tcpdf/tcpdf_loader.php` — Loader with graceful fallback for PDF invoice generation
+
+### Architecture — Two-Tier Payment Model
+
+- **Level 1**: Partners/customers pay SIGNula directly for premium tiers
+- **Level 2a**: Partners use their OWN payment provider API keys (~10% service fee)
+- **Level 2b**: Partners use SIGNula's keys (~30% fee, remainder remitted)
+- **Three-tier billing redundancy**: MySQL events (hourly) + Web cron (every 5-15 min) + Lazy check safety net
+- **Auto-suspension/auto-resume**: Configurable grace period, tier preservation, automatic restoration on payment
+
+### Stats
+
+- **~41,969 new lines of code** across 34 new files
+- **5 modified files** (provider classes + PaymentManager + AccessControl)
+- **46 database tables** total (11 new + 35 existing)
+- All files pass PHP lint validation
 
 ---
 
@@ -59,6 +136,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Admin Payment API** (`/admin/api/payment-actions.php`)
   - Actions: stats, payments, subscriptions, tiers, update_tier, create_discount, list_discounts, refund, update_subscription_status
 
+### Added - Payment Provider Integration (Stripe, PayPal, Coinbase Commerce)
+
+- **Database Migration 011** (`_database/migrations/011_payment_providers.sql`)
+  - Added `link` to paymentMethod ENUM in tblPayments, tblSubscriptions, tblPaymentMethods (Stripe Link support)
+  - 7 Stripe settings (enabled, mode, keys, webhook secret, Link toggle, payment methods)
+  - 2 Coinbase Commerce settings (webhook secret, supported currencies)
+  - New `tblInboundWebhooks` table for inbound webhook event logging from all providers
+  - Scheduled cleanup event (90-day retention for processed webhooks)
+
+- **StripeProvider.php** (~2,275 lines) — Full Stripe API integration via cURL
+  - Checkout Sessions with Stripe Link accelerated checkout
+  - Payment Intents for one-off payments
+  - HMAC-SHA256 webhook signature verification with timestamp tolerance
+  - 7 webhook event handlers (checkout, payment intent, invoice, subscription, refund)
+  - Customer management, balance retrieval, refund processing
+
+- **PayPalProvider.php** (~2,017 lines) — PayPal REST API v2 integration via cURL
+  - Order creation and capture
+  - Subscription management with billing plans
+  - PayPal webhook signature verification (API-based)
+  - 7 webhook event handlers
+  - OAuth 2.0 client credentials with token caching
+
+- **CoinbaseProvider.php** (~1,649 lines) — Coinbase Commerce API integration via cURL
+  - Charge creation with crypto discount support
+  - HMAC-SHA256 webhook signature verification
+  - 5 webhook event handlers (confirmed, failed, pending, delayed, resolved)
+  - Network-to-currency mapping for blockchain detection
+
+- **Inbound Webhook Receivers** (3 files, ~960 lines total)
+  - `/webhooks/stripe.php` — Stripe webhook receiver with signature verification
+  - `/webhooks/paypal.php` — PayPal webhook receiver with API verification
+  - `/webhooks/coinbase.php` — Coinbase Commerce webhook receiver with HMAC verification
+  - All: idempotency checking, full logging to tblInboundWebhooks, performance timing
+
+- **Public Pricing Page** (`/pricing/`) — ~607 lines
+  - Responsive tier cards from database with monthly/yearly billing toggle
+  - Discount code validation via AJAX
+  - Crypto discount banner, accepted payment badges, FAQ accordion
+
+- **Checkout Flow** (4 files, ~1,272 lines total)
+  - `/checkout/` — Payment method tabs (Stripe/Card/Link, PayPal, Crypto)
+  - `/checkout/process` — Routes payments to correct provider
+  - `/checkout/success` — Provider-specific payment confirmation
+  - `/checkout/cancel` — Cancellation with activity logging
+
+- **Admin Provider Configuration** (`/admin/payments/providers`) — ~1,423 lines
+  - Card-based layout for Stripe (purple), PayPal (blue), Crypto (orange)
+  - Credential fields with masked display and reveal toggle
+  - Test Connection buttons with live API validation
+  - Webhook log viewer with pagination and status badges
+
+- **Admin Provider API** (`/admin/api/provider-actions.php`) — ~593 lines
+  - Actions: get_providers, update_provider, test_connection, get_webhook_logs
+  - Sensitive value masking, encryption on save, activity logging
+
 ### Added - Production Deployment Checklist
 
 - **Deployment Checklist UI** (`/admin/system/deployment.php`)
@@ -71,10 +204,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed (v2.3.0)
 
 - **Version bump:** 2.2.3-beta to 2.3.0-beta (new features warrant minor version increment)
-- **Database tables:** 35 to 42 (7 new tables from migration 010)
-- **Lines of code:** ~37,000+ to ~40,000+ (added ~3,000+ lines)
-- **Admin pages:** 19+ to 22+ pages
-- **Payment System:** 0% to 80% (schema, backend, admin UI complete; live providers pending)
+- **Database tables:** 35 to 43 (7 new tables from migration 010, 1 from migration 011)
+- **Lines of code:** ~37,000+ to ~51,000+ (added ~14,000+ lines)
+- **Admin pages:** 19+ to 23+ pages
+- **Payment System:** 0% to 100% (schema, backend, admin UI, Stripe/PayPal/Coinbase providers complete)
 - **Webhook System:** 0% to 100% (complete with signing, delivery, retry, UI)
 
 ---
@@ -985,7 +1118,8 @@ MAJOR.MINOR.PATCH-prerelease+build
 
 ---
 
-[Unreleased]: https://github.com/MWBMPartners/SIGNula.id/compare/v2.3.0-beta...HEAD
+[Unreleased]: https://github.com/MWBMPartners/SIGNula.id/compare/v2.4.0-beta...HEAD
+[2.4.0-beta]: https://github.com/MWBMPartners/SIGNula.id/compare/v2.3.0-beta...v2.4.0-beta
 [2.3.0-beta]: https://github.com/MWBMPartners/SIGNula.id/compare/v2.2.3-beta...v2.3.0-beta
 [2.2.3-beta]: https://github.com/MWBMPartners/SIGNula.id/compare/v2.2.2-beta...v2.2.3-beta
 [2.2.2-beta]: https://github.com/MWBMPartners/SIGNula.id/compare/v2.2.1-beta...v2.2.2-beta
