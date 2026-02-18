@@ -753,12 +753,12 @@ See [OAuth Integration Examples](_docs/OAUTH_INTEGRATION_EXAMPLES.md) for detail
 **Complete documentation available in two formats:**
 
 1. **Interactive HTML Documentation** (Recommended)
-   - Access: `https://SIGNula.id/docs/api/` ([/public_html/docs/api/index.html](public_html/docs/api/index.html))
+   - Access: `https://SIGNula.id/api/docs/` ([/public_html/api/docs/index.html](public_html/api/docs/index.html))
    - Features: Search, syntax highlighting, copy-to-clipboard, mobile responsive
    - Comprehensive guide with examples
 
 2. **Markdown Documentation**
-   - File: [/public_html/docs/api/API_DOCUMENTATION.md](public_html/docs/api/API_DOCUMENTATION.md)
+   - File: [/public_html/api/docs/API_DOCUMENTATION.md](public_html/api/docs/API_DOCUMENTATION.md)
    - 26KB complete reference
    - All 31 endpoints documented
    - Request/response examples
@@ -1056,8 +1056,8 @@ See [PROJECT_PROGRESS.md](PROJECT_PROGRESS.md) for detailed development roadmap 
 
 ### Phase 3 Documentation (API, OAuth & Email)
 - **API Documentation:**
-  - [public_html/docs/api/index.html](public_html/docs/api/index.html) - Interactive HTML documentation
-  - [public_html/docs/api/API_DOCUMENTATION.md](public_html/docs/api/API_DOCUMENTATION.md) - Complete Markdown reference
+  - [public_html/api/docs/index.html](public_html/api/docs/index.html) - Interactive HTML documentation
+  - [public_html/api/docs/API_DOCUMENTATION.md](public_html/api/docs/API_DOCUMENTATION.md) - Complete Markdown reference
   - [.claude/API_ANALYSIS.md](.claude/API_ANALYSIS.md) - Security audit and gap analysis
   - [.claude/API_DOCUMENTATION_SUMMARY.md](.claude/API_DOCUMENTATION_SUMMARY.md) - Documentation summary
 - **Delegate Email Sending:**

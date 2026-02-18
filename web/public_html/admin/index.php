@@ -183,7 +183,7 @@ $stats = [
                 </a>
             </div>
             <div class="col-md-4 mb-3">
-                <a href="../docs/api/" class="text-decoration-none">
+                <a href="../api/docs/" class="text-decoration-none">
                     <div class="feature-card">
                         <div class="feature-icon bg-secondary text-white">
                             <i class="fas fa-book"></i>

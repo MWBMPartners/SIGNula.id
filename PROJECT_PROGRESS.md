@@ -382,7 +382,7 @@ Comprehensive API documentation for third-party partner integration.
    - Quality metrics (Overall: 87%, B+ grade)
 
 2. **Markdown Documentation** (26KB)
-   - File: `public_html/docs/api/API_DOCUMENTATION.md`
+   - File: `public_html/api/docs/API_DOCUMENTATION.md`
    - Table of contents with deep linking
    - Getting started guide
    - Authentication methods (API Key, Bearer Token, Session)
@@ -394,7 +394,7 @@ Comprehensive API documentation for third-party partner integration.
    - SDK information (PHP, JS, Python, Ruby)
 
 3. **Interactive HTML Documentation** (17KB)
-   - File: `public_html/docs/api/index.html`
+   - File: `public_html/api/docs/index.html`
    - Modern responsive design
    - Collapsible sidebar navigation with search
    - Syntax highlighting (Highlight.js)

@@ -30,7 +30,7 @@
 ---
 
 ### 2. **Comprehensive Markdown Documentation**
-**File**: [public_html/docs/api/API_DOCUMENTATION.md](../public_html/docs/api/API_DOCUMENTATION.md)
+**File**: [public_html/api/docs/API_DOCUMENTATION.md](../public_html/api/docs/API_DOCUMENTATION.md)
 
 **Contents** (~26KB, 26,371 characters):
 - Table of contents with deep linking
@@ -68,7 +68,7 @@
 ---
 
 ### 3. **Interactive HTML Documentation**
-**File**: [public_html/docs/api/index.html](../public_html/docs/api/index.html)
+**File**: [public_html/api/docs/index.html](../public_html/api/docs/index.html)
 
 **Features**:
 - ✅ **Modern, responsive design** (mobile-friendly)
@@ -206,8 +206,8 @@
 
 1. **Access Documentation**:
    ```
-   Markdown: https://signulo.id/docs/api/API_DOCUMENTATION.md
-   Interactive: https://signulo.id/docs/api/index.html
+   Markdown: https://signulo.id/api/docs/API_DOCUMENTATION.md
+   Interactive: https://signulo.id/api/docs/index.html
    ```
 
 2. **Generate API Key**:
@@ -232,12 +232,12 @@
 1. **Upload Files** (if not using git):
    ```bash
    # Upload documentation files
-   scp public_html/docs/api/API_DOCUMENTATION.md server:/path/to/signula/public_html/docs/api/
-   scp public_html/docs/api/index.html server:/path/to/signula/public_html/docs/api/
+   scp public_html/api/docs/API_DOCUMENTATION.md server:/path/to/signula/public_html/api/docs/
+   scp public_html/api/docs/index.html server:/path/to/signula/public_html/api/docs/
    ```
 
 2. **Verify Access**:
-   - Visit https://signulo.id/docs/api/
+   - Visit https://signulo.id/api/docs/
    - Test search functionality
    - Verify all links work
    - Test on mobile devices
@@ -245,7 +245,7 @@
 3. **Configure Web Server** (if needed):
    ```nginx
    # Nginx example
-   location /docs/api {
+   location /api/docs {
        try_files $uri $uri/ =404;
        add_header Cache-Control "public, max-age=3600";
    }
@@ -322,8 +322,8 @@
 | File | Location | Size | Purpose |
 |------|----------|------|---------|
 | **API_ANALYSIS.md** | `.claude/` | ~15KB | Security audit & analysis |
-| **API_DOCUMENTATION.md** | `public_html/docs/api/` | 26KB | Markdown documentation |
-| **index.html** | `public_html/docs/api/` | ~17KB | Interactive HTML docs |
+| **API_DOCUMENTATION.md** | `public_html/api/docs/` | 26KB | Markdown documentation |
+| **index.html** | `public_html/api/docs/` | ~17KB | Interactive HTML docs |
 | **API_DOCUMENTATION_SUMMARY.md** | `.claude/` | ~8KB | This file |
 
 **Total Documentation**: ~66KB of comprehensive API documentation

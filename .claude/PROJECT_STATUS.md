@@ -316,7 +316,7 @@ SIGNula is a comprehensive universal single sign-on (SSO) authentication system 
 
 #### 1. Interactive HTML Documentation
 
-- File: public_html/docs/api/index.html (17KB)
+- File: public_html/api/docs/index.html (17KB)
 - Modern responsive design
 - Search functionality
 - Syntax highlighting (Highlight.js)
@@ -326,7 +326,7 @@ SIGNula is a comprehensive universal single sign-on (SSO) authentication system 
 
 #### 2. Markdown Documentation
 
-- File: public_html/docs/api/API_DOCUMENTATION.md (26KB)
+- File: public_html/api/docs/API_DOCUMENTATION.md (26KB)
 - Complete API reference
 - All 31 endpoints documented
 - Request/response examples

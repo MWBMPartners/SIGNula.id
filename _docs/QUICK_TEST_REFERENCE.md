@@ -268,7 +268,7 @@ Expected: 200 OK with user profile data
 ### 10. API Documentation Check (2 min)
 
 **Steps:**
-1. Navigate to `https://signulo.id/docs/api/`
+1. Navigate to `https://signulo.id/api/docs/`
 2. Verify page loads
 3. Test search functionality (search for "login")
 4. Click a navigation link
@@ -379,7 +379,7 @@ Expected: 200 OK with user profile data
 **Documentation:**
 - [README.md](../README.md) - Project overview
 - [PROJECT_PROGRESS.md](../PROJECT_PROGRESS.md) - Development status
-- [API Documentation](../public_html/docs/api/index.html) - API reference
+- [API Documentation](../public_html/api/docs/index.html) - API reference
 
 ---
 

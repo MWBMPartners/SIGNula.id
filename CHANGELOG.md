@@ -775,8 +775,8 @@ This release adds a comprehensive two-tier payment system enabling partners to c
 ### Added - Phase 3.3: API Documentation for Partners
 
 - **Comprehensive API Documentation** for third-party partner integration
-  - Complete Markdown documentation (`public_html/docs/api/API_DOCUMENTATION.md`, 26KB)
-  - Interactive HTML documentation with modern features (`public_html/docs/api/index.html`, 17KB)
+  - Complete Markdown documentation (`public_html/api/docs/API_DOCUMENTATION.md`, 26KB)
+  - Interactive HTML documentation with modern features (`public_html/api/docs/index.html`, 17KB)
   - Search functionality with collapsible sidebar navigation
   - Syntax highlighting for code examples (Bash, JavaScript, PHP, JSON, HTTP)
   - Copy-to-clipboard buttons for all code blocks

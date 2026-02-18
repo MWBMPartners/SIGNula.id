@@ -1233,7 +1233,7 @@ Host: signulo.id
   "data": {
     "name": "SIGNula API",
     "version": "v1",
-    "documentation": "https://signulo.id/docs/api",
+    "documentation": "https://signulo.id/api/docs",
     "status": "active"
   }
 }
@@ -1344,7 +1344,7 @@ $profile = $client->user->getProfile();
 
 ### Resources
 
-- **API Documentation**: [https://signulo.id/docs/api](https://signulo.id/docs/api)
+- **API Documentation**: [https://signulo.id/api/docs](https://signulo.id/api/docs)
 - **Status Page**: [https://status.signulo.id](https://status.signulo.id)
 - **Support**: [support@signulo.id](mailto:support@signulo.id)
 - **GitHub**: [https://github.com/signula](https://github.com/signula)

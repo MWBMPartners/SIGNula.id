@@ -470,11 +470,11 @@ curl -H "X-API-Key: sk_test_your_key_here" \
 ### For Administrators
 - See: [SECURITY_DEPLOYMENT_GUIDE.md](SECURITY_DEPLOYMENT_GUIDE.md)
 - See: [System Health Dashboard](/admin/system/health.php)
-- See: [API Documentation](/docs/api/)
+- See: [API Documentation](/api/docs/)
 
 ### For Partners
 - See: [Partner Dashboard](/partners/dashboard.php)
-- See: [API Documentation](/docs/api/)
+- See: [API Documentation](/api/docs/)
 - See: Usage Analytics (coming soon)
 
 ### For Developers

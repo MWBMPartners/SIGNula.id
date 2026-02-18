@@ -170,7 +170,7 @@ $currentTier = $tierLimits[$partner['tier']] ?? $tierLimits['free'];
                     <div class="card-body">
                         <h5 class="card-title"><i class="fas fa-book me-2 text-info"></i>Documentation</h5>
                         <p class="text-muted">Access API documentation, code examples, and integration guides.</p>
-                        <a href="/docs/api/" class="btn btn-info text-white">
+                        <a href="/api/docs/" class="btn btn-info text-white">
                             <i class="fas fa-file-alt me-2"></i>View Docs
                         </a>
                     </div>

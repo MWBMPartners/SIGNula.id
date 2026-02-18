@@ -503,7 +503,7 @@ After successful deployment:
 ## 📚 Documentation
 
 - [Security Enhancements Roadmap](_docs/SECURITY_ENHANCEMENTS_ROADMAP.md)
-- [API Documentation](public_html/docs/api/API_DOCUMENTATION.md)
+- [API Documentation](public_html/api/docs/API_DOCUMENTATION.md)
 - [Database Schema](_database/README.md)
 
 ---

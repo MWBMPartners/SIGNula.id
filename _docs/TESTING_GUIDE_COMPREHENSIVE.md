@@ -367,7 +367,7 @@ curl https://signulo.id/api/v1/health
 - [ ] Get API version information
 - [ ] Verify endpoint counts
 
-**See full API documentation:** [public_html/docs/api/index.html](../public_html/docs/api/index.html)
+**See full API documentation:** [public_html/api/docs/index.html](../public_html/api/docs/index.html)
 
 ---
 
@@ -475,10 +475,10 @@ EmailService::sendTemplateEmail(
 
 **Test Cases:** 20+
 
-#### 3.3.1 HTML Documentation (`/docs/api/`)
+#### 3.3.1 HTML Documentation (`/api/docs/`)
 
 **Navigation:**
-- [ ] Open `https://signulo.id/docs/api/`
+- [ ] Open `https://signulo.id/api/docs/`
 - [ ] Verify page loads successfully
 - [ ] Check sidebar visible
 - [ ] Test collapsible sidebar (mobile)
@@ -504,7 +504,7 @@ EmailService::sendTemplateEmail(
 
 #### 3.3.2 Markdown Documentation
 
-- [ ] Open `public_html/docs/api/API_DOCUMENTATION.md`
+- [ ] Open `public_html/api/docs/API_DOCUMENTATION.md`
 - [ ] Verify table of contents complete
 - [ ] Check all sections present
 - [ ] Verify code examples render correctly
@@ -698,7 +698,7 @@ ORDER BY createdAt DESC LIMIT 50;
 - [PROJECT_PROGRESS.md](../PROJECT_PROGRESS.md) - Development roadmap
 - [README.md](../README.md) - Project overview
 - [CHANGELOG.md](../CHANGELOG.md) - Version history
-- [API Documentation](../public_html/docs/api/index.html) - API reference
+- [API Documentation](../public_html/api/docs/index.html) - API reference
 
 **Quick References:**
 - [QUICK_TEST_REFERENCE.md](../QUICK_TEST_REFERENCE.md) - Phase 1 quick test (15 min)

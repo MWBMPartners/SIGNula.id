@@ -7,7 +7,7 @@
  * Main entry point for SIGNula RESTful API v1.
  * All API requests are routed through this file.
  *
- * API Documentation: https://SIGNula.id/docs/api
+ * API Documentation: https://SIGNula.id/api/docs
  *
  * Authentication:
  * - Session-based (via cookies)
@@ -168,7 +168,7 @@ $router->get('/api/v1/info', function($params) {
     Response::success([
         'name' => 'SIGNula API',
         'version' => 'v1',
-        'documentation' => 'https://SIGNula.id/docs/api',
+        'documentation' => 'https://SIGNula.id/api/docs',
         'status' => 'active',
     ], 'API information');
 });

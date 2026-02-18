@@ -31,8 +31,8 @@
 
 ### 🌐 API Documentation
 - **For Partners:**
-  - [../public_html/docs/api/index.html](../public_html/docs/api/index.html) ⭐ **Interactive HTML docs** (recommended)
-  - [../public_html/docs/api/API_DOCUMENTATION.md](../public_html/docs/api/API_DOCUMENTATION.md) - Markdown reference
+  - [../public_html/api/docs/index.html](../public_html/api/docs/index.html) ⭐ **Interactive HTML docs** (recommended)
+  - [../public_html/api/docs/API_DOCUMENTATION.md](../public_html/api/docs/API_DOCUMENTATION.md) - Markdown reference
 - **For Developers:**
   - [../.claude/API_ANALYSIS.md](../.claude/API_ANALYSIS.md) - Security audit & gap analysis
 
@@ -72,8 +72,8 @@
 - [OAUTH_INTEGRATION_EXAMPLES.md](OAUTH_INTEGRATION_EXAMPLES.md) - Integration examples
 
 ### For Partners/Third-Party Developers
-- [../public_html/docs/api/index.html](../public_html/docs/api/index.html) - Interactive API documentation
-- [../public_html/docs/api/API_DOCUMENTATION.md](../public_html/docs/api/API_DOCUMENTATION.md) - API reference
+- [../public_html/api/docs/index.html](../public_html/api/docs/index.html) - Interactive API documentation
+- [../public_html/api/docs/API_DOCUMENTATION.md](../public_html/api/docs/API_DOCUMENTATION.md) - API reference
 - [OAUTH_INTEGRATION_EXAMPLES.md](OAUTH_INTEGRATION_EXAMPLES.md) - Integration guide
 - [../.claude/API_ANALYSIS.md](../.claude/API_ANALYSIS.md) - API security & gaps
 
@@ -99,7 +99,7 @@
   - [../TESTING_GUIDE_PHASE2.md](../TESTING_GUIDE_PHASE2.md)
 
 ### RESTful API
-- [../public_html/docs/api/index.html](../public_html/docs/api/index.html) - Complete documentation
+- [../public_html/api/docs/index.html](../public_html/api/docs/index.html) - Complete documentation
 - [../README.md](../README.md#-phase-3-features-restful-api) - Features overview
 - [../.claude/API_ANALYSIS.md](../.claude/API_ANALYSIS.md) - Analysis & security audit
 - [TESTING_GUIDE_COMPREHENSIVE.md](TESTING_GUIDE_COMPREHENSIVE.md#phase-3-restful-api) - Testing
@@ -160,7 +160,7 @@
 → [QUICK_TEST_REFERENCE.md](QUICK_TEST_REFERENCE.md) (30 min) or [TESTING_GUIDE_COMPREHENSIVE.md](TESTING_GUIDE_COMPREHENSIVE.md) (full suite)
 
 **...integrate with the API?**
-→ [public_html/docs/api/index.html](../public_html/docs/api/index.html)
+→ [public_html/api/docs/index.html](../public_html/api/docs/index.html)
 
 **...integrate OAuth with my service?**
 → [OAUTH_INTEGRATION_EXAMPLES.md](OAUTH_INTEGRATION_EXAMPLES.md)

@@ -490,7 +490,7 @@ https://accounts.signula.id/link-oauth
 For questions or issues with OAuth integration:
 
 - Documentation: https://signula.id/docs/oauth-integration
-- API Reference: https://signula.id/docs/api
+- API Reference: https://signula.id/api/docs
 - Support: support@signula.id
 
 ---

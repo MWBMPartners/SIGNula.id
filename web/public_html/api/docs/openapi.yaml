@@ -4,8 +4,8 @@
 # This specification documents all public REST API endpoints for SIGNula,
 # the universal single sign-on and identity management platform.
 #
-# Swagger UI:  https://signulo.id/docs/api/swagger/
-# Markdown:    https://signulo.id/docs/api/
+# Swagger UI:  https://signulo.id/api/docs/swagger/
+# Markdown:    https://signulo.id/api/docs/
 # Base URL:    https://signulo.id/api/v1
 #
 # Version:     1.0.0
@@ -1285,7 +1285,7 @@ paths:
                       documentation:
                         type: string
                         format: uri
-                        example: "https://signulo.id/docs/api"
+                        example: "https://signulo.id/api/docs"
                       status:
                         type: string
                         example: "active"
