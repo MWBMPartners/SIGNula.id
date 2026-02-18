@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<!--
+============================================================================
+SIGNula API Documentation - Interactive Swagger UI
+============================================================================
+Renders the OpenAPI 3.0 specification using Swagger UI (CDN).
+No server-side dependencies or Composer required.
+
+Swagger UI:  https://swagger.io/tools/swagger-ui/
+OpenAPI Spec: ../openapi.yaml
+============================================================================
+-->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="SIGNula API Documentation - Interactive REST API reference with try-it-out capabilities">
+    <meta name="robots" content="noindex, nofollow">
+    <title>SIGNula API Documentation | Swagger UI</title>
+
+    <!-- Favicon -->
+    <link rel="icon" href="/favicon.ico">
+
+    <!-- ================================================================== -->
+    <!-- Swagger UI from CDN (with self-hosted fallback)                    -->
+    <!-- Latest stable release: https://unpkg.com/swagger-ui-dist/          -->
+    <!-- ================================================================== -->
+    <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5.18.2/swagger-ui.css"
+          onerror="this.href='/assets/lib/swagger-ui/swagger-ui.css'">
+
+    <!-- ================================================================== -->
+    <!-- Custom SIGNula theme overrides                                     -->
+    <!-- ================================================================== -->
+    <style>
+        /* -- Root variables matching SIGNula branding -- */
+        :root {
+            --signula-primary: #3b82f6;
+            --signula-primary-dark: #2563eb;
+            --signula-bg-dark: #0f172a;
+            --signula-bg-darker: #020617;
+            --signula-text: #1e293b;
+            --signula-border: #e2e8f0;
+        }
+
+        /* -- Global resets -- */
+        html {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background: #f8fafc;
+        }
+
+        /* -- Custom top bar -- */
+        .signula-topbar {
+            background: var(--signula-bg-darker);
+            padding: 12px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 12px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+
+        .signula-topbar__left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .signula-topbar__logo {
+            color: #fff;
+            font-size: 22px;
+            font-weight: 700;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .signula-topbar__logo svg {
+            width: 28px;
+            height: 28px;
+        }
+
+        .signula-topbar__version {
+            background: var(--signula-primary);
+            color: #fff;
+            font-size: 12px;
+            font-weight: 600;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+
+        .signula-topbar__links {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+        }
+
+        .signula-topbar__links a {
+            color: #94a3b8;
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 500;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            transition: color 0.2s;
+        }
+
+        .signula-topbar__links a:hover {
+            color: #fff;
+        }
+
+        /* -- Hide default Swagger topbar -- */
+        .swagger-ui .topbar {
+            display: none !important;
+        }
+
+        /* -- Swagger UI style overrides -- */
+        .swagger-ui .info .title {
+            color: var(--signula-text);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+
+        .swagger-ui .info .title small {
+            background: var(--signula-primary);
+            border-radius: 12px;
+            padding: 2px 8px;
+        }
+
+        .swagger-ui .info a {
+            color: var(--signula-primary);
+        }
+
+        .swagger-ui .info a:hover {
+            color: var(--signula-primary-dark);
+        }
+
+        /* Operation colours matching SIGNula palette */
+        .swagger-ui .opblock.opblock-get .opblock-summary-method {
+            background: #10b981;
+        }
+        .swagger-ui .opblock.opblock-get {
+            border-color: #10b981;
+            background: rgba(16, 185, 129, 0.05);
+        }
+
+        .swagger-ui .opblock.opblock-post .opblock-summary-method {
+            background: var(--signula-primary);
+        }
+        .swagger-ui .opblock.opblock-post {
+            border-color: var(--signula-primary);
+            background: rgba(59, 130, 246, 0.05);
+        }
+
+        .swagger-ui .opblock.opblock-put .opblock-summary-method {
+            background: #f59e0b;
+        }
+        .swagger-ui .opblock.opblock-put {
+            border-color: #f59e0b;
+            background: rgba(245, 158, 11, 0.05);
+        }
+
+        .swagger-ui .opblock.opblock-delete .opblock-summary-method {
+            background: #ef4444;
+        }
+        .swagger-ui .opblock.opblock-delete {
+            border-color: #ef4444;
+            background: rgba(239, 68, 68, 0.05);
+        }
+
+        .swagger-ui .opblock.opblock-patch .opblock-summary-method {
+            background: #8b5cf6;
+        }
+        .swagger-ui .opblock.opblock-patch {
+            border-color: #8b5cf6;
+            background: rgba(139, 92, 246, 0.05);
+        }
+
+        /* Authorize button */
+        .swagger-ui .btn.authorize {
+            color: var(--signula-primary);
+            border-color: var(--signula-primary);
+        }
+
+        .swagger-ui .btn.authorize svg {
+            fill: var(--signula-primary);
+        }
+
+        /* Try-it-out button */
+        .swagger-ui .btn.try-out__btn {
+            border-color: var(--signula-primary);
+            color: var(--signula-primary);
+        }
+
+        .swagger-ui .btn.try-out__btn:hover {
+            background: var(--signula-primary);
+            color: #fff;
+        }
+
+        /* Execute button */
+        .swagger-ui .btn.execute {
+            background: var(--signula-primary);
+            border-color: var(--signula-primary);
+        }
+
+        .swagger-ui .btn.execute:hover {
+            background: var(--signula-primary-dark);
+        }
+
+        /* Tag headers */
+        .swagger-ui .opblock-tag {
+            border-bottom: 1px solid var(--signula-border);
+        }
+
+        /* Scheme container */
+        .swagger-ui .scheme-container {
+            background: #fff;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            padding: 16px 0;
+        }
+
+        /* Model / schema styling */
+        .swagger-ui section.models {
+            border: 1px solid var(--signula-border);
+            border-radius: 8px;
+        }
+
+        .swagger-ui section.models h4 {
+            color: var(--signula-text);
+        }
+
+        /* Loading state */
+        .swagger-ui-loading {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 60vh;
+            gap: 16px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            color: #64748b;
+        }
+
+        .swagger-ui-loading__spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid var(--signula-border);
+            border-top-color: var(--signula-primary);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Error state */
+        .swagger-ui-error {
+            max-width: 600px;
+            margin: 80px auto;
+            padding: 32px;
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            text-align: center;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+
+        .swagger-ui-error h2 {
+            color: #ef4444;
+            margin: 0 0 12px;
+        }
+
+        .swagger-ui-error p {
+            color: #64748b;
+            margin: 0 0 20px;
+        }
+
+        .swagger-ui-error a {
+            color: var(--signula-primary);
+            text-decoration: none;
+        }
+
+        .swagger-ui-error a:hover {
+            text-decoration: underline;
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .signula-topbar {
+                padding: 10px 16px;
+            }
+
+            .signula-topbar__links {
+                display: none;
+            }
+
+            .swagger-ui .wrapper {
+                padding: 0 12px;
+            }
+        }
+
+        /* Print styles */
+        @media print {
+            .signula-topbar {
+                position: static;
+                background: #fff;
+                color: #000;
+                box-shadow: none;
+            }
+
+            .signula-topbar__links {
+                display: none;
+            }
+
+            .swagger-ui .topbar,
+            .swagger-ui .btn.authorize,
+            .swagger-ui .btn.try-out__btn {
+                display: none !important;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- ================================================================== -->
+    <!-- Custom SIGNula Top Bar                                             -->
+    <!-- ================================================================== -->
+    <header class="signula-topbar" role="banner">
+        <div class="signula-topbar__left">
+            <a href="https://signulo.id" class="signula-topbar__logo" aria-label="SIGNula Home">
+                <!-- Inline SVG lock icon -->
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                    <path d="M7 11V7a5 5 0 0110 0v4"/>
+                </svg>
+                SIGNula API
+            </a>
+            <span class="signula-topbar__version">v1.0.0</span>
+        </div>
+        <nav class="signula-topbar__links" aria-label="Documentation navigation">
+            <a href="/docs/api/">Markdown Docs</a>
+            <a href="https://signulo.id">Dashboard</a>
+            <a href="https://signulo.com">Website</a>
+            <a href="mailto:api@signulo.id">Support</a>
+        </nav>
+    </header>
+
+    <!-- ================================================================== -->
+    <!-- Swagger UI Mount Point                                             -->
+    <!-- ================================================================== -->
+    <div id="swagger-ui">
+        <div class="swagger-ui-loading" role="status" aria-label="Loading API documentation">
+            <div class="swagger-ui-loading__spinner"></div>
+            <p>Loading API documentation...</p>
+        </div>
+    </div>
+
+    <!-- ================================================================== -->
+    <!-- Swagger UI JavaScript (CDN with self-hosted fallback)              -->
+    <!-- ================================================================== -->
+    <script src="https://unpkg.com/swagger-ui-dist@5.18.2/swagger-ui-bundle.js"
+            onerror="loadFallbackScript('/assets/lib/swagger-ui/swagger-ui-bundle.js')"></script>
+    <script src="https://unpkg.com/swagger-ui-dist@5.18.2/swagger-ui-standalone-preset.js"
+            onerror="loadFallbackScript('/assets/lib/swagger-ui/swagger-ui-standalone-preset.js')"></script>
+
+    <script>
+        /**
+         * Fallback script loader for self-hosted Swagger UI assets.
+         * Used when CDN is unavailable.
+         *
+         * @param {string} src - Path to self-hosted JavaScript file
+         */
+        function loadFallbackScript(src) {
+            var script = document.createElement('script');
+            script.src = src;
+            script.async = false;
+            document.head.appendChild(script);
+        }
+
+        /**
+         * Display error message when Swagger UI fails to load.
+         *
+         * @param {string} message - Error description
+         */
+        function showError(message) {
+            var container = document.getElementById('swagger-ui');
+            container.innerHTML =
+                '<div class="swagger-ui-error">' +
+                    '<h2>Failed to Load Documentation</h2>' +
+                    '<p>' + message + '</p>' +
+                    '<p><a href="/docs/api/">View Markdown Documentation</a></p>' +
+                '</div>';
+        }
+
+        /**
+         * Initialize Swagger UI once scripts are loaded.
+         * Uses the OpenAPI 3.0 YAML spec located at ../openapi.yaml
+         */
+        window.onload = function() {
+            // Check if SwaggerUIBundle loaded successfully
+            if (typeof SwaggerUIBundle === 'undefined') {
+                showError(
+                    'Swagger UI library could not be loaded. ' +
+                    'Please check your internet connection or try the markdown documentation instead.'
+                );
+                return;
+            }
+
+            try {
+                var ui = SwaggerUIBundle({
+                    // OpenAPI spec location (relative to this HTML file)
+                    url: '../openapi.yaml',
+
+                    // Mount point
+                    dom_id: '#swagger-ui',
+
+                    // Layout & presets
+                    presets: [
+                        SwaggerUIBundle.presets.apis,
+                        SwaggerUIStandalonePreset
+                    ],
+                    plugins: [
+                        SwaggerUIBundle.plugins.DownloadUrl
+                    ],
+                    layout: 'StandaloneLayout',
+
+                    // Display options
+                    deepLinking: true,
+                    docExpansion: 'list',
+                    defaultModelsExpandDepth: 1,
+                    defaultModelExpandDepth: 2,
+                    displayOperationId: false,
+                    displayRequestDuration: true,
+                    filter: true,
+                    showExtensions: true,
+                    showCommonExtensions: true,
+                    tryItOutEnabled: false,
+                    supportedSubmitMethods: ['get', 'post', 'put', 'delete', 'patch'],
+                    validatorUrl: null,
+
+                    // Request interceptor (add auth headers for Try It Out)
+                    requestInterceptor: function(request) {
+                        // Ensure CORS headers for cross-origin requests
+                        request.headers['Accept'] = 'application/json';
+                        return request;
+                    },
+
+                    // Error handler
+                    onComplete: function() {
+                        // Swagger UI loaded successfully
+                        console.log('SIGNula API Documentation loaded successfully.');
+                    }
+                });
+
+                // Expose to window for debugging
+                window.ui = ui;
+
+            } catch (error) {
+                showError(
+                    'An error occurred while initialising the API documentation: ' +
+                    error.message
+                );
+                console.error('Swagger UI init error:', error);
+            }
+        };
+    </script>
+
+</body>
+</html>

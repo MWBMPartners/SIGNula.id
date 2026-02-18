@@ -1,0 +1,2859 @@
+# ============================================================================
+# SIGNula API - OpenAPI 3.0 Specification
+# ============================================================================
+# This specification documents all public REST API endpoints for SIGNula,
+# the universal single sign-on and identity management platform.
+#
+# Swagger UI:  https://signulo.id/docs/api/swagger/
+# Markdown:    https://signulo.id/docs/api/
+# Base URL:    https://signulo.id/api/v1
+#
+# Version:     1.0.0
+# Last Updated: 2026-02-18
+# ============================================================================
+
+openapi: "3.0.3"
+
+# ============================================================================
+# API Metadata
+# ============================================================================
+info:
+  title: SIGNula API
+  version: "1.0.0"
+  description: |
+    ## Overview
+
+    SIGNula provides a comprehensive RESTful API for integrating universal
+    authentication, user management, and identity services into your
+    applications. A single SIGNula ID gives users seamless access across
+    all integrated first-party and third-party services.
+
+    ### Key Features
+
+    - **Universal Authentication** &mdash; OAuth 2.0, social login, passwordless auth
+    - **Multi-Factor Authentication** &mdash; TOTP, SMS, email, push notifications, backup codes
+    - **User Management** &mdash; Profiles, preferences, activity tracking
+    - **Account Linking** &mdash; Connect Google, Microsoft, Apple, Facebook, LinkedIn and more
+    - **PassKey / WebAuthn Support** &mdash; FIDO2 biometric authentication
+    - **Webhook System** &mdash; Real-time event notifications with HMAC-SHA256 signatures
+    - **Partner API Keys** &mdash; Server-to-server integration with scoped permissions
+    - **Payment & Subscriptions** &mdash; Multi-tier billing with PayPal, Stripe, crypto and more
+
+    ### Getting Started
+
+    1. Create an account at [signulo.id/register](https://signulo.id/register)
+    2. Generate an API key from **Settings > API Keys**
+    3. Make your first request (see the Health Check endpoint below)
+
+    ### Response Envelope
+
+    Every response follows a standard JSON envelope:
+
+    ```json
+    {
+      "success": true,
+      "message": "Human-readable message",
+      "data": { ... },
+      "errors": { ... },
+      "meta": {
+        "timestamp": "2026-02-18T12:00:00Z",
+        "version": "v1",
+        "request_id": "550e8400-e29b-41d4-a716-446655440000"
+      }
+    }
+    ```
+
+  termsOfService: https://signulo.com/terms
+  contact:
+    name: SIGNula API Support
+    email: api@signulo.id
+    url: https://signulo.id/support
+  license:
+    name: Proprietary
+    url: https://signulo.com/license
+  x-logo:
+    url: https://signulo.com/assets/img/logo.svg
+    altText: SIGNula
+
+# ============================================================================
+# Servers
+# ============================================================================
+servers:
+  - url: https://signulo.id/api/v1
+    description: Production
+  - url: https://beta.signulo.id/api/v1
+    description: Beta / Staging
+  - url: https://alpha.signulo.id/api/v1
+    description: Alpha / Development
+
+# ============================================================================
+# Tags (Endpoint Groups)
+# ============================================================================
+tags:
+  - name: Health & Info
+    description: API status and information endpoints (no authentication required)
+  - name: Authentication
+    description: |
+      User registration, login, logout, token refresh, email verification, and password management.
+      These endpoints issue and manage Bearer tokens used to authenticate subsequent API calls.
+  - name: User Management
+    description: |
+      Read and update user profiles, manage sessions, view activity logs, and configure preferences.
+      All endpoints require Bearer token authentication.
+  - name: Multi-Factor Authentication
+    description: |
+      Enable, disable, and verify MFA methods (TOTP, email, SMS, push).
+      Manage backup / recovery codes.
+  - name: OAuth Account Linking
+    description: |
+      List available OAuth providers, link and unlink third-party accounts
+      (Google, Microsoft, Apple, Facebook, LinkedIn, GitHub), and set a primary provider.
+  - name: WebAuthn / PassKeys
+    description: |
+      FIDO2 / WebAuthn endpoints for registering and authenticating with PassKeys
+      (biometrics, hardware security keys). These endpoints are separate from the
+      main `/api/v1` router.
+  - name: Webhooks
+    description: |
+      Webhook event reference and signature verification guide.
+      Partners can configure webhook endpoints via the dashboard or Partner API.
+
+# ============================================================================
+# Security Schemes
+# ============================================================================
+components:
+
+  # --------------------------------------------------------------------------
+  # Security Schemes
+  # --------------------------------------------------------------------------
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Obtain an access token from `POST /auth/login` (or `POST /mfa/verify`
+        when MFA is enabled). Pass it via the `Authorization` header:
+
+        ```
+        Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
+        ```
+
+        Tokens expire after **3600 seconds** (1 hour). Use `POST /auth/refresh`
+        to obtain a new token.
+
+    APIKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: |
+        Server-to-server authentication. Generate keys from **Settings > API Keys**.
+
+        Key format: `sk_live_...` (production) or `sk_test_...` (sandbox).
+
+        ```
+        X-API-Key: sk_live_abc123xyz789
+        ```
+
+    APIKeyQuery:
+      type: apiKey
+      in: query
+      name: api_key
+      description: |
+        API key passed as a query parameter. **Less secure** &mdash; prefer the header method.
+
+        ```
+        GET /api/v1/health?api_key=sk_live_abc123xyz789
+        ```
+
+  # --------------------------------------------------------------------------
+  # Reusable Schemas
+  # --------------------------------------------------------------------------
+  schemas:
+
+    # -- Standard envelope wrappers ------------------------------------------
+
+    Meta:
+      type: object
+      description: Response metadata included in every API response
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          example: "2026-02-18T12:00:00Z"
+        version:
+          type: string
+          example: "v1"
+        request_id:
+          type: string
+          format: uuid
+          example: "550e8400-e29b-41d4-a716-446655440000"
+
+    Pagination:
+      type: object
+      description: Pagination metadata for list endpoints
+      properties:
+        page:
+          type: integer
+          example: 1
+        limit:
+          type: integer
+          example: 20
+        total:
+          type: integer
+          example: 150
+        pages:
+          type: integer
+          example: 8
+
+    ErrorResponse:
+      type: object
+      description: Standard error response envelope
+      required:
+        - success
+        - message
+      properties:
+        success:
+          type: boolean
+          example: false
+        message:
+          type: string
+          example: "Validation failed"
+        errors:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+          example:
+            email: ["The email field is required."]
+            password: ["Password must be at least 8 characters."]
+        meta:
+          $ref: "#/components/schemas/Meta"
+
+    # -- Authentication schemas -----------------------------------------------
+
+    RegisterRequest:
+      type: object
+      required:
+        - username
+        - email
+        - password
+        - accept_terms
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 30
+          pattern: "^[a-zA-Z0-9_]+$"
+          description: Alphanumeric + underscore, 3-30 characters
+          example: "johndoe"
+        email:
+          type: string
+          format: email
+          example: "john@example.com"
+        password:
+          type: string
+          format: password
+          minLength: 8
+          description: Must include uppercase, lowercase, and a number
+          example: "SecurePass123!"
+        first_name:
+          type: string
+          maxLength: 100
+          example: "John"
+        last_name:
+          type: string
+          maxLength: 100
+          example: "Doe"
+        display_name:
+          type: string
+          maxLength: 255
+          example: "John Doe"
+        accept_terms:
+          type: boolean
+          description: Must be `true` to accept Terms of Service
+          example: true
+
+    RegisterResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "Account created successfully. Please verify your email."
+        data:
+          type: object
+          properties:
+            user_id:
+              type: string
+              example: "usr_abc123"
+            username:
+              type: string
+              example: "johndoe"
+            email:
+              type: string
+              format: email
+              example: "john@example.com"
+            email_verified:
+              type: boolean
+              example: false
+            created_at:
+              type: string
+              format: date-time
+              example: "2026-02-18T12:00:00Z"
+        meta:
+          $ref: "#/components/schemas/Meta"
+
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          example: "john@example.com"
+        password:
+          type: string
+          format: password
+          example: "SecurePass123!"
+        remember_me:
+          type: boolean
+          default: false
+          description: Extend session / refresh token lifetime
+          example: false
+
+    LoginSuccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "Login successful"
+        data:
+          type: object
+          properties:
+            access_token:
+              type: string
+              description: JWT access token
+              example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+            refresh_token:
+              type: string
+              description: Refresh token for obtaining new access tokens
+              example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+            expires_in:
+              type: integer
+              description: Access token TTL in seconds
+              example: 3600
+            token_type:
+              type: string
+              example: "Bearer"
+            user:
+              $ref: "#/components/schemas/UserSummary"
+        meta:
+          $ref: "#/components/schemas/Meta"
+
+    LoginMFARequiredResponse:
+      type: object
+      description: Returned when MFA verification is needed to complete login
+      properties:
+        success:
+          type: boolean
+          example: false
+        message:
+          type: string
+          example: "MFA verification required"
+        data:
+          type: object
+          properties:
+            mfa_token:
+              type: string
+              description: Temporary token to pass to `POST /mfa/verify`
+              example: "mfa_temp_token_xyz"
+            mfa_methods:
+              type: array
+              items:
+                type: string
+                enum: [totp, email, sms, push, backup_codes]
+              description: MFA methods available for this user
+              example: ["totp", "email"]
+            expires_in:
+              type: integer
+              description: Seconds until the MFA token expires
+              example: 300
+        meta:
+          $ref: "#/components/schemas/Meta"
+
+    LogoutRequest:
+      type: object
+      properties:
+        all_devices:
+          type: boolean
+          default: false
+          description: Set to `true` to terminate all sessions (logout everywhere)
+          example: false
+
+    RefreshRequest:
+      type: object
+      required:
+        - refresh_token
+      properties:
+        refresh_token:
+          type: string
+          description: Refresh token obtained from login
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+
+    RefreshResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+          properties:
+            access_token:
+              type: string
+              example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+            expires_in:
+              type: integer
+              example: 3600
+            token_type:
+              type: string
+              example: "Bearer"
+        meta:
+          $ref: "#/components/schemas/Meta"
+
+    VerifyEmailRequest:
+      type: object
+      required:
+        - token
+      properties:
+        token:
+          type: string
+          description: Verification token received via email
+          example: "abc123xyz789"
+
+    ForgotPasswordRequest:
+      type: object
+      required:
+        - email
+      properties:
+        email:
+          type: string
+          format: email
+          example: "john@example.com"
+
+    ResetPasswordRequest:
+      type: object
+      required:
+        - token
+        - password
+        - password_confirmation
+      properties:
+        token:
+          type: string
+          description: Reset token received via email
+          example: "reset_token_xyz"
+        password:
+          type: string
+          format: password
+          minLength: 8
+          example: "NewSecurePass123!"
+        password_confirmation:
+          type: string
+          format: password
+          example: "NewSecurePass123!"
+
+    # -- User schemas ---------------------------------------------------------
+
+    UserSummary:
+      type: object
+      description: Abbreviated user object returned within auth responses
+      properties:
+        user_id:
+          type: string
+          example: "usr_abc123"
+        username:
+          type: string
+          example: "johndoe"
+        email:
+          type: string
+          format: email
+          example: "john@example.com"
+        email_verified:
+          type: boolean
+          example: true
+        mfa_enabled:
+          type: boolean
+          example: false
+
+    UserProfile:
+      type: object
+      description: Full user profile
+      properties:
+        user_id:
+          type: string
+          example: "usr_abc123"
+        username:
+          type: string
+          example: "johndoe"
+        email:
+          type: string
+          format: email
+          example: "john@example.com"
+        email_verified:
+          type: boolean
+          example: true
+        first_name:
+          type: string
+          example: "John"
+        last_name:
+          type: string
+          example: "Doe"
+        display_name:
+          type: string
+          example: "John Doe"
+        profile_picture:
+          type: string
+          format: uri
+          example: "https://signulo.id/avatars/usr_abc123.jpg"
+        phone_number:
+          type: string
+          description: E.164 format
+          example: "+1234567890"
+        phone_verified:
+          type: boolean
+          example: true
+        account_status:
+          type: string
+          enum: [active, suspended, locked, pending, deleted]
+          example: "active"
+        account_tier:
+          type: string
+          enum: [free, basic, premium, enterprise, admin]
+          example: "premium"
+        mfa_enabled:
+          type: boolean
+          example: true
+        locale:
+          type: string
+          description: ISO 639-1 language code
+          example: "en_US"
+        timezone:
+          type: string
+          description: IANA timezone identifier
+          example: "America/New_York"
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-01-01T00:00:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          example: "2026-02-18T12:00:00Z"
+        last_login_at:
+          type: string
+          format: date-time
+          example: "2026-02-18T11:00:00Z"
+
+    UpdateProfileRequest:
+      type: object
+      properties:
+        first_name:
+          type: string
+          maxLength: 100
+          example: "John"
+        last_name:
+          type: string
+          maxLength: 100
+          example: "Doe"
+        display_name:
+          type: string
+          maxLength: 255
+          example: "Johnny"
+        phone_number:
+          type: string
+          description: E.164 format
+          example: "+1234567890"
+        locale:
+          type: string
+          example: "en_US"
+        timezone:
+          type: string
+          example: "America/New_York"
+
+    ChangePasswordRequest:
+      type: object
+      required:
+        - current_password
+        - new_password
+        - new_password_confirmation
+      properties:
+        current_password:
+          type: string
+          format: password
+          example: "OldPass123!"
+        new_password:
+          type: string
+          format: password
+          minLength: 8
+          example: "NewSecurePass456!"
+        new_password_confirmation:
+          type: string
+          format: password
+          example: "NewSecurePass456!"
+
+    ChangeEmailRequest:
+      type: object
+      required:
+        - new_email
+        - password
+      properties:
+        new_email:
+          type: string
+          format: email
+          example: "newemail@example.com"
+        password:
+          type: string
+          format: password
+          description: Current password for verification
+          example: "CurrentPass123!"
+
+    Session:
+      type: object
+      properties:
+        session_id:
+          type: string
+          example: "ses_abc123"
+        device_type:
+          type: string
+          enum: [desktop, mobile, tablet]
+          example: "desktop"
+        browser:
+          type: string
+          example: "Chrome 120"
+        os:
+          type: string
+          example: "Windows 11"
+        ip_address:
+          type: string
+          description: IPv4 or IPv6
+          example: "192.168.1.100"
+        location:
+          type: string
+          example: "New York, US"
+        current:
+          type: boolean
+          description: Whether this is the current session
+          example: true
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-02-18T10:00:00Z"
+        last_activity:
+          type: string
+          format: date-time
+          example: "2026-02-18T12:00:00Z"
+
+    ActivityLogEntry:
+      type: object
+      properties:
+        activity_id:
+          type: string
+          example: "act_abc123"
+        type:
+          type: string
+          description: "Activity type (login, logout, profile_update, mfa_enabled, etc.)"
+          example: "login"
+        result:
+          type: string
+          enum: [success, failure, warning, info]
+          example: "success"
+        details:
+          type: string
+          example: "Logged in from Chrome on Windows"
+        ip_address:
+          type: string
+          example: "192.168.1.100"
+        user_agent:
+          type: string
+          example: "Mozilla/5.0..."
+        location:
+          type: string
+          example: "New York, US"
+        timestamp:
+          type: string
+          format: date-time
+          example: "2026-02-18T12:00:00Z"
+
+    UserPreferences:
+      type: object
+      properties:
+        email_notifications:
+          type: boolean
+          example: true
+        sms_notifications:
+          type: boolean
+          example: false
+        push_notifications:
+          type: boolean
+          example: true
+        marketing_emails:
+          type: boolean
+          example: false
+        theme:
+          type: string
+          enum: [light, dark, system]
+          example: "dark"
+        language:
+          type: string
+          example: "en"
+        date_format:
+          type: string
+          example: "MM/DD/YYYY"
+        time_format:
+          type: string
+          enum: ["12h", "24h"]
+          example: "12h"
+
+    # -- MFA schemas ----------------------------------------------------------
+
+    MFAEnableRequest:
+      type: object
+      required:
+        - method
+        - password
+      properties:
+        method:
+          type: string
+          enum: [totp, email, sms]
+          description: MFA method to enable
+          example: "totp"
+        password:
+          type: string
+          format: password
+          description: Current account password for verification
+          example: "CurrentPass123!"
+
+    MFAEnableResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "MFA enabled successfully"
+        data:
+          type: object
+          properties:
+            method:
+              type: string
+              example: "totp"
+            secret:
+              type: string
+              description: Base32-encoded TOTP secret (only for `totp` method)
+              example: "JBSWY3DPEHPK3PXP"
+            qr_code:
+              type: string
+              description: Data URI of QR code image for authenticator apps
+              example: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA..."
+            backup_codes:
+              type: array
+              items:
+                type: string
+              description: One-time recovery codes (store securely!)
+              example: ["12345-67890", "23456-78901", "34567-89012", "45678-90123", "56789-01234"]
+        meta:
+          $ref: "#/components/schemas/Meta"
+
+    MFADisableRequest:
+      type: object
+      required:
+        - password
+        - mfa_code
+      properties:
+        password:
+          type: string
+          format: password
+          example: "CurrentPass123!"
+        mfa_code:
+          type: string
+          description: Current MFA code or backup code
+          example: "123456"
+
+    MFAVerifyRequest:
+      type: object
+      required:
+        - mfa_token
+        - mfa_code
+        - method
+      properties:
+        mfa_token:
+          type: string
+          description: Temporary MFA token from the login response
+          example: "mfa_temp_token_xyz"
+        mfa_code:
+          type: string
+          description: 6-digit TOTP code, email OTP, or backup code
+          example: "123456"
+        method:
+          type: string
+          enum: [totp, email, sms, push, backup_codes]
+          example: "totp"
+        remember_device:
+          type: boolean
+          default: false
+          description: Skip MFA for this device for 30 days
+          example: false
+
+    MFASetupInfo:
+      type: object
+      properties:
+        mfa_enabled:
+          type: boolean
+          example: false
+        available_methods:
+          type: array
+          items:
+            type: string
+            enum: [totp, email, sms]
+          example: ["totp", "email", "sms"]
+        setup_instructions:
+          type: object
+          additionalProperties:
+            type: object
+          example:
+            totp:
+              step_1: "Install an authenticator app (Google Authenticator, Microsoft Authenticator, etc.)"
+              step_2: "Scan the QR code or enter the secret manually"
+              step_3: "Enter the 6-digit code from your app to verify"
+
+    BackupCode:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "12345-67890"
+        used:
+          type: boolean
+          example: false
+        used_at:
+          type: string
+          format: date-time
+          nullable: true
+          example: null
+
+    RegenerateBackupCodesRequest:
+      type: object
+      required:
+        - password
+      properties:
+        password:
+          type: string
+          format: password
+          description: Current password for verification
+          example: "CurrentPass123!"
+
+    # -- OAuth schemas --------------------------------------------------------
+
+    OAuthProvider:
+      type: object
+      properties:
+        provider:
+          type: string
+          example: "google"
+        name:
+          type: string
+          example: "Google"
+        enabled:
+          type: boolean
+          example: true
+        supports_email:
+          type: boolean
+          example: true
+        supports_profile:
+          type: boolean
+          example: true
+
+    LinkedOAuthAccount:
+      type: object
+      properties:
+        provider:
+          type: string
+          example: "google"
+        provider_user_id:
+          type: string
+          example: "google_12345"
+        email:
+          type: string
+          format: email
+          example: "john@gmail.com"
+        email_verified:
+          type: boolean
+          example: true
+        is_primary:
+          type: boolean
+          example: true
+        linked_at:
+          type: string
+          format: date-time
+          example: "2026-01-01T00:00:00Z"
+
+    LinkOAuthRequest:
+      type: object
+      required:
+        - provider
+        - redirect_uri
+      properties:
+        provider:
+          type: string
+          enum: [google, microsoft, apple, facebook, linkedin, github]
+          example: "google"
+        redirect_uri:
+          type: string
+          format: uri
+          description: URL to redirect to after OAuth authorization
+          example: "https://yourapp.com/oauth/callback"
+
+    LinkOAuthResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+          properties:
+            authorization_url:
+              type: string
+              format: uri
+              description: Redirect the user to this URL to complete OAuth
+              example: "https://accounts.google.com/o/oauth2/v2/auth?client_id=...&redirect_uri=...&state=..."
+            state:
+              type: string
+              description: CSRF state token (verify on callback)
+              example: "random_state_token"
+        meta:
+          $ref: "#/components/schemas/Meta"
+
+    SetPrimaryOAuthRequest:
+      type: object
+      required:
+        - provider
+      properties:
+        provider:
+          type: string
+          enum: [google, microsoft, apple, facebook, linkedin, github]
+          example: "google"
+
+    # -- WebAuthn schemas -----------------------------------------------------
+
+    WebAuthnRegisterOptions:
+      type: object
+      description: PublicKeyCredentialCreationOptions for navigator.credentials.create()
+      properties:
+        rp:
+          type: object
+          properties:
+            name:
+              type: string
+              example: "SIGNula"
+            id:
+              type: string
+              example: "signulo.id"
+        user:
+          type: object
+          properties:
+            id:
+              type: string
+              description: Base64url-encoded user ID
+            name:
+              type: string
+              example: "john@example.com"
+            displayName:
+              type: string
+              example: "John Doe"
+        challenge:
+          type: string
+          description: Base64url-encoded challenge
+        pubKeyCredParams:
+          type: array
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+                example: "public-key"
+              alg:
+                type: integer
+                description: COSE algorithm identifier
+                example: -7
+        timeout:
+          type: integer
+          description: Timeout in milliseconds
+          example: 60000
+        attestation:
+          type: string
+          enum: [none, indirect, direct]
+          example: "none"
+        authenticatorSelection:
+          type: object
+          properties:
+            authenticatorAttachment:
+              type: string
+              enum: [platform, cross-platform]
+            residentKey:
+              type: string
+              enum: [required, preferred, discouraged]
+            userVerification:
+              type: string
+              enum: [required, preferred, discouraged]
+
+    WebAuthnAuthOptions:
+      type: object
+      description: PublicKeyCredentialRequestOptions for navigator.credentials.get()
+      properties:
+        challenge:
+          type: string
+          description: Base64url-encoded challenge
+        timeout:
+          type: integer
+          example: 60000
+        rpId:
+          type: string
+          example: "signulo.id"
+        allowCredentials:
+          type: array
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+                example: "public-key"
+              id:
+                type: string
+                description: Base64url-encoded credential ID
+              transports:
+                type: array
+                items:
+                  type: string
+                  enum: [usb, ble, nfc, internal]
+        userVerification:
+          type: string
+          enum: [required, preferred, discouraged]
+
+    # -- Webhook schemas ------------------------------------------------------
+
+    WebhookPayload:
+      type: object
+      description: Payload delivered to webhook endpoints
+      properties:
+        event:
+          type: string
+          description: Event type identifier
+          example: "user.created"
+        timestamp:
+          type: string
+          format: date-time
+          example: "2026-02-18T12:00:00Z"
+        data:
+          type: object
+          description: Event-specific data
+          example:
+            user_id: "usr_abc123"
+            email: "john@example.com"
+            created_at: "2026-02-18T12:00:00Z"
+        signature:
+          type: string
+          description: "HMAC-SHA256 signature: `sha256=<hex>`"
+          example: "sha256=abc123def456..."
+
+    # -- Generic success response ---------------------------------------------
+
+    SuccessMessage:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "Operation completed successfully"
+        meta:
+          $ref: "#/components/schemas/Meta"
+
+  # --------------------------------------------------------------------------
+  # Reusable Parameters
+  # --------------------------------------------------------------------------
+  parameters:
+    PageParam:
+      name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+      description: Page number for paginated results
+
+    LimitParam:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+      description: Number of results per page (max 100)
+
+  # --------------------------------------------------------------------------
+  # Reusable Responses
+  # --------------------------------------------------------------------------
+  responses:
+    Unauthorized:
+      description: Authentication required or invalid credentials
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            success: false
+            message: "Authentication required"
+            meta:
+              timestamp: "2026-02-18T12:00:00Z"
+              version: "v1"
+              request_id: "550e8400-e29b-41d4-a716-446655440000"
+
+    Forbidden:
+      description: Authenticated but insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            success: false
+            message: "Insufficient permissions"
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            success: false
+            message: "Resource not found"
+
+    ValidationError:
+      description: Input validation failed
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            success: false
+            message: "Validation failed"
+            errors:
+              email: ["The email field is required."]
+
+    RateLimited:
+      description: Rate limit exceeded
+      headers:
+        X-RateLimit-Limit:
+          schema:
+            type: integer
+          description: Maximum requests allowed in the window
+        X-RateLimit-Remaining:
+          schema:
+            type: integer
+          description: Remaining requests in the window
+        X-RateLimit-Reset:
+          schema:
+            type: integer
+          description: Unix timestamp when the window resets
+        Retry-After:
+          schema:
+            type: integer
+          description: Seconds to wait before retrying
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            success: false
+            message: "Rate limit exceeded"
+            data:
+              retry_after: 3600
+
+    ServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            success: false
+            message: "An unexpected error occurred"
+
+# ============================================================================
+# Paths (Endpoints)
+# ============================================================================
+paths:
+
+  # ==========================================================================
+  # HEALTH & INFO
+  # ==========================================================================
+
+  /health:
+    get:
+      tags: [Health & Info]
+      operationId: getHealth
+      summary: API health check
+      description: |
+        Returns the current health status of the API. Use this endpoint to
+        verify connectivity and monitor uptime. No authentication required.
+      responses:
+        "200":
+          description: API is operational
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "API is operational"
+                  data:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+                        enum: [healthy, degraded, maintenance]
+                        example: "healthy"
+                      timestamp:
+                        type: string
+                        format: date-time
+                        example: "2026-02-18T12:00:00Z"
+                      version:
+                        type: string
+                        example: "v1"
+                  meta:
+                    $ref: "#/components/schemas/Meta"
+        "503":
+          description: API is under maintenance
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /info:
+    get:
+      tags: [Health & Info]
+      operationId: getInfo
+      summary: API information
+      description: Returns general information about the API including version and documentation link.
+      responses:
+        "200":
+          description: API information
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                        example: "SIGNula API"
+                      version:
+                        type: string
+                        example: "v1"
+                      documentation:
+                        type: string
+                        format: uri
+                        example: "https://signulo.id/docs/api"
+                      status:
+                        type: string
+                        example: "active"
+                  meta:
+                    $ref: "#/components/schemas/Meta"
+
+  # ==========================================================================
+  # AUTHENTICATION
+  # ==========================================================================
+
+  /auth/register:
+    post:
+      tags: [Authentication]
+      operationId: register
+      summary: Register a new user
+      description: |
+        Create a new SIGNula user account. A verification email will be sent
+        to the provided email address. The user must verify their email before
+        logging in.
+
+        **Rate limit:** 10 requests per minute (sensitive endpoint).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "201":
+          description: Account created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegisterResponse"
+        "409":
+          description: Username or email already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                success: false
+                message: "Email address is already registered"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /auth/login:
+    post:
+      tags: [Authentication]
+      operationId: login
+      summary: Authenticate user
+      description: |
+        Authenticate a user with email and password. Returns access and refresh tokens.
+
+        If the user has MFA enabled, a `202 Accepted` response is returned with a
+        temporary `mfa_token`. Use this token with `POST /mfa/verify` to complete
+        the authentication.
+
+        **Rate limit:** 10 requests per minute (sensitive endpoint).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Login successful (no MFA required)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginSuccessResponse"
+        "202":
+          description: MFA verification required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginMFARequiredResponse"
+        "401":
+          description: Invalid credentials, email not verified, or account locked/suspended
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                invalid_credentials:
+                  summary: Wrong email or password
+                  value:
+                    success: false
+                    message: "Invalid email or password"
+                email_not_verified:
+                  summary: Email not yet verified
+                  value:
+                    success: false
+                    message: "Please verify your email address before logging in"
+                account_locked:
+                  summary: Account locked after too many attempts
+                  value:
+                    success: false
+                    message: "Account locked due to too many failed login attempts. Please reset your password."
+                account_suspended:
+                  summary: Account suspended by admin
+                  value:
+                    success: false
+                    message: "Your account has been suspended. Please contact support."
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /auth/logout:
+    post:
+      tags: [Authentication]
+      operationId: logout
+      summary: Logout user
+      description: |
+        Invalidate the current access token and end the session.
+        Optionally revoke all active sessions by setting `all_devices: true`.
+      security:
+        - BearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LogoutRequest"
+      responses:
+        "200":
+          description: Logged out successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessMessage"
+              example:
+                success: true
+                message: "Logged out successfully"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /auth/refresh:
+    post:
+      tags: [Authentication]
+      operationId: refreshToken
+      summary: Refresh access token
+      description: |
+        Exchange a valid refresh token for a new access token.
+        The refresh token itself is not rotated on each call.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefreshRequest"
+      responses:
+        "200":
+          description: Token refreshed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RefreshResponse"
+        "401":
+          description: Invalid or expired refresh token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/verify-email:
+    get:
+      tags: [Authentication]
+      operationId: verifyEmailGet
+      summary: Verify email (via link)
+      description: |
+        Verify a user's email address using a token received in the verification email.
+        This GET endpoint is used when the user clicks the link in their email.
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Email verification token
+          example: "abc123xyz789"
+      responses:
+        "200":
+          description: Email verified successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Email verified successfully"
+                  data:
+                    type: object
+                    properties:
+                      email_verified:
+                        type: boolean
+                        example: true
+                      verified_at:
+                        type: string
+                        format: date-time
+                  meta:
+                    $ref: "#/components/schemas/Meta"
+        "400":
+          description: Invalid or expired token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      tags: [Authentication]
+      operationId: verifyEmailPost
+      summary: Verify email (via POST)
+      description: Verify email address by submitting the token in the request body.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VerifyEmailRequest"
+      responses:
+        "200":
+          description: Email verified successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Email verified successfully"
+                  data:
+                    type: object
+                    properties:
+                      email_verified:
+                        type: boolean
+                        example: true
+                      verified_at:
+                        type: string
+                        format: date-time
+                  meta:
+                    $ref: "#/components/schemas/Meta"
+        "400":
+          description: Invalid or expired token
+
+  /auth/forgot-password:
+    post:
+      tags: [Authentication]
+      operationId: forgotPassword
+      summary: Request password reset
+      description: |
+        Send a password reset email to the specified address.
+
+        **Security note:** This endpoint always returns `200 OK` regardless of
+        whether the email exists, to prevent email enumeration attacks.
+
+        **Rate limit:** 10 requests per minute (sensitive endpoint).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ForgotPasswordRequest"
+      responses:
+        "200":
+          description: Password reset email sent (always succeeds)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessMessage"
+              example:
+                success: true
+                message: "Password reset email sent. Please check your inbox."
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /auth/reset-password:
+    post:
+      tags: [Authentication]
+      operationId: resetPassword
+      summary: Reset password
+      description: |
+        Reset the user's password using a valid reset token received via email.
+        The token expires after a configurable period (default: 15-30 minutes).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResetPasswordRequest"
+      responses:
+        "200":
+          description: Password reset successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessMessage"
+              example:
+                success: true
+                message: "Password reset successfully. You can now login with your new password."
+        "400":
+          description: Invalid or expired reset token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  # ==========================================================================
+  # USER MANAGEMENT
+  # ==========================================================================
+
+  /user/profile:
+    get:
+      tags: [User Management]
+      operationId: getProfile
+      summary: Get user profile
+      description: Retrieve the authenticated user's full profile.
+      security:
+        - BearerAuth: []
+        - APIKeyAuth: []
+      responses:
+        "200":
+          description: User profile
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: "#/components/schemas/UserProfile"
+                  meta:
+                    $ref: "#/components/schemas/Meta"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+    put:
+      tags: [User Management]
+      operationId: updateProfile
+      summary: Update user profile
+      description: |
+        Update the authenticated user's profile fields.
+        Only the fields included in the request body will be updated.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProfileRequest"
+      responses:
+        "200":
+          description: Profile updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Profile updated successfully"
+                  data:
+                    type: object
+                    properties:
+                      user_id:
+                        type: string
+                        example: "usr_abc123"
+                      first_name:
+                        type: string
+                      last_name:
+                        type: string
+                      display_name:
+                        type: string
+                      updated_at:
+                        type: string
+                        format: date-time
+                  meta:
+                    $ref: "#/components/schemas/Meta"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /user/sessions:
+    get:
+      tags: [User Management]
+      operationId: getSessions
+      summary: List active sessions
+      description: |
+        List all active sessions for the authenticated user.
+        The `current` field indicates which session belongs to the current request.
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: List of active sessions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      sessions:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Session"
+                      total:
+                        type: integer
+                        example: 2
+                  meta:
+                    $ref: "#/components/schemas/Meta"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /user/session/{id}:
+    delete:
+      tags: [User Management]
+      operationId: deleteSession
+      summary: Terminate a session
+      description: |
+        Terminate (revoke) a specific session, effectively logging the user out
+        on that device. Cannot terminate the current session (use `POST /auth/logout` instead).
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Session ID to terminate
+          example: "ses_xyz789"
+      responses:
+        "200":
+          description: Session terminated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessMessage"
+              example:
+                success: true
+                message: "Session terminated successfully"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /user/activity:
+    get:
+      tags: [User Management]
+      operationId: getActivity
+      summary: Get activity log
+      description: |
+        Retrieve the authenticated user's activity log with support for
+        filtering and pagination.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/LimitParam"
+        - name: type
+          in: query
+          schema:
+            type: string
+          description: "Filter by activity type (e.g., `login`, `logout`, `profile_update`)"
+          example: "login"
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: Start date filter (ISO 8601)
+          example: "2026-01-01T00:00:00Z"
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: End date filter (ISO 8601)
+          example: "2026-02-18T23:59:59Z"
+      responses:
+        "200":
+          description: Activity log entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      activities:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/ActivityLogEntry"
+                      pagination:
+                        $ref: "#/components/schemas/Pagination"
+                  meta:
+                    $ref: "#/components/schemas/Meta"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /user/preferences:
+    get:
+      tags: [User Management]
+      operationId: getPreferences
+      summary: Get user preferences
+      description: Retrieve the authenticated user's notification and display preferences.
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: User preferences
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: "#/components/schemas/UserPreferences"
+                  meta:
+                    $ref: "#/components/schemas/Meta"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+    put:
+      tags: [User Management]
+      operationId: updatePreferences
+      summary: Update user preferences
+      description: |
+        Update one or more user preferences. Only provided fields are changed;
+        omitted fields retain their current values.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserPreferences"
+      responses:
+        "200":
+          description: Preferences updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessMessage"
+              example:
+                success: true
+                message: "Preferences updated successfully"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /user/change-password:
+    post:
+      tags: [User Management]
+      operationId: changePassword
+      summary: Change password
+      description: |
+        Change the authenticated user's password. Requires the current password
+        for verification. All other active sessions will remain valid.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangePasswordRequest"
+      responses:
+        "200":
+          description: Password changed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessMessage"
+              example:
+                success: true
+                message: "Password changed successfully"
+        "401":
+          description: Current password is incorrect
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /user/change-email:
+    post:
+      tags: [User Management]
+      operationId: changeEmail
+      summary: Change email address
+      description: |
+        Initiate an email change. A verification email is sent to the new address.
+        The email is only updated after the user verifies the new address.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangeEmailRequest"
+      responses:
+        "200":
+          description: Verification email sent to new address
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessMessage"
+              example:
+                success: true
+                message: "Verification email sent to newemail@example.com. Please verify to complete email change."
+        "401":
+          description: Password is incorrect
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Email already in use
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  # ==========================================================================
+  # MULTI-FACTOR AUTHENTICATION
+  # ==========================================================================
+
+  /mfa/enable:
+    post:
+      tags: [Multi-Factor Authentication]
+      operationId: enableMFA
+      summary: Enable MFA
+      description: |
+        Enable multi-factor authentication for the authenticated user.
+
+        For TOTP, the response includes a Base32 secret and QR code for
+        authenticator apps (Google Authenticator, Microsoft Authenticator, etc.).
+
+        **Important:** Store the backup codes securely. They are the only way
+        to recover access if the primary MFA method is lost.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MFAEnableRequest"
+      responses:
+        "200":
+          description: MFA enabled with setup data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MFAEnableResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /mfa/disable:
+    post:
+      tags: [Multi-Factor Authentication]
+      operationId: disableMFA
+      summary: Disable MFA
+      description: |
+        Disable multi-factor authentication. Requires the current password
+        and a valid MFA code (or backup code) for verification.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MFADisableRequest"
+      responses:
+        "200":
+          description: MFA disabled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessMessage"
+              example:
+                success: true
+                message: "MFA disabled successfully"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Invalid MFA code
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /mfa/verify:
+    post:
+      tags: [Multi-Factor Authentication]
+      operationId: verifyMFA
+      summary: Verify MFA code
+      description: |
+        Complete MFA verification during login. Called after `POST /auth/login`
+        returns a `202` response with an `mfa_token`.
+
+        On success, returns the full set of access/refresh tokens as if the
+        login had succeeded without MFA.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MFAVerifyRequest"
+      responses:
+        "200":
+          description: MFA verified, tokens issued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginSuccessResponse"
+        "401":
+          description: MFA token expired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Invalid MFA code
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                success: false
+                message: "Invalid MFA code. Please try again."
+
+  /mfa/setup:
+    get:
+      tags: [Multi-Factor Authentication]
+      operationId: getMFASetup
+      summary: Get MFA setup information
+      description: |
+        Retrieve available MFA methods and setup instructions for the
+        authenticated user. Shows whether MFA is currently enabled.
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: MFA setup information
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: "#/components/schemas/MFASetupInfo"
+                  meta:
+                    $ref: "#/components/schemas/Meta"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /mfa/backup-codes:
+    get:
+      tags: [Multi-Factor Authentication]
+      operationId: getBackupCodes
+      summary: Get backup codes
+      description: |
+        Retrieve the user's MFA backup / recovery codes, including which
+        codes have been used.
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Backup codes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      backup_codes:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/BackupCode"
+                      remaining:
+                        type: integer
+                        description: Number of unused codes remaining
+                        example: 4
+                      total:
+                        type: integer
+                        example: 5
+                  meta:
+                    $ref: "#/components/schemas/Meta"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /mfa/backup-codes/regenerate:
+    post:
+      tags: [Multi-Factor Authentication]
+      operationId: regenerateBackupCodes
+      summary: Regenerate backup codes
+      description: |
+        Generate a new set of backup codes. **All previous codes are immediately
+        invalidated.** Store the new codes securely.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegenerateBackupCodesRequest"
+      responses:
+        "200":
+          description: New backup codes generated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Backup codes regenerated successfully. Previous codes are now invalid."
+                  data:
+                    type: object
+                    properties:
+                      backup_codes:
+                        type: array
+                        items:
+                          type: string
+                        example: ["12345-67890", "23456-78901", "34567-89012", "45678-90123", "56789-01234"]
+                  meta:
+                    $ref: "#/components/schemas/Meta"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  # ==========================================================================
+  # OAUTH ACCOUNT LINKING
+  # ==========================================================================
+
+  /oauth/providers:
+    get:
+      tags: [OAuth Account Linking]
+      operationId: getOAuthProviders
+      summary: List OAuth providers
+      description: |
+        List all available OAuth providers and their capabilities.
+        No authentication required.
+      responses:
+        "200":
+          description: Available OAuth providers
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      providers:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/OAuthProvider"
+                  meta:
+                    $ref: "#/components/schemas/Meta"
+
+  /oauth/linked:
+    get:
+      tags: [OAuth Account Linking]
+      operationId: getLinkedAccounts
+      summary: Get linked accounts
+      description: List all third-party OAuth accounts linked to the authenticated user.
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Linked OAuth accounts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      linked_accounts:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/LinkedOAuthAccount"
+                      total:
+                        type: integer
+                        example: 2
+                  meta:
+                    $ref: "#/components/schemas/Meta"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /oauth/link:
+    post:
+      tags: [OAuth Account Linking]
+      operationId: linkOAuthAccount
+      summary: Link OAuth account
+      description: |
+        Initiate the OAuth flow to link a third-party account. The response
+        contains an `authorization_url` that the client should redirect the
+        user to.
+
+        After the user authorizes, the provider redirects to your `redirect_uri`
+        with a code and state. Verify the state matches, then the account is
+        linked automatically.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LinkOAuthRequest"
+      responses:
+        "200":
+          description: Authorization URL generated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LinkOAuthResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: Provider account already linked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /oauth/unlink/{provider}:
+    delete:
+      tags: [OAuth Account Linking]
+      operationId: unlinkOAuthAccount
+      summary: Unlink OAuth account
+      description: |
+        Remove the link between the user's SIGNula account and the specified
+        OAuth provider. The user must have at least one authentication method
+        remaining (password or another linked account).
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [google, microsoft, apple, facebook, linkedin, github]
+          description: OAuth provider to unlink
+          example: "google"
+      responses:
+        "200":
+          description: Account unlinked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessMessage"
+              example:
+                success: true
+                message: "Google account unlinked successfully"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Provider not linked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /oauth/set-primary:
+    post:
+      tags: [OAuth Account Linking]
+      operationId: setPrimaryOAuth
+      summary: Set primary OAuth account
+      description: |
+        Set a linked OAuth account as the primary one. The primary account
+        is used for avatar resolution and as the preferred login method.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetPrimaryOAuthRequest"
+      responses:
+        "200":
+          description: Primary account set
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessMessage"
+              example:
+                success: true
+                message: "Google account set as primary"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Provider not linked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ==========================================================================
+  # WEBAUTHN / PASSKEYS
+  # ==========================================================================
+
+  /webauthn/register-options:
+    get:
+      tags: [WebAuthn / PassKeys]
+      operationId: getWebAuthnRegisterOptions
+      summary: Get PassKey registration options
+      description: |
+        Generate `PublicKeyCredentialCreationOptions` for the Web Authentication API.
+        Pass the returned options to `navigator.credentials.create()` in the browser.
+
+        **Note:** This endpoint is outside the `/api/v1` prefix.
+        Full URL: `https://signulo.id/api/webauthn/register-options`
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: WebAuthn registration options
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: "#/components/schemas/WebAuthnRegisterOptions"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /webauthn/register-verify:
+    post:
+      tags: [WebAuthn / PassKeys]
+      operationId: verifyWebAuthnRegistration
+      summary: Verify PassKey registration
+      description: |
+        Submit the attestation response from `navigator.credentials.create()` to
+        complete PassKey registration. The credential is stored and associated
+        with the user's account.
+
+        **Note:** This endpoint is outside the `/api/v1` prefix.
+        Full URL: `https://signulo.id/api/webauthn/register-verify`
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: "The PublicKeyCredential response from navigator.credentials.create()"
+              properties:
+                id:
+                  type: string
+                  description: Base64url-encoded credential ID
+                rawId:
+                  type: string
+                  description: Base64url-encoded raw credential ID
+                type:
+                  type: string
+                  example: "public-key"
+                response:
+                  type: object
+                  properties:
+                    attestationObject:
+                      type: string
+                      description: Base64url-encoded attestation object
+                    clientDataJSON:
+                      type: string
+                      description: Base64url-encoded client data
+                device_name:
+                  type: string
+                  description: Optional user-friendly name for this PassKey
+                  example: "MacBook Pro Touch ID"
+      responses:
+        "201":
+          description: PassKey registered
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "PassKey registered successfully"
+                  data:
+                    type: object
+                    properties:
+                      credential_id:
+                        type: string
+                      device_name:
+                        type: string
+                      device_type:
+                        type: string
+                        enum: [platform, cross-platform]
+                      created_at:
+                        type: string
+                        format: date-time
+        "400":
+          description: Invalid attestation
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /webauthn/auth-options:
+    get:
+      tags: [WebAuthn / PassKeys]
+      operationId: getWebAuthnAuthOptions
+      summary: Get PassKey authentication options
+      description: |
+        Generate `PublicKeyCredentialRequestOptions` for the Web Authentication API.
+        Pass the returned options to `navigator.credentials.get()` in the browser.
+
+        **Note:** This endpoint is outside the `/api/v1` prefix.
+        Full URL: `https://signulo.id/api/webauthn/auth-options`
+      parameters:
+        - name: email
+          in: query
+          schema:
+            type: string
+            format: email
+          description: Optional email to narrow credential selection
+      responses:
+        "200":
+          description: WebAuthn authentication options
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: "#/components/schemas/WebAuthnAuthOptions"
+
+  /webauthn/auth-verify:
+    post:
+      tags: [WebAuthn / PassKeys]
+      operationId: verifyWebAuthnAuth
+      summary: Verify PassKey authentication
+      description: |
+        Submit the assertion response from `navigator.credentials.get()` to
+        complete PassKey authentication. On success, returns access and refresh
+        tokens.
+
+        **Note:** This endpoint is outside the `/api/v1` prefix.
+        Full URL: `https://signulo.id/api/webauthn/auth-verify`
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: "The PublicKeyCredential response from navigator.credentials.get()"
+              properties:
+                id:
+                  type: string
+                rawId:
+                  type: string
+                type:
+                  type: string
+                  example: "public-key"
+                response:
+                  type: object
+                  properties:
+                    authenticatorData:
+                      type: string
+                    clientDataJSON:
+                      type: string
+                    signature:
+                      type: string
+                    userHandle:
+                      type: string
+      responses:
+        "200":
+          description: Authentication successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginSuccessResponse"
+        "400":
+          description: Invalid assertion
+        "401":
+          description: Authentication failed
+
+  # ==========================================================================
+  # WEBHOOKS (Documentation Only)
+  # ==========================================================================
+  # Webhook endpoints are configured via the partner dashboard.
+  # This section documents the event types and payload format.
+
+# ============================================================================
+# Webhook Event Catalogue (x-webhooks extension for documentation)
+# ============================================================================
+x-webhooks:
+
+  user.created:
+    post:
+      tags: [Webhooks]
+      operationId: webhookUserCreated
+      summary: "user.created"
+      description: Fired when a new user registers.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebhookPayload"
+            example:
+              event: "user.created"
+              timestamp: "2026-02-18T12:00:00Z"
+              data:
+                user_id: "usr_abc123"
+                email: "john@example.com"
+                created_at: "2026-02-18T12:00:00Z"
+      responses:
+        "200":
+          description: Webhook acknowledged
+
+  user.updated:
+    post:
+      tags: [Webhooks]
+      operationId: webhookUserUpdated
+      summary: "user.updated"
+      description: Fired when a user's profile is updated.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebhookPayload"
+      responses:
+        "200":
+          description: Webhook acknowledged
+
+  user.deleted:
+    post:
+      tags: [Webhooks]
+      operationId: webhookUserDeleted
+      summary: "user.deleted"
+      description: Fired when a user account is deleted.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebhookPayload"
+      responses:
+        "200":
+          description: Webhook acknowledged
+
+  user.email.verified:
+    post:
+      tags: [Webhooks]
+      operationId: webhookEmailVerified
+      summary: "user.email.verified"
+      description: Fired when a user verifies their email address.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebhookPayload"
+      responses:
+        "200":
+          description: Webhook acknowledged
+
+  user.mfa.enabled:
+    post:
+      tags: [Webhooks]
+      operationId: webhookMFAEnabled
+      summary: "user.mfa.enabled"
+      description: Fired when a user enables MFA.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebhookPayload"
+      responses:
+        "200":
+          description: Webhook acknowledged
+
+  user.mfa.disabled:
+    post:
+      tags: [Webhooks]
+      operationId: webhookMFADisabled
+      summary: "user.mfa.disabled"
+      description: Fired when a user disables MFA.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebhookPayload"
+      responses:
+        "200":
+          description: Webhook acknowledged
+
+  oauth.linked:
+    post:
+      tags: [Webhooks]
+      operationId: webhookOAuthLinked
+      summary: "oauth.linked"
+      description: Fired when an OAuth account is linked.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebhookPayload"
+            example:
+              event: "oauth.linked"
+              timestamp: "2026-02-18T12:00:00Z"
+              data:
+                user_id: "usr_abc123"
+                provider: "google"
+                provider_user_id: "google_12345"
+      responses:
+        "200":
+          description: Webhook acknowledged
+
+  oauth.unlinked:
+    post:
+      tags: [Webhooks]
+      operationId: webhookOAuthUnlinked
+      summary: "oauth.unlinked"
+      description: Fired when an OAuth account is unlinked.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebhookPayload"
+      responses:
+        "200":
+          description: Webhook acknowledged
+
+  session.created:
+    post:
+      tags: [Webhooks]
+      operationId: webhookSessionCreated
+      summary: "session.created"
+      description: Fired on user login (new session created).
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebhookPayload"
+      responses:
+        "200":
+          description: Webhook acknowledged
+
+  session.ended:
+    post:
+      tags: [Webhooks]
+      operationId: webhookSessionEnded
+      summary: "session.ended"
+      description: Fired on user logout or session expiry.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebhookPayload"
+      responses:
+        "200":
+          description: Webhook acknowledged
+
+  subscription.created:
+    post:
+      tags: [Webhooks]
+      operationId: webhookSubscriptionCreated
+      summary: "subscription.created"
+      description: Fired when a new subscription is created.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebhookPayload"
+      responses:
+        "200":
+          description: Webhook acknowledged
+
+  subscription.updated:
+    post:
+      tags: [Webhooks]
+      operationId: webhookSubscriptionUpdated
+      summary: "subscription.updated"
+      description: Fired when a subscription is modified (tier change, etc.).
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebhookPayload"
+      responses:
+        "200":
+          description: Webhook acknowledged
+
+  subscription.cancelled:
+    post:
+      tags: [Webhooks]
+      operationId: webhookSubscriptionCancelled
+      summary: "subscription.cancelled"
+      description: Fired when a subscription is cancelled.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebhookPayload"
+      responses:
+        "200":
+          description: Webhook acknowledged
+
+  subscription.renewed:
+    post:
+      tags: [Webhooks]
+      operationId: webhookSubscriptionRenewed
+      summary: "subscription.renewed"
+      description: Fired when a subscription renews automatically.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebhookPayload"
+      responses:
+        "200":
+          description: Webhook acknowledged
+
+  payment.completed:
+    post:
+      tags: [Webhooks]
+      operationId: webhookPaymentCompleted
+      summary: "payment.completed"
+      description: Fired when a payment is successfully processed.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebhookPayload"
+            example:
+              event: "payment.completed"
+              timestamp: "2026-02-18T12:00:00Z"
+              data:
+                payment_id: "pay_abc123"
+                user_id: "usr_abc123"
+                amount: 9.99
+                currency: "USD"
+                payment_method: "paypal"
+      responses:
+        "200":
+          description: Webhook acknowledged
+
+  payment.failed:
+    post:
+      tags: [Webhooks]
+      operationId: webhookPaymentFailed
+      summary: "payment.failed"
+      description: Fired when a payment fails.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebhookPayload"
+      responses:
+        "200":
+          description: Webhook acknowledged
+
+  payment.refunded:
+    post:
+      tags: [Webhooks]
+      operationId: webhookPaymentRefunded
+      summary: "payment.refunded"
+      description: Fired when a payment is refunded.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebhookPayload"
+      responses:
+        "200":
+          description: Webhook acknowledged
+
+  partner.api_key_created:
+    post:
+      tags: [Webhooks]
+      operationId: webhookAPIKeyCreated
+      summary: "partner.api_key_created"
+      description: Fired when a new API key is generated for a partner.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebhookPayload"
+      responses:
+        "200":
+          description: Webhook acknowledged
+
+  partner.api_key_revoked:
+    post:
+      tags: [Webhooks]
+      operationId: webhookAPIKeyRevoked
+      summary: "partner.api_key_revoked"
+      description: Fired when a partner API key is revoked.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebhookPayload"
+      responses:
+        "200":
+          description: Webhook acknowledged

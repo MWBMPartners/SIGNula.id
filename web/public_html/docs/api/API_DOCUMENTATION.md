@@ -2,7 +2,9 @@
 
 **Version**: 1.0.0
 **Base URL**: `https://signulo.id/api/v1`
-**Last Updated**: 2026-02-03
+**Last Updated**: 2026-02-18
+
+> **Interactive Docs:** Prefer an interactive, try-it-out experience? See the [Swagger UI](swagger/) (OpenAPI 3.0).
 
 ---
 
