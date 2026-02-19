@@ -1,0 +1,1264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="SIGNula - GitHub OAuth Login Provider Setup Guide">
+    <meta name="author" content="MWBM Partners Ltd">
+    <title>GitHub OAuth Setup - SIGNula Documentation</title>
+
+    <!-- Bootstrap 5.3.2 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"
+          integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN"
+          crossorigin="anonymous">
+
+    <!-- FontAwesome 6.4.2 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css"
+          integrity="sha512-z3gLpd7yknf1YoNbCzqRKc4qyor8gaKU1qmn+CShxbuBusANI9QpRohGBreCFkKxLhei6S9CQXFEbbKuqLg0DA=="
+          crossorigin="anonymous" referrerpolicy="no-referrer">
+
+    <!-- Google Fonts: Inter & Fira Code -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+
+    <!-- Highlight.js 11.9.0 CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+
+    <style>
+        /* ========================================
+           CSS Custom Property: Provider Colour
+           ======================================== */
+        :root {
+            --provider-color: #333333;
+        }
+
+        /* ========================================
+           Base Typography & Reset
+           ======================================== */
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: #f8fafc;
+            color: #1e293b;
+            margin: 0;
+            padding: 0;
+        }
+
+        code, pre, .code-inline {
+            font-family: 'Fira Code', 'Courier New', Courier, monospace;
+        }
+
+        /* ========================================
+           Sidebar Navigation
+           ======================================== */
+        .sidebar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 280px;
+            height: 100vh;
+            background-color: #0f172a;
+            color: #cbd5e1;
+            overflow-y: auto;
+            z-index: 1000;
+            transition: transform 0.3s ease;
+            padding-bottom: 2rem;
+        }
+
+        .sidebar-brand {
+            padding: 1.5rem 1.25rem;
+            border-bottom: 1px solid #1e293b;
+        }
+
+        .sidebar-brand h5 {
+            color: #f1f5f9;
+            font-weight: 700;
+            margin: 0;
+            font-size: 1.1rem;
+        }
+
+        .sidebar-brand small {
+            color: #64748b;
+            font-size: 0.75rem;
+        }
+
+        .sidebar-section {
+            padding: 1rem 0 0 0;
+        }
+
+        .sidebar-section-title {
+            font-size: 0.65rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: #64748b;
+            padding: 0 1.25rem 0.5rem;
+        }
+
+        .sidebar-link {
+            display: flex;
+            align-items: center;
+            padding: 0.5rem 1.25rem;
+            color: #94a3b8;
+            text-decoration: none;
+            font-size: 0.85rem;
+            transition: all 0.15s ease;
+            border-left: 3px solid transparent;
+        }
+
+        .sidebar-link:hover {
+            color: #e2e8f0;
+            background-color: #1e293b;
+        }
+
+        .sidebar-link.active {
+            color: #f97316;
+            background-color: rgba(249, 115, 22, 0.08);
+            border-left-color: #f97316;
+            font-weight: 600;
+        }
+
+        .sidebar-link i {
+            width: 20px;
+            margin-right: 0.75rem;
+            text-align: center;
+            font-size: 0.8rem;
+        }
+
+        /* ========================================
+           Main Content Area
+           ======================================== */
+        .main-content {
+            margin-left: 280px;
+            padding: 2rem 2.5rem;
+            min-height: 100vh;
+        }
+
+        .content-wrapper {
+            max-width: 900px;
+            background-color: #ffffff;
+            border-radius: 12px;
+            padding: 2.5rem;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+        }
+
+        /* ========================================
+           Breadcrumb
+           ======================================== */
+        .breadcrumb-nav {
+            margin-bottom: 1.5rem;
+        }
+
+        .breadcrumb-nav .breadcrumb {
+            background: none;
+            padding: 0;
+            margin: 0;
+            font-size: 0.85rem;
+        }
+
+        .breadcrumb-nav .breadcrumb-item a {
+            color: #6366f1;
+            text-decoration: none;
+        }
+
+        .breadcrumb-nav .breadcrumb-item.active {
+            color: #64748b;
+        }
+
+        /* ========================================
+           Page Header
+           ======================================== */
+        .guide-header {
+            margin-bottom: 2rem;
+            padding-bottom: 1.5rem;
+            border-bottom: 2px solid #f1f5f9;
+        }
+
+        .guide-header h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #0f172a;
+            margin-bottom: 0.5rem;
+        }
+
+        .guide-header .provider-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.35rem 0.85rem;
+            border-radius: 50px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .badge-github {
+            background-color: rgba(51, 51, 51, 0.1);
+            color: #333333;
+        }
+
+        /* ========================================
+           Step Indicators
+           ======================================== */
+        .step-section {
+            margin-bottom: 2rem;
+        }
+
+        .step-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .step-circle {
+            width: 36px;
+            height: 36px;
+            min-width: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #ffffff;
+            font-weight: 700;
+            font-size: 0.9rem;
+            margin-right: 0.85rem;
+            background-color: var(--provider-color);
+        }
+
+        .step-header h3 {
+            font-size: 1.15rem;
+            font-weight: 600;
+            color: #0f172a;
+            margin: 0;
+        }
+
+        .step-content {
+            margin-left: 3.1rem;
+            color: #475569;
+            line-height: 1.7;
+        }
+
+        /* ========================================
+           Code Blocks & Copy Button
+           ======================================== */
+        .code-block-wrapper {
+            position: relative;
+            margin: 1rem 0;
+        }
+
+        .code-block-wrapper pre {
+            border-radius: 8px;
+            padding: 1rem 1.25rem;
+            margin: 0;
+            font-size: 0.85rem;
+        }
+
+        .copy-btn {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: rgba(255, 255, 255, 0.15);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #e2e8f0;
+            padding: 0.25rem 0.6rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .copy-btn:hover {
+            background: rgba(255, 255, 255, 0.25);
+            color: #ffffff;
+        }
+
+        .copy-btn.copied {
+            background: rgba(34, 197, 94, 0.3);
+            color: #4ade80;
+        }
+
+        .code-inline {
+            background-color: #f1f5f9;
+            color: #e11d48;
+            padding: 0.15rem 0.45rem;
+            border-radius: 4px;
+            font-size: 0.85em;
+        }
+
+        /* ========================================
+           Alert Boxes
+           ======================================== */
+        .alert {
+            border-radius: 8px;
+            font-size: 0.9rem;
+            border-left-width: 4px;
+        }
+
+        .alert-info {
+            background-color: #eff6ff;
+            border-color: #3b82f6;
+            color: #1e40af;
+        }
+
+        .alert-warning {
+            background-color: #fffbeb;
+            border-color: #f59e0b;
+            color: #92400e;
+        }
+
+        .alert-danger {
+            background-color: #fef2f2;
+            border-color: #ef4444;
+            color: #991b1b;
+        }
+
+        .alert-success {
+            background-color: #f0fdf4;
+            border-color: #10b981;
+            color: #065f46;
+        }
+
+        .alert-tip {
+            background-color: #faf5ff;
+            border-color: #8b5cf6;
+            color: #5b21b6;
+        }
+
+        /* ========================================
+           Tables
+           ======================================== */
+        .settings-table {
+            font-size: 0.88rem;
+        }
+
+        .settings-table th {
+            background-color: #f8fafc;
+            font-weight: 600;
+            color: #334155;
+            border-bottom: 2px solid #e2e8f0;
+        }
+
+        .settings-table td {
+            vertical-align: top;
+            color: #475569;
+        }
+
+        .guide-table {
+            font-size: 0.88rem;
+        }
+
+        .guide-table th {
+            background-color: #f8fafc;
+            font-weight: 600;
+            color: #334155;
+            border-bottom: 2px solid #e2e8f0;
+        }
+
+        .guide-table td {
+            vertical-align: top;
+            color: #475569;
+        }
+
+        /* ========================================
+           Info Cards
+           ======================================== */
+        .info-card {
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 1.25rem;
+            background: #f8fafc;
+            margin-bottom: 1rem;
+        }
+
+        .info-card h5 {
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: #0f172a;
+            margin-bottom: 0.5rem;
+        }
+
+        .info-card p {
+            font-size: 0.88rem;
+            color: #475569;
+            margin-bottom: 0;
+        }
+
+        /* ========================================
+           Footer & Next Steps
+           ======================================== */
+        .guide-footer {
+            margin-top: 3rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid #e2e8f0;
+            text-align: center;
+            font-size: 0.8rem;
+            color: #94a3b8;
+        }
+
+        .next-steps {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+            gap: 1rem;
+            margin: 1.5rem 0;
+        }
+
+        .next-steps a {
+            display: block;
+            padding: 1rem 1.25rem;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            text-decoration: none;
+            color: #334155;
+            font-size: 0.9rem;
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+
+        .next-steps a:hover {
+            border-color: var(--provider-color);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+            transform: translateY(-1px);
+        }
+
+        .next-steps a i {
+            margin-right: 0.5rem;
+        }
+
+        /* ========================================
+           Section Divider
+           ======================================== */
+        .section-divider {
+            border: none;
+            border-top: 2px solid #f1f5f9;
+            margin: 2.5rem 0;
+        }
+
+        /* ========================================
+           Hamburger / Mobile Toggle
+           ======================================== */
+        .sidebar-toggle {
+            display: none;
+            position: fixed;
+            top: 1rem;
+            left: 1rem;
+            z-index: 1100;
+            background: #0f172a;
+            color: #f1f5f9;
+            border: none;
+            border-radius: 8px;
+            padding: 0.6rem 0.8rem;
+            font-size: 1.1rem;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        /* ========================================
+           Sidebar Overlay (mobile)
+           ======================================== */
+        .sidebar-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 999;
+        }
+
+        .sidebar-overlay.show {
+            display: block;
+        }
+
+        /* ========================================
+           Responsive / Mobile
+           ======================================== */
+        @media (max-width: 991.98px) {
+            .sidebar {
+                transform: translateX(-100%);
+            }
+
+            .sidebar.show {
+                transform: translateX(0);
+            }
+
+            .sidebar-toggle {
+                display: block;
+            }
+
+            .main-content {
+                margin-left: 0;
+                padding: 1.25rem;
+                padding-top: 4rem;
+            }
+
+            .content-wrapper {
+                padding: 1.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- ============================================================
+         Mobile Sidebar Toggle (Hamburger)
+         ============================================================ -->
+    <button class="sidebar-toggle" id="sidebarToggle" aria-label="Toggle navigation">
+        <i class="fas fa-bars"></i>
+    </button>
+
+    <!-- Sidebar Overlay for mobile -->
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+    <!-- ============================================================
+         Sidebar Navigation
+         ============================================================ -->
+    <nav class="sidebar" id="sidebar">
+        <div class="sidebar-brand">
+            <h5><i class="fas fa-shield-halved me-2"></i>SIGNula Docs</h5>
+            <small>Provider Setup Guides</small>
+        </div>
+
+        <!-- Back to All Guides -->
+        <div class="sidebar-section">
+            <a href="index.html" class="sidebar-link">
+                <i class="fas fa-arrow-left"></i> Back to All Guides
+            </a>
+        </div>
+
+        <!-- Payment Providers -->
+        <div class="sidebar-section">
+            <div class="sidebar-section-title">Payment Providers</div>
+            <a href="stripe-setup.html" class="sidebar-link">
+                <i class="fab fa-stripe-s"></i> Stripe
+            </a>
+            <a href="paypal-setup.html" class="sidebar-link">
+                <i class="fab fa-paypal"></i> PayPal
+            </a>
+            <a href="coinbase-setup.html" class="sidebar-link">
+                <i class="fab fa-bitcoin"></i> Coinbase Commerce
+            </a>
+            <a href="kofi-setup.html" class="sidebar-link">
+                <i class="fas fa-mug-hot"></i> Ko-fi
+            </a>
+            <a href="patreon-setup.html" class="sidebar-link">
+                <i class="fab fa-patreon"></i> Patreon
+            </a>
+        </div>
+
+        <!-- Login Providers -->
+        <div class="sidebar-section">
+            <div class="sidebar-section-title">Login Providers</div>
+            <a href="google-oauth-setup.html" class="sidebar-link">
+                <i class="fab fa-google"></i> Google
+            </a>
+            <a href="microsoft-oauth-setup.html" class="sidebar-link">
+                <i class="fab fa-microsoft"></i> Microsoft
+            </a>
+            <a href="apple-signin-setup.html" class="sidebar-link">
+                <i class="fab fa-apple"></i> Apple Sign In
+            </a>
+            <a href="facebook-oauth-setup.html" class="sidebar-link">
+                <i class="fab fa-facebook"></i> Facebook
+            </a>
+            <a href="linkedin-oauth-setup.html" class="sidebar-link">
+                <i class="fab fa-linkedin"></i> LinkedIn
+            </a>
+            <a href="github-oauth-setup.html" class="sidebar-link active">
+                <i class="fab fa-github"></i> GitHub
+            </a>
+        </div>
+    </nav>
+
+    <!-- ============================================================
+         Main Content
+         ============================================================ -->
+    <div class="main-content">
+        <!-- Breadcrumb -->
+        <nav class="breadcrumb-nav" aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="../index.html">Documentation</a></li>
+                <li class="breadcrumb-item"><a href="index.html">Setup Guides</a></li>
+                <li class="breadcrumb-item active" aria-current="page">GitHub OAuth</li>
+            </ol>
+        </nav>
+
+        <div class="content-wrapper">
+            <!-- ========================================
+                 Page Header
+                 ======================================== -->
+            <div class="guide-header">
+                <div class="d-flex align-items-center mb-2">
+                    <span class="provider-badge badge-github me-2">
+                        <i class="fab fa-github me-1"></i> Login Provider
+                    </span>
+                    <span class="provider-badge" style="background-color: rgba(51, 51, 51, 0.1); color: #333333;">
+                        <i class="fas fa-code me-1"></i> Developer Auth
+                    </span>
+                </div>
+                <h1>GitHub OAuth Setup</h1>
+                <p class="text-muted mb-0">
+                    GitHub OAuth enables developer-friendly authentication for your SIGNula instance.
+                    Popular for technical and developer-oriented user bases, SIGNula gets access to the user's
+                    profile, email addresses, and optionally organisation memberships.
+                </p>
+            </div>
+
+            <!-- ========================================
+                 Overview
+                 ======================================== -->
+            <h2 class="fw-bold mb-3" style="color: var(--provider-color);">
+                <i class="fas fa-circle-info me-2"></i>Overview
+            </h2>
+            <p>
+                GitHub OAuth provides a straightforward authentication flow for users with GitHub accounts.
+                It is especially popular among developer communities and technical platforms. When a user
+                authenticates via GitHub, SIGNula receives their username, display name, avatar URL, and email
+                address(es). GitHub's OAuth implementation is simple to configure and does not require an
+                app review process.
+            </p>
+            <div class="info-card">
+                <h5><i class="fab fa-github me-2" style="color: var(--provider-color);"></i>Quick Setup</h5>
+                <p>
+                    Unlike some other OAuth providers, GitHub does not require an app review or approval process.
+                    Your OAuth App is immediately available for all GitHub users once created. This makes GitHub
+                    one of the fastest providers to set up.
+                </p>
+            </div>
+
+            <hr class="section-divider">
+
+            <!-- ========================================
+                 Prerequisites
+                 ======================================== -->
+            <h2 class="fw-bold mb-3" style="color: var(--provider-color);">
+                <i class="fas fa-clipboard-check me-2"></i>Prerequisites
+            </h2>
+            <ul>
+                <li>A <strong>GitHub account</strong> (free account is sufficient)</li>
+                <li>A publicly accessible domain with <strong>HTTPS</strong> enabled for your SIGNula instance</li>
+                <li>Access to the <strong>SIGNula Admin Panel</strong></li>
+            </ul>
+            <div class="alert alert-success">
+                <i class="fas fa-check-circle me-2"></i>
+                <strong>Simple requirements:</strong> GitHub OAuth has the simplest prerequisites of any login
+                provider. No company page, developer program registration, or app review is needed.
+            </div>
+
+            <hr class="section-divider">
+
+            <!-- ========================================
+                 Step-by-Step Setup
+                 ======================================== -->
+            <h2 class="fw-bold mb-3" style="color: var(--provider-color);">
+                <i class="fas fa-list-ol me-2"></i>Step-by-Step Setup
+            </h2>
+
+            <!-- Step 1 -->
+            <div class="step-section">
+                <div class="step-header">
+                    <div class="step-circle">1</div>
+                    <h3>Go to GitHub Settings</h3>
+                </div>
+                <div class="step-content">
+                    <p>
+                        Visit <a href="https://github.com" target="_blank" rel="noopener noreferrer">github.com</a>,
+                        click your <strong>avatar</strong> in the top-right corner, and select <strong>Settings</strong>
+                        from the dropdown menu.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Step 2 -->
+            <div class="step-section">
+                <div class="step-header">
+                    <div class="step-circle">2</div>
+                    <h3>Open Developer Settings</h3>
+                </div>
+                <div class="step-content">
+                    <p>
+                        Scroll to the very bottom of the left sidebar and click <strong>Developer settings</strong>.
+                        This section contains OAuth Apps, GitHub Apps, and personal access tokens.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Step 3 -->
+            <div class="step-section">
+                <div class="step-header">
+                    <div class="step-circle">3</div>
+                    <h3>Create a New OAuth App</h3>
+                </div>
+                <div class="step-content">
+                    <p>
+                        Click <strong>OAuth Apps</strong> in the left sidebar, then click
+                        <strong>New OAuth App</strong> (or "Register a new application").
+                    </p>
+                </div>
+            </div>
+
+            <!-- Step 4 -->
+            <div class="step-section">
+                <div class="step-header">
+                    <div class="step-circle">4</div>
+                    <h3>Fill in Application Details</h3>
+                </div>
+                <div class="step-content">
+                    <p>
+                        Complete the registration form with the following details:
+                    </p>
+                    <ul>
+                        <li><strong>Application name:</strong> <code class="code-inline">SIGNula Login</code></li>
+                        <li><strong>Homepage URL:</strong></li>
+                    </ul>
+                    <div class="code-block-wrapper">
+                        <button class="copy-btn" onclick="copyCode(this)"><i class="fas fa-copy me-1"></i>Copy</button>
+                        <pre><code class="language-plaintext">https://yourdomain.com</code></pre>
+                    </div>
+                    <ul>
+                        <li><strong>Application description:</strong> <code class="code-inline">Universal single sign-on authentication</code></li>
+                        <li><strong>Authorization callback URL:</strong></li>
+                    </ul>
+                    <div class="code-block-wrapper">
+                        <button class="copy-btn" onclick="copyCode(this)"><i class="fas fa-copy me-1"></i>Copy</button>
+                        <pre><code class="language-plaintext">https://yourdomain.com/oauth/callback</code></pre>
+                    </div>
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        <strong>Exact match required:</strong> GitHub requires the Authorization callback URL to
+                        match <strong>exactly</strong>, including the protocol, domain, path, and whether or not
+                        there is a trailing slash. Mismatches will result in an error during the OAuth flow.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 5 -->
+            <div class="step-section">
+                <div class="step-header">
+                    <div class="step-circle">5</div>
+                    <h3>Register the Application</h3>
+                </div>
+                <div class="step-content">
+                    <p>
+                        Click <strong>Register application</strong>. You will be taken to the app's settings page.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Step 6 -->
+            <div class="step-section">
+                <div class="step-header">
+                    <div class="step-circle">6</div>
+                    <h3>Copy the Client ID</h3>
+                </div>
+                <div class="step-content">
+                    <p>
+                        The <strong>Client ID</strong> is displayed on the app page. Copy this value.
+                    </p>
+                    <div class="code-block-wrapper">
+                        <button class="copy-btn" onclick="copyCode(this)"><i class="fas fa-copy me-1"></i>Copy</button>
+                        <pre><code class="language-plaintext">Iv1.xxxxxxxxxxxxxxxx</code></pre>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 7 -->
+            <div class="step-section">
+                <div class="step-header">
+                    <div class="step-circle">7</div>
+                    <h3>Generate a New Client Secret</h3>
+                </div>
+                <div class="step-content">
+                    <p>
+                        Click the <strong>Generate a new client secret</strong> button. A new secret will be
+                        generated and displayed.
+                    </p>
+                    <div class="alert alert-danger">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        <strong>Critical:</strong> Copy the Client Secret <strong>immediately</strong>. GitHub
+                        will not show the full secret again after you navigate away from this page. If you lose
+                        it, you will need to generate a new one (which invalidates the old one).
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 8 -->
+            <div class="step-section">
+                <div class="step-header">
+                    <div class="step-circle">8</div>
+                    <h3>Copy the Client Secret</h3>
+                </div>
+                <div class="step-content">
+                    <p>
+                        Copy the generated Client Secret string and store it in a secure location such as
+                        a password manager. The secret will look something like:
+                    </p>
+                    <div class="code-block-wrapper">
+                        <button class="copy-btn" onclick="copyCode(this)"><i class="fas fa-copy me-1"></i>Copy</button>
+                        <pre><code class="language-plaintext">xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx</code></pre>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 9 -->
+            <div class="step-section">
+                <div class="step-header">
+                    <div class="step-circle">9</div>
+                    <h3>Configure SIGNula Admin Panel</h3>
+                </div>
+                <div class="step-content">
+                    <p>
+                        Log in to your <strong>SIGNula Admin Panel</strong> and navigate to:
+                    </p>
+                    <p>
+                        <strong>System</strong> &rarr; <strong>OAuth Providers</strong> &rarr; <strong>GitHub</strong>
+                    </p>
+                    <ol>
+                        <li>Toggle the <strong>Enabled</strong> switch to activate GitHub OAuth.</li>
+                        <li>Paste your <strong>Client ID</strong> into the "Client ID" field.</li>
+                        <li>Paste your <strong>Client Secret</strong> into the "Client Secret" field.</li>
+                        <li>Click <strong>Save</strong>.</li>
+                    </ol>
+                    <div class="alert alert-info">
+                        <i class="fas fa-lock me-2"></i>
+                        <strong>Security:</strong> The Client Secret is stored encrypted in <code class="code-inline">tblSettings</code>
+                        (marked as <code class="code-inline">isSensitive</code>) and is never exposed in the admin UI after saving.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 10 -->
+            <div class="step-section">
+                <div class="step-header">
+                    <div class="step-circle">10</div>
+                    <h3>Test the Login</h3>
+                </div>
+                <div class="step-content">
+                    <p>
+                        Open your SIGNula login page and click the <strong>Sign in with GitHub</strong> button.
+                        You should be redirected to GitHub's authorisation page, and upon approval, returned to
+                        SIGNula with your account linked.
+                    </p>
+                    <div class="alert alert-success">
+                        <i class="fas fa-check-circle me-2"></i>
+                        <strong>Success:</strong> If login completes without errors and your GitHub profile
+                        information (username, avatar, email) appears in SIGNula, the integration is working correctly.
+                    </div>
+                </div>
+            </div>
+
+            <hr class="section-divider">
+
+            <!-- ========================================
+                 Scopes & Permissions
+                 ======================================== -->
+            <h2 class="fw-bold mb-3" style="color: var(--provider-color);">
+                <i class="fas fa-key me-2"></i>Scopes &amp; Permissions
+            </h2>
+            <p>
+                SIGNula requests the following OAuth scopes from GitHub:
+            </p>
+
+            <div class="table-responsive">
+                <table class="table guide-table">
+                    <thead>
+                        <tr>
+                            <th>Scope</th>
+                            <th>Description</th>
+                            <th>Required</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code class="code-inline">(no scope)</code></td>
+                            <td>Default access: grants read-only access to public profile information (username, avatar URL, bio).</td>
+                            <td>Default</td>
+                        </tr>
+                        <tr>
+                            <td><code class="code-inline">user:email</code></td>
+                            <td>Access to the user's email addresses, including their primary and verified emails. Essential for account linking.</td>
+                            <td>Yes</td>
+                        </tr>
+                        <tr>
+                            <td><code class="code-inline">read:user</code></td>
+                            <td>Full read access to the user's profile data, including private profile information.</td>
+                            <td>Yes</td>
+                        </tr>
+                        <tr>
+                            <td><code class="code-inline">read:org</code></td>
+                            <td>Read access to the user's organisation memberships. Useful if you need to restrict access based on organisation membership.</td>
+                            <td>Optional</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="alert alert-warning">
+                <i class="fas fa-envelope me-2"></i>
+                <strong>Private emails:</strong> Many GitHub users have their email address set to private.
+                Without the <code class="code-inline">user:email</code> scope, you will not receive any email
+                address. SIGNula always requests this scope to ensure reliable account linking.
+            </div>
+
+            <hr class="section-divider">
+
+            <!-- ========================================
+                 OAuth App vs GitHub App
+                 ======================================== -->
+            <h2 class="fw-bold mb-3" style="color: var(--provider-color);">
+                <i class="fas fa-code-branch me-2"></i>OAuth App vs GitHub App
+            </h2>
+            <p>
+                GitHub offers two types of applications: <strong>OAuth Apps</strong> and <strong>GitHub Apps</strong>.
+                Understanding the difference is important when setting up SIGNula.
+            </p>
+
+            <div class="table-responsive">
+                <table class="table guide-table">
+                    <thead>
+                        <tr>
+                            <th>Feature</th>
+                            <th>OAuth App</th>
+                            <th>GitHub App</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Purpose</strong></td>
+                            <td>User authentication and basic profile access</td>
+                            <td>Complex integrations with repos, issues, actions, etc.</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Setup complexity</strong></td>
+                            <td>Simple</td>
+                            <td>More complex (requires webhook URL, permissions matrix)</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Best for SSO</strong></td>
+                            <td>Yes - recommended for SIGNula</td>
+                            <td>Overkill for authentication-only use cases</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Rate limits</strong></td>
+                            <td>5,000 requests/hour per authenticated user</td>
+                            <td>Higher limits, installation-based</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Granular permissions</strong></td>
+                            <td>Scope-based</td>
+                            <td>Fine-grained repository/org permissions</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="alert alert-info">
+                <i class="fas fa-info-circle me-2"></i>
+                <strong>Recommendation:</strong> SIGNula uses an <strong>OAuth App</strong>, which is simpler
+                and perfectly suited for single sign-on authentication. GitHub Apps are designed for more complex
+                integrations (such as CI/CD tools, bots, or repository management) and are not needed for SSO.
+            </div>
+
+            <hr class="section-divider">
+
+            <!-- ========================================
+                 Important Notes
+                 ======================================== -->
+            <h2 class="fw-bold mb-3" style="color: var(--provider-color);">
+                <i class="fas fa-exclamation-circle me-2"></i>Important Notes
+            </h2>
+
+            <div class="info-card">
+                <h5><i class="fas fa-key me-2" style="color: #ef4444;"></i>Client Secret Visibility</h5>
+                <p>
+                    The Client Secret is only displayed in full immediately after generation. Once you navigate
+                    away, GitHub masks the secret. If you lose it, you must generate a new one, which will
+                    invalidate the previous secret. Remember to update SIGNula's settings if you regenerate.
+                </p>
+            </div>
+
+            <div class="info-card">
+                <h5><i class="fas fa-envelope me-2" style="color: #3b82f6;"></i>Email Handling</h5>
+                <p>
+                    GitHub provides both primary and verified emails via the
+                    <code class="code-inline">/user/emails</code> endpoint. Some users may have multiple email
+                    addresses. SIGNula uses the primary verified email for account linking. If no verified email
+                    is found, the user will be prompted to provide one manually.
+                </p>
+            </div>
+
+            <div class="info-card">
+                <h5><i class="fas fa-tachometer-alt me-2" style="color: #f59e0b;"></i>Rate Limits</h5>
+                <p>
+                    Authenticated requests to the GitHub API are limited to <strong>5,000 requests per hour</strong>
+                    per user token. For authentication-only usage, this limit is more than sufficient.
+                    Monitor the <code class="code-inline">X-RateLimit-Remaining</code> response header if needed.
+                </p>
+            </div>
+
+            <div class="info-card">
+                <h5><i class="fas fa-sync-alt me-2" style="color: #10b981;"></i>Secret Rotation</h5>
+                <p>
+                    GitHub allows you to have up to two active client secrets simultaneously. This enables
+                    zero-downtime secret rotation: generate a new secret, update SIGNula, verify it works,
+                    then delete the old secret.
+                </p>
+            </div>
+
+            <hr class="section-divider">
+
+            <!-- ========================================
+                 Troubleshooting
+                 ======================================== -->
+            <h2 class="fw-bold mb-3">
+                <i class="fas fa-wrench me-2" style="color: #ef4444;"></i>Troubleshooting
+            </h2>
+
+            <div class="accordion" id="troubleshootingAccordion">
+                <!-- Issue 1 -->
+                <div class="accordion-item">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#trouble1">
+                            "Redirect URI mismatch" error
+                        </button>
+                    </h2>
+                    <div id="trouble1" class="accordion-collapse collapse" data-bs-parent="#troubleshootingAccordion">
+                        <div class="accordion-body">
+                            <ul>
+                                <li>GitHub requires an <strong>exact match</strong> for the Authorization callback URL, including the trailing slash (or lack thereof).</li>
+                                <li>Verify the callback URL in your GitHub OAuth App settings matches exactly: <code class="code-inline">https://yourdomain.com/oauth/callback</code></li>
+                                <li>Ensure the protocol is <code class="code-inline">https://</code> (not <code class="code-inline">http://</code>).</li>
+                                <li>Check the <code class="code-inline">oauth.github.redirect_uri</code> setting in SIGNula matches the GitHub configuration.</li>
+                                <li>Note: <code class="code-inline">https://yourdomain.com/oauth/callback</code> and <code class="code-inline">https://yourdomain.com/oauth/callback/</code> are treated as different URLs.</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Issue 2 -->
+                <div class="accordion-item">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#trouble2">
+                            "Bad credentials" or authentication failure
+                        </button>
+                    </h2>
+                    <div id="trouble2" class="accordion-collapse collapse" data-bs-parent="#troubleshootingAccordion">
+                        <div class="accordion-body">
+                            <ul>
+                                <li>Verify the Client ID in SIGNula matches the one shown on the GitHub OAuth App page.</li>
+                                <li>The Client Secret may have been regenerated or expired. Check if the secret in SIGNula matches the active secret in GitHub.</li>
+                                <li>If you recently regenerated the secret, update the <code class="code-inline">oauth.github.client_secret</code> setting in SIGNula.</li>
+                                <li>Ensure there are no extra whitespace characters in the Client ID or Secret fields.</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Issue 3 -->
+                <div class="accordion-item">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#trouble3">
+                            Rate limiting (HTTP 403 with rate limit message)
+                        </button>
+                    </h2>
+                    <div id="trouble3" class="accordion-collapse collapse" data-bs-parent="#troubleshootingAccordion">
+                        <div class="accordion-body">
+                            <ul>
+                                <li>GitHub limits authenticated requests to 5,000 per hour per user token.</li>
+                                <li>Check the <code class="code-inline">X-RateLimit-Remaining</code> header in API responses to monitor usage.</li>
+                                <li>If you are hitting rate limits during normal authentication, there may be an issue with excessive API calls. Review the SIGNula activity log.</li>
+                                <li>Rate limits reset every hour. The reset time is indicated in the <code class="code-inline">X-RateLimit-Reset</code> header (Unix timestamp).</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Issue 4 -->
+                <div class="accordion-item">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#trouble4">
+                            Email address not returned (null or empty)
+                        </button>
+                    </h2>
+                    <div id="trouble4" class="accordion-collapse collapse" data-bs-parent="#troubleshootingAccordion">
+                        <div class="accordion-body">
+                            <ul>
+                                <li>The user may have their email set to <strong>private</strong> in their GitHub profile settings.</li>
+                                <li>Ensure the <code class="code-inline">user:email</code> scope is included in SIGNula's OAuth request. Without this scope, private emails are not accessible.</li>
+                                <li>SIGNula uses the <code class="code-inline">/user/emails</code> endpoint (which requires the <code class="code-inline">user:email</code> scope) to retrieve all email addresses, including private ones.</li>
+                                <li>If no verified email is available, SIGNula will prompt the user to enter an email manually during account creation.</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Issue 5 -->
+                <div class="accordion-item">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#trouble5">
+                            Need to rotate the Client Secret
+                        </button>
+                    </h2>
+                    <div id="trouble5" class="accordion-collapse collapse" data-bs-parent="#troubleshootingAccordion">
+                        <div class="accordion-body">
+                            <ul>
+                                <li>GitHub allows up to <strong>two active client secrets</strong> simultaneously for zero-downtime rotation.</li>
+                                <li>To rotate: generate a new secret in GitHub, update SIGNula with the new secret, verify login works, then delete the old secret in GitHub.</li>
+                                <li>Remember that SIGNula stores the secret encrypted. After updating, verify the new secret is working by testing the login flow.</li>
+                                <li>Old tokens issued with the previous secret will continue to work until they expire.</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <hr class="section-divider">
+
+            <!-- ========================================
+                 Settings Reference
+                 ======================================== -->
+            <h2 class="fw-bold mb-3">
+                <i class="fas fa-cog me-2" style="color: #8b5cf6;"></i>Settings Reference
+            </h2>
+            <p class="text-muted mb-3">
+                These settings are stored in <code class="code-inline">tblSettings</code> in the SIGNula backend database.
+                Fields marked with <i class="fas fa-lock text-danger"></i> are encrypted at rest.
+            </p>
+
+            <div class="table-responsive">
+                <table class="table settings-table">
+                    <thead>
+                        <tr>
+                            <th>Setting Key</th>
+                            <th>Type</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code class="code-inline">oauth.github.enabled</code></td>
+                            <td>Boolean</td>
+                            <td>Enable or disable GitHub OAuth as a login provider</td>
+                        </tr>
+                        <tr>
+                            <td><code class="code-inline">oauth.github.client_id</code></td>
+                            <td>String</td>
+                            <td>Your GitHub OAuth App Client ID</td>
+                        </tr>
+                        <tr>
+                            <td><code class="code-inline">oauth.github.client_secret</code> <i class="fas fa-lock text-danger"></i></td>
+                            <td>String</td>
+                            <td>Your GitHub OAuth App Client Secret (encrypted, isSensitive)</td>
+                        </tr>
+                        <tr>
+                            <td><code class="code-inline">oauth.github.redirect_uri</code></td>
+                            <td>String</td>
+                            <td>OAuth callback URL (e.g., <code class="code-inline">https://yourdomain.com/oauth/callback</code>)</td>
+                        </tr>
+                        <tr>
+                            <td><code class="code-inline">oauth.github.scopes</code></td>
+                            <td>String</td>
+                            <td>Space-separated list of OAuth scopes. Default: <code class="code-inline">read:user user:email</code></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <hr class="section-divider">
+
+            <!-- ========================================
+                 Next Steps
+                 ======================================== -->
+            <h2 class="fw-bold mb-3">
+                <i class="fas fa-forward me-2" style="color: #10b981;"></i>Next Steps
+            </h2>
+            <div class="next-steps">
+                <a href="facebook-oauth-setup.html">
+                    <i class="fab fa-facebook" style="color: #1877F2;"></i> Set up Facebook OAuth
+                </a>
+                <a href="linkedin-oauth-setup.html">
+                    <i class="fab fa-linkedin" style="color: #0A66C2;"></i> Set up LinkedIn OAuth
+                </a>
+                <a href="google-oauth-setup.html">
+                    <i class="fab fa-google" style="color: #4285F4;"></i> Set up Google OAuth
+                </a>
+                <a href="index.html">
+                    <i class="fas fa-th-large" style="color: #6366f1;"></i> View All Setup Guides
+                </a>
+            </div>
+
+            <!-- ========================================
+                 Footer
+                 ======================================== -->
+            <div class="guide-footer">
+                <p>&copy; 2025&ndash;2026 MWBM Partners Ltd (t/a MWservices). All rights reserved.</p>
+            </div>
+        </div><!-- /.content-wrapper -->
+    </div><!-- /.main-content -->
+
+    <!-- ============================================================
+         Scripts
+         ============================================================ -->
+
+    <!-- Highlight.js 11.9.0 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+    <!-- Bootstrap 5.3.2 JS Bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"
+            integrity="sha384-C6RzsynM9kWDrMNeT87bh95OGNyZPhcTNXj1NW7RuBCsyN/o0jlpcV8Qyq46cDfL"
+            crossorigin="anonymous"></script>
+
+    <script>
+        // Initialise Highlight.js
+        hljs.highlightAll();
+
+        // Copy-to-clipboard functionality
+        function copyCode(button) {
+            var codeBlock = button.closest('.code-block-wrapper').querySelector('code');
+            var text = codeBlock.textContent;
+
+            navigator.clipboard.writeText(text).then(function() {
+                button.classList.add('copied');
+                button.innerHTML = '<i class="fas fa-check me-1"></i>Copied!';
+                setTimeout(function() {
+                    button.classList.remove('copied');
+                    button.innerHTML = '<i class="fas fa-copy me-1"></i>Copy';
+                }, 2000);
+            }).catch(function() {
+                // Fallback for older browsers
+                var textarea = document.createElement('textarea');
+                textarea.value = text;
+                document.body.appendChild(textarea);
+                textarea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textarea);
+                button.classList.add('copied');
+                button.innerHTML = '<i class="fas fa-check me-1"></i>Copied!';
+                setTimeout(function() {
+                    button.classList.remove('copied');
+                    button.innerHTML = '<i class="fas fa-copy me-1"></i>Copy';
+                }, 2000);
+            });
+        }
+
+        // Sidebar toggle for mobile
+        var sidebarToggle = document.getElementById('sidebarToggle');
+        var sidebar = document.getElementById('sidebar');
+        var sidebarOverlay = document.getElementById('sidebarOverlay');
+
+        sidebarToggle.addEventListener('click', function() {
+            sidebar.classList.toggle('show');
+            sidebarOverlay.classList.toggle('show');
+        });
+
+        sidebarOverlay.addEventListener('click', function() {
+            sidebar.classList.remove('show');
+            sidebarOverlay.classList.remove('show');
+        });
+
+        // Close sidebar on mobile when a link is clicked
+        var sidebarLinks = document.querySelectorAll('.sidebar-link');
+        sidebarLinks.forEach(function(link) {
+            link.addEventListener('click', function() {
+                if (window.innerWidth < 992) {
+                    sidebar.classList.remove('show');
+                    sidebarOverlay.classList.remove('show');
+                }
+            });
+        });
+    </script>
+</body>
+</html>

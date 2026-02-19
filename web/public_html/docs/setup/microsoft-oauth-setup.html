@@ -1,0 +1,1196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="SIGNula - Microsoft OAuth Setup Guide for Sign In with Microsoft (Personal and Microsoft 365 Work/School accounts)">
+    <meta name="author" content="MWBM Partners Ltd">
+    <title>Microsoft OAuth Setup - SIGNula Documentation</title>
+
+    <!-- Bootstrap 5.3.2 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"
+          integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN"
+          crossorigin="anonymous">
+
+    <!-- FontAwesome 6.4.2 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css"
+          integrity="sha512-z3gLpd7yknf1YoNbCzqRKc4qyor8gaKU1qmn+CShxbuBusANI9QpRohGBreCFkKxLhei6S9CQXFEbbKuqLg0DA=="
+          crossorigin="anonymous">
+
+    <!-- Google Fonts: Inter & Fira Code -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+
+    <style>
+        /* ========================================
+           CSS Custom Property: Provider Colour
+           ======================================== */
+        :root {
+            --provider-color: #00a4ef;
+        }
+
+        /* ========================================
+           Base Typography & Reset
+           ======================================== */
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: #f8fafc;
+            color: #1e293b;
+            margin: 0;
+            padding: 0;
+        }
+
+        code, pre, .code-inline {
+            font-family: 'Fira Code', 'Courier New', Courier, monospace;
+        }
+
+        /* ========================================
+           Sidebar Navigation
+           ======================================== */
+        .sidebar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 280px;
+            height: 100vh;
+            background-color: #0f172a;
+            color: #cbd5e1;
+            overflow-y: auto;
+            z-index: 1000;
+            transition: transform 0.3s ease;
+            padding-bottom: 2rem;
+        }
+
+        .sidebar-header {
+            padding: 1.5rem 1.25rem;
+            border-bottom: 1px solid #1e293b;
+        }
+
+        .sidebar-header h5 {
+            color: #f1f5f9;
+            font-weight: 700;
+            margin: 0;
+            font-size: 1.1rem;
+        }
+
+        .sidebar-header small {
+            color: #64748b;
+            font-size: 0.75rem;
+        }
+
+        .sidebar-nav {
+            padding: 1rem 0 0 0;
+        }
+
+        .sidebar-section-title {
+            font-size: 0.65rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: #64748b;
+            padding: 0 1.25rem 0.5rem;
+        }
+
+        .sidebar-link {
+            display: flex;
+            align-items: center;
+            padding: 0.5rem 1.25rem;
+            color: #94a3b8;
+            text-decoration: none;
+            font-size: 0.85rem;
+            transition: all 0.15s ease;
+            border-left: 3px solid transparent;
+        }
+
+        .sidebar-link:hover {
+            color: #e2e8f0;
+            background-color: #1e293b;
+        }
+
+        .sidebar-link.active {
+            color: #f97316;
+            background-color: rgba(249, 115, 22, 0.08);
+            border-left-color: #f97316;
+            font-weight: 600;
+        }
+
+        .sidebar-link i {
+            width: 20px;
+            margin-right: 0.75rem;
+            text-align: center;
+            font-size: 0.8rem;
+        }
+
+        .sidebar-back {
+            padding: 1rem 1.25rem;
+            border-bottom: 1px solid #1e293b;
+        }
+
+        .sidebar-back a {
+            color: #60a5fa;
+            text-decoration: none;
+            font-size: 0.85rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: color 0.15s ease;
+        }
+
+        .sidebar-back a:hover {
+            color: #93c5fd;
+        }
+
+        /* ========================================
+           Main Content Area
+           ======================================== */
+        .main-content {
+            margin-left: 280px;
+            padding: 48px;
+            min-height: 100vh;
+        }
+
+        .content-wrapper {
+            max-width: 900px;
+        }
+
+        /* ========================================
+           Provider Header
+           ======================================== */
+        .provider-header {
+            background: linear-gradient(135deg, var(--provider-color), color-mix(in srgb, var(--provider-color) 70%, #000));
+            color: #ffffff;
+            border-radius: 12px;
+            padding: 2.5rem;
+            margin-bottom: 2.5rem;
+        }
+
+        .provider-header h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+
+        .provider-header p {
+            opacity: 0.9;
+            margin-bottom: 0;
+            font-size: 1.05rem;
+        }
+
+        .provider-header .provider-icon {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+            opacity: 0.9;
+        }
+
+        /* ========================================
+           Section Headings
+           ======================================== */
+        .section-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #0f172a;
+            margin-bottom: 1rem;
+            padding-bottom: 0.75rem;
+            border-bottom: 2px solid #f1f5f9;
+        }
+
+        .section-title i {
+            margin-right: 0.5rem;
+        }
+
+        /* ========================================
+           Steps
+           ======================================== */
+        .step {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .step-number {
+            width: 36px;
+            height: 36px;
+            min-width: 36px;
+            border-radius: 50%;
+            background-color: var(--provider-color);
+            color: #ffffff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 0.9rem;
+            margin-top: 0.15rem;
+        }
+
+        .step-content {
+            flex: 1;
+        }
+
+        .step-content h3 {
+            font-size: 1.15rem;
+            font-weight: 600;
+            color: #0f172a;
+            margin-bottom: 0.75rem;
+        }
+
+        .step-content p,
+        .step-content ul,
+        .step-content ol {
+            color: #475569;
+            line-height: 1.7;
+        }
+
+        /* ========================================
+           Alert Boxes
+           ======================================== */
+        .alert-box {
+            border-radius: 8px;
+            padding: 1rem 1.25rem;
+            margin: 1rem 0;
+            font-size: 0.9rem;
+            border-left: 4px solid;
+        }
+
+        .alert-info {
+            background-color: #eff6ff;
+            border-color: #3b82f6;
+            color: #1e40af;
+        }
+
+        .alert-warning {
+            background-color: #fffbeb;
+            border-color: #f59e0b;
+            color: #92400e;
+        }
+
+        .alert-danger {
+            background-color: #fef2f2;
+            border-color: #ef4444;
+            color: #991b1b;
+        }
+
+        .alert-success {
+            background-color: #f0fdf4;
+            border-color: #22c55e;
+            color: #166534;
+        }
+
+        .alert-tip {
+            background-color: #f5f3ff;
+            border-color: #8b5cf6;
+            color: #5b21b6;
+        }
+
+        /* ========================================
+           Code Blocks & Inline Code
+           ======================================== */
+        .code-block {
+            position: relative;
+            background-color: #1e293b;
+            border-radius: 8px;
+            padding: 1.25rem;
+            margin: 1rem 0;
+            overflow-x: auto;
+        }
+
+        .code-block code {
+            color: #e2e8f0;
+            font-size: 0.85rem;
+            line-height: 1.6;
+            white-space: pre;
+        }
+
+        .copy-btn {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: rgba(255, 255, 255, 0.15);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #e2e8f0;
+            padding: 0.25rem 0.6rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .copy-btn:hover {
+            background: rgba(255, 255, 255, 0.25);
+            color: #ffffff;
+        }
+
+        .copy-btn.copied {
+            background: rgba(34, 197, 94, 0.3);
+            color: #4ade80;
+        }
+
+        .code-inline {
+            background-color: #f1f5f9;
+            color: #e11d48;
+            padding: 0.15rem 0.45rem;
+            border-radius: 4px;
+            font-size: 0.85em;
+        }
+
+        /* ========================================
+           Tables
+           ======================================== */
+        .guide-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.88rem;
+            margin: 1rem 0;
+        }
+
+        .guide-table th {
+            background-color: #f8fafc;
+            font-weight: 600;
+            color: #334155;
+            border-bottom: 2px solid #e2e8f0;
+            padding: 0.75rem 1rem;
+            text-align: left;
+        }
+
+        .guide-table td {
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid #e2e8f0;
+            vertical-align: top;
+            color: #475569;
+        }
+
+        .guide-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        /* ========================================
+           Info Cards
+           ======================================== */
+        .info-card {
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 1.25rem;
+            margin: 1rem 0;
+        }
+
+        .info-card h4 {
+            font-size: 1rem;
+            font-weight: 600;
+            color: #0f172a;
+            margin-bottom: 0.5rem;
+        }
+
+        .info-card p {
+            color: #475569;
+            margin-bottom: 0;
+            font-size: 0.9rem;
+        }
+
+        /* ========================================
+           Checklist
+           ======================================== */
+        .checklist {
+            list-style: none;
+            padding: 0;
+            margin: 1rem 0;
+        }
+
+        .checklist li {
+            padding: 0.5rem 0;
+            padding-left: 1.75rem;
+            position: relative;
+            color: #475569;
+            font-size: 0.9rem;
+        }
+
+        .checklist li::before {
+            content: '\f00c';
+            font-family: 'Font Awesome 6 Free';
+            font-weight: 900;
+            position: absolute;
+            left: 0;
+            color: #22c55e;
+            font-size: 0.8rem;
+        }
+
+        /* ========================================
+           Section Divider
+           ======================================== */
+        .section-divider {
+            border: none;
+            border-top: 2px solid #f1f5f9;
+            margin: 2.5rem 0;
+        }
+
+        /* ========================================
+           Footer
+           ======================================== */
+        .guide-footer {
+            margin-top: 3rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid #e2e8f0;
+            text-align: center;
+            font-size: 0.8rem;
+            color: #94a3b8;
+        }
+
+        .guide-footer .next-steps {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+            text-align: left;
+        }
+
+        .next-step-card {
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 1.25rem;
+            text-decoration: none;
+            color: inherit;
+            transition: transform 0.2s, box-shadow 0.2s;
+            display: block;
+        }
+
+        .next-step-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+            text-decoration: none;
+            color: inherit;
+        }
+
+        .next-step-card h5 {
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: #0f172a;
+            margin-bottom: 0.25rem;
+        }
+
+        .next-step-card p {
+            font-size: 0.8rem;
+            color: #64748b;
+            margin-bottom: 0;
+        }
+
+        /* ========================================
+           Mobile Toggle
+           ======================================== */
+        .mobile-toggle {
+            display: none;
+            position: fixed;
+            top: 1rem;
+            left: 1rem;
+            z-index: 1100;
+            background: #0f172a;
+            color: #f1f5f9;
+            border: none;
+            border-radius: 8px;
+            padding: 0.6rem 0.8rem;
+            font-size: 1.1rem;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        /* ========================================
+           Sidebar Overlay (mobile)
+           ======================================== */
+        .sidebar-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 999;
+        }
+
+        .sidebar-overlay.show {
+            display: block;
+        }
+
+        /* ========================================
+           Responsive / Mobile
+           ======================================== */
+        @media (max-width: 991.98px) {
+            .sidebar {
+                transform: translateX(-100%);
+            }
+
+            .sidebar.show {
+                transform: translateX(0);
+            }
+
+            .mobile-toggle {
+                display: block;
+            }
+
+            .main-content {
+                margin-left: 0;
+                padding: 1.25rem;
+                padding-top: 4rem;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- ============================================================
+         Mobile Sidebar Toggle
+         ============================================================ -->
+    <button class="mobile-toggle" id="mobileToggle" aria-label="Toggle navigation">
+        <i class="fas fa-bars"></i>
+    </button>
+
+    <!-- Sidebar Overlay for mobile -->
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+    <!-- ============================================================
+         Sidebar Navigation
+         ============================================================ -->
+    <nav class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <h5><i class="fas fa-shield-halved me-2"></i>SIGNula Docs</h5>
+            <small>Provider Setup Guides</small>
+        </div>
+
+        <div class="sidebar-back">
+            <a href="index.html"><i class="fas fa-arrow-left"></i> Back to All Guides</a>
+        </div>
+
+        <div class="sidebar-nav">
+            <!-- Payment Providers -->
+            <div style="padding: 1rem 0 0 0;">
+                <div class="sidebar-section-title">Payment Providers</div>
+                <a href="stripe-setup.html" class="sidebar-link">
+                    <i class="fab fa-stripe-s"></i> Stripe
+                </a>
+                <a href="paypal-setup.html" class="sidebar-link">
+                    <i class="fab fa-paypal"></i> PayPal
+                </a>
+                <a href="coinbase-setup.html" class="sidebar-link">
+                    <i class="fab fa-bitcoin"></i> Coinbase Commerce
+                </a>
+                <a href="kofi-setup.html" class="sidebar-link">
+                    <i class="fas fa-mug-hot"></i> Ko-fi
+                </a>
+                <a href="patreon-setup.html" class="sidebar-link">
+                    <i class="fab fa-patreon"></i> Patreon
+                </a>
+            </div>
+
+            <!-- Login Providers -->
+            <div style="padding: 1rem 0 0 0;">
+                <div class="sidebar-section-title">Login Providers</div>
+                <a href="google-oauth-setup.html" class="sidebar-link">
+                    <i class="fab fa-google"></i> Google
+                </a>
+                <a href="microsoft-oauth-setup.html" class="sidebar-link active">
+                    <i class="fab fa-microsoft"></i> Microsoft
+                </a>
+                <a href="apple-signin-setup.html" class="sidebar-link">
+                    <i class="fab fa-apple"></i> Apple
+                </a>
+                <a href="facebook-setup.html" class="sidebar-link">
+                    <i class="fab fa-facebook"></i> Facebook
+                </a>
+                <a href="linkedin-setup.html" class="sidebar-link">
+                    <i class="fab fa-linkedin"></i> LinkedIn
+                </a>
+                <a href="github-setup.html" class="sidebar-link">
+                    <i class="fab fa-github"></i> GitHub
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- ============================================================
+         Main Content
+         ============================================================ -->
+    <div class="main-content">
+        <div class="content-wrapper">
+
+            <!-- ========================================
+                 Provider Header
+                 ======================================== -->
+            <div class="provider-header">
+                <div class="provider-icon">
+                    <i class="fab fa-microsoft"></i>
+                </div>
+                <h1>Microsoft OAuth Setup</h1>
+                <p>
+                    Configure Microsoft Identity Platform v2.0 to enable sign-in with personal Microsoft accounts
+                    and Microsoft 365 Work/School accounts via Azure Entra ID (formerly Azure AD).
+                </p>
+            </div>
+
+            <!-- ========================================
+                 Section 1: Overview
+                 ======================================== -->
+            <h2 class="section-title">
+                <i class="fas fa-info-circle" style="color: var(--provider-color);"></i>Overview
+            </h2>
+            <p>
+                Microsoft OAuth supports authentication with <strong>personal Microsoft accounts</strong>
+                (e.g., @outlook.com, @hotmail.com, @live.com) as well as <strong>Microsoft 365 Work/School accounts</strong>
+                (organisational accounts managed via Azure Entra ID). SIGNula uses the
+                <strong>Microsoft Identity Platform v2.0</strong> endpoints for authentication.
+            </p>
+            <p>
+                SIGNula requests the following scopes from Microsoft by default:
+            </p>
+            <ul class="checklist">
+                <li><code class="code-inline">openid</code> &mdash; Enables OpenID Connect single sign-on</li>
+                <li><code class="code-inline">profile</code> &mdash; Access to user's display name and basic profile</li>
+                <li><code class="code-inline">email</code> &mdash; Access to the user's email address</li>
+                <li><code class="code-inline">User.Read</code> &mdash; Read the user's Microsoft Graph profile</li>
+                <li><code class="code-inline">offline_access</code> &mdash; Enables refresh tokens for long-lived sessions</li>
+            </ul>
+            <div class="alert-box alert-info">
+                <i class="fas fa-lightbulb me-2"></i>
+                <strong>Note:</strong> Microsoft Identity Platform v2.0 supports both personal and organisational
+                accounts through a single application registration, depending on the tenant configuration you choose.
+            </div>
+
+            <hr class="section-divider">
+
+            <!-- ========================================
+                 Section 2: Prerequisites
+                 ======================================== -->
+            <h2 class="section-title">
+                <i class="fas fa-clipboard-check" style="color: var(--provider-color);"></i>Prerequisites
+            </h2>
+            <ul class="checklist">
+                <li>A Microsoft account (personal, or Work/School with admin access)</li>
+                <li>Access to the <a href="https://portal.azure.com" target="_blank" rel="noopener noreferrer">Azure Portal</a></li>
+                <li>A registered domain for your SIGNula installation</li>
+                <li>HTTPS enabled on your domain (required by Microsoft for redirect URIs)</li>
+            </ul>
+
+            <hr class="section-divider">
+
+            <!-- ========================================
+                 Section 3: Step-by-Step Setup
+                 ======================================== -->
+            <h2 class="section-title">
+                <i class="fas fa-list-ol" style="color: var(--provider-color);"></i>Step-by-Step Setup
+            </h2>
+
+            <!-- Step 1 -->
+            <div class="step">
+                <div class="step-number">1</div>
+                <div class="step-content">
+                    <h3>Go to Azure Portal</h3>
+                    <p>
+                        Navigate to <a href="https://portal.azure.com" target="_blank" rel="noopener noreferrer">portal.azure.com</a>
+                        and sign in with your Microsoft account. You can use either a personal account or a Work/School account
+                        with administrative privileges.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Step 2 -->
+            <div class="step">
+                <div class="step-number">2</div>
+                <div class="step-content">
+                    <h3>Navigate to App Registrations</h3>
+                    <p>
+                        Go to <strong>Azure Active Directory</strong> (or <strong>Microsoft Entra ID</strong>) &rarr;
+                        <strong>App registrations</strong>. Alternatively, search for <strong>"App registrations"</strong>
+                        in the top search bar.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Step 3 -->
+            <div class="step">
+                <div class="step-number">3</div>
+                <div class="step-content">
+                    <h3>Register a New Application</h3>
+                    <p>Click <strong>New registration</strong> and fill in the following:</p>
+                    <ul>
+                        <li><strong>Name:</strong> <code class="code-inline">SIGNula Authentication</code></li>
+                        <li>
+                            <strong>Supported account types:</strong> Choose based on your requirements:
+                            <table class="guide-table" style="margin-top: 0.75rem;">
+                                <thead>
+                                    <tr>
+                                        <th>Option</th>
+                                        <th>Description</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>Accounts in any organisational directory and personal Microsoft accounts</td>
+                                        <td><strong>Recommended</strong> &mdash; Multi-tenant + personal accounts. Allows both Work/School and personal Microsoft accounts.</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Accounts in any organisational directory only</td>
+                                        <td>Multi-tenant Work/School accounts only. No personal accounts.</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Personal Microsoft accounts only</td>
+                                        <td>Only personal accounts (@outlook.com, @hotmail.com, etc.).</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </li>
+                        <li>
+                            <strong>Redirect URI:</strong>
+                            <ul>
+                                <li>Platform: <strong>Web</strong></li>
+                                <li>URI:
+                                    <div class="code-block">
+                                        <button class="copy-btn" onclick="copyCode(this)"><i class="fas fa-copy me-1"></i>Copy</button>
+                                        <code>https://yourdomain.com/oauth/callback</code>
+                                    </div>
+                                </li>
+                            </ul>
+                        </li>
+                    </ul>
+                    <p>Click <strong>Register</strong>.</p>
+                </div>
+            </div>
+
+            <!-- Step 4 -->
+            <div class="step">
+                <div class="step-number">4</div>
+                <div class="step-content">
+                    <h3>Copy the Application (Client) ID</h3>
+                    <p>
+                        After registration, you will be taken to the app's <strong>Overview</strong> page. Copy the
+                        <strong>Application (client) ID</strong> &mdash; this is your Client ID.
+                    </p>
+                    <div class="code-block">
+                        <button class="copy-btn" onclick="copyCode(this)"><i class="fas fa-copy me-1"></i>Copy</button>
+                        <code>Application (client) ID: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx</code>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 5 -->
+            <div class="step">
+                <div class="step-number">5</div>
+                <div class="step-content">
+                    <h3>Note the Directory (Tenant) ID</h3>
+                    <p>
+                        On the same Overview page, note the <strong>Directory (tenant) ID</strong>. If you chose
+                        multi-tenant support, you will typically use <code class="code-inline">common</code> instead
+                        of a specific tenant ID (see the Tenant Configuration section below).
+                    </p>
+                    <div class="code-block">
+                        <button class="copy-btn" onclick="copyCode(this)"><i class="fas fa-copy me-1"></i>Copy</button>
+                        <code>Directory (tenant) ID: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx</code>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 6 -->
+            <div class="step">
+                <div class="step-number">6</div>
+                <div class="step-content">
+                    <h3>Create a Client Secret</h3>
+                    <p>
+                        Navigate to <strong>Certificates &amp; secrets</strong> in the left sidebar, then click
+                        <strong>New client secret</strong>.
+                    </p>
+                    <ul>
+                        <li><strong>Description:</strong> <code class="code-inline">SIGNula Auth</code></li>
+                        <li><strong>Expiry:</strong> Choose a duration (recommended: 24 months)</li>
+                    </ul>
+                    <p>Click <strong>Add</strong>.</p>
+                    <div class="alert-box alert-danger">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        <strong>Critical:</strong> Copy the secret <strong>VALUE</strong> immediately! It will only
+                        be displayed once. If you navigate away without copying it, you will need to create a new
+                        secret. Do <em>not</em> copy the "Secret ID" &mdash; you need the "Value" column.
+                    </div>
+                    <div class="alert-box alert-warning">
+                        <i class="fas fa-calendar-alt me-2"></i>
+                        <strong>Reminder:</strong> Client secrets expire. Set a calendar reminder to rotate the
+                        secret before it expires. When a secret expires, users will be unable to sign in with
+                        Microsoft until a new secret is configured.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 7 -->
+            <div class="step">
+                <div class="step-number">7</div>
+                <div class="step-content">
+                    <h3>Configure API Permissions</h3>
+                    <p>
+                        Navigate to <strong>API permissions</strong> in the left sidebar, then click
+                        <strong>Add a permission</strong>.
+                    </p>
+                    <ul>
+                        <li>Select <strong>Microsoft Graph</strong></li>
+                        <li>Choose <strong>Delegated permissions</strong></li>
+                        <li>Add the following permissions:
+                            <ul>
+                                <li><code class="code-inline">openid</code></li>
+                                <li><code class="code-inline">profile</code></li>
+                                <li><code class="code-inline">email</code></li>
+                                <li><code class="code-inline">User.Read</code></li>
+                                <li><code class="code-inline">offline_access</code></li>
+                            </ul>
+                        </li>
+                    </ul>
+                    <p>
+                        If you have admin access to your Azure tenant, click
+                        <strong>"Grant admin consent for [your organisation]"</strong> to pre-approve these
+                        permissions for all users in your organisation.
+                    </p>
+                    <div class="alert-box alert-info">
+                        <i class="fas fa-info-circle me-2"></i>
+                        <strong>Note:</strong> The <code class="code-inline">openid</code>,
+                        <code class="code-inline">profile</code>, <code class="code-inline">email</code>, and
+                        <code class="code-inline">offline_access</code> scopes are pre-approved by default for
+                        most tenants and do not require admin consent.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 8 -->
+            <div class="step">
+                <div class="step-number">8</div>
+                <div class="step-content">
+                    <h3>Configure SIGNula Admin Panel</h3>
+                    <p>
+                        Log in to your <strong>SIGNula Admin Panel</strong> and navigate to
+                        <strong>System</strong> &rarr; <strong>OAuth Providers</strong> &rarr; <strong>Microsoft</strong>.
+                    </p>
+                    <ul>
+                        <li>Enter the <strong>Client ID</strong> (Application ID)</li>
+                        <li>Enter the <strong>Client Secret</strong> (the Value you copied)</li>
+                        <li><strong>Tenant ID:</strong> Enter your specific tenant ID, or use <code class="code-inline">common</code> for multi-tenant support</li>
+                        <li>Click <strong>Save</strong></li>
+                    </ul>
+                    <div class="alert-box alert-success">
+                        <i class="fas fa-lock me-2"></i>
+                        <strong>Security:</strong> Both the Client ID and Client Secret are stored encrypted at
+                        rest in the SIGNula database using cryptographic encryption with salt.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 9 -->
+            <div class="step">
+                <div class="step-number">9</div>
+                <div class="step-content">
+                    <h3>Test the Integration</h3>
+                    <p>
+                        Visit your SIGNula login page and click the <strong>"Sign in with Microsoft"</strong> button.
+                        You should be redirected to the Microsoft sign-in page. After authenticating and granting
+                        consent, you will be redirected back to SIGNula and logged in.
+                    </p>
+                    <div class="alert-box alert-tip">
+                        <i class="fas fa-lightbulb me-2"></i>
+                        <strong>Tip:</strong> Test with both a personal Microsoft account and an organisational
+                        account (if applicable) to verify that both flows work correctly.
+                    </div>
+                </div>
+            </div>
+
+            <hr class="section-divider">
+
+            <!-- ========================================
+                 Section 4: Tenant Configuration
+                 ======================================== -->
+            <h2 class="section-title">
+                <i class="fas fa-sitemap" style="color: var(--provider-color);"></i>Tenant Configuration
+            </h2>
+            <p>
+                The <strong>Tenant ID</strong> controls which types of accounts can authenticate with your SIGNula
+                installation. Microsoft supports several tenant values:
+            </p>
+            <table class="guide-table">
+                <thead>
+                    <tr>
+                        <th>Tenant Value</th>
+                        <th>Accounts Allowed</th>
+                        <th>When to Use</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code class="code-inline">common</code></td>
+                        <td>All Microsoft accounts (personal + any organisation)</td>
+                        <td><strong>Recommended for most SIGNula installations.</strong> Allows the broadest range of users to authenticate.</td>
+                    </tr>
+                    <tr>
+                        <td><code class="code-inline">organizations</code></td>
+                        <td>Work/School accounts from any Azure AD tenant</td>
+                        <td>Use when you want to restrict access to organisational accounts only (no personal accounts).</td>
+                    </tr>
+                    <tr>
+                        <td><code class="code-inline">consumers</code></td>
+                        <td>Personal Microsoft accounts only</td>
+                        <td>Use when you want to restrict access to personal accounts only (no Work/School).</td>
+                    </tr>
+                    <tr>
+                        <td><em>Specific Tenant ID</em></td>
+                        <td>Users from a single specific Azure AD tenant</td>
+                        <td>Use when you want to restrict access to a single organisation. Users from other organisations cannot sign in.</td>
+                    </tr>
+                </tbody>
+            </table>
+            <div class="alert-box alert-info">
+                <i class="fas fa-info-circle me-2"></i>
+                <strong>Endpoint Format:</strong> The authorization and token endpoints use the tenant value in the URL:
+                <code class="code-inline">https://login.microsoftonline.com/{tenant}/oauth2/v2.0/authorize</code>
+            </div>
+
+            <hr class="section-divider">
+
+            <!-- ========================================
+                 Section 5: Microsoft 365 Work/School
+                 ======================================== -->
+            <h2 class="section-title">
+                <i class="fas fa-building" style="color: var(--provider-color);"></i>Microsoft 365 Work/School
+            </h2>
+            <p>
+                When users sign in with a Microsoft 365 Work/School account, additional organisational context
+                is available through the Microsoft Graph API.
+            </p>
+
+            <h4 style="margin-top: 1.5rem; font-weight: 600;">Organisational Account Setup</h4>
+            <p>
+                For organisations using Microsoft 365, a tenant administrator may need to grant consent for
+                SIGNula to access user profile information. This can be done in two ways:
+            </p>
+            <ul>
+                <li><strong>User consent:</strong> Each user grants permission when they first sign in (if tenant policy allows)</li>
+                <li><strong>Admin consent:</strong> A tenant administrator pre-approves the application for all users via the Azure Portal or by navigating to the admin consent URL</li>
+            </ul>
+
+            <h4 style="margin-top: 1.5rem; font-weight: 600;">Admin Consent Flow</h4>
+            <p>
+                To trigger the admin consent flow, redirect an administrator to:
+            </p>
+            <div class="code-block">
+                <button class="copy-btn" onclick="copyCode(this)"><i class="fas fa-copy me-1"></i>Copy</button>
+                <code>https://login.microsoftonline.com/{tenant}/adminconsent?
+  client_id=YOUR_CLIENT_ID&
+  redirect_uri=https://yourdomain.com/oauth/callback&
+  scope=openid profile email User.Read offline_access</code>
+            </div>
+
+            <h4 style="margin-top: 1.5rem; font-weight: 600;">Microsoft Graph API Access</h4>
+            <p>
+                With the <code class="code-inline">User.Read</code> scope, SIGNula can retrieve additional profile
+                information from the Microsoft Graph API, including the user's display name, job title, department,
+                office location, and profile photo.
+            </p>
+
+            <hr class="section-divider">
+
+            <!-- ========================================
+                 Section 6: Troubleshooting
+                 ======================================== -->
+            <h2 class="section-title">
+                <i class="fas fa-wrench" style="color: #ef4444;"></i>Troubleshooting
+            </h2>
+
+            <div class="info-card" style="margin-bottom: 1rem;">
+                <h4><code class="code-inline">AADSTS50011</code> &mdash; Reply URL Mismatch</h4>
+                <p>
+                    The redirect URI in the OAuth request does not match any of the registered redirect URIs
+                    for the application. Go to the Azure Portal &rarr; App registrations &rarr; your app &rarr;
+                    Authentication, and verify the redirect URI matches exactly (including protocol, domain, and path).
+                </p>
+            </div>
+
+            <div class="info-card" style="margin-bottom: 1rem;">
+                <h4><code class="code-inline">AADSTS7000215</code> &mdash; Invalid Client Secret</h4>
+                <p>
+                    The client secret provided is invalid or has expired. Navigate to Certificates &amp; secrets
+                    in the Azure Portal and check that the secret has not expired. If it has, create a new secret
+                    and update it in the SIGNula Admin Panel.
+                </p>
+            </div>
+
+            <div class="info-card" style="margin-bottom: 1rem;">
+                <h4><code class="code-inline">AADSTS65001</code> &mdash; Consent Required</h4>
+                <p>
+                    The user or administrator has not consented to the requested permissions. This typically occurs
+                    in organisations with strict consent policies. The tenant administrator needs to grant admin
+                    consent via the Azure Portal or the admin consent URL.
+                </p>
+            </div>
+
+            <div class="info-card" style="margin-bottom: 1rem;">
+                <h4><code class="code-inline">AADSTS700016</code> &mdash; Application Not Found</h4>
+                <p>
+                    The application was not found in the specified tenant. Verify that the Client ID is correct
+                    and that the application registration has not been deleted. If using a specific tenant ID,
+                    ensure the application is registered in (or available to) that tenant.
+                </p>
+            </div>
+
+            <div class="info-card" style="margin-bottom: 1rem;">
+                <h4>Tenant Restriction Issues</h4>
+                <p>
+                    If users from certain organisations cannot sign in, check the <strong>Supported account types</strong>
+                    in your app registration. Ensure you have selected the appropriate option for your use case.
+                    Also verify the tenant value in SIGNula matches your intended audience (e.g.,
+                    <code class="code-inline">common</code> for broadest access).
+                </p>
+            </div>
+
+            <hr class="section-divider">
+
+            <!-- ========================================
+                 Section 7: Settings Reference
+                 ======================================== -->
+            <h2 class="section-title">
+                <i class="fas fa-cog" style="color: #8b5cf6;"></i>Settings Reference
+            </h2>
+            <p>
+                These settings are stored in <code class="code-inline">tblSettings</code> in the SIGNula backend database.
+                Fields marked with <i class="fas fa-lock text-danger"></i> are encrypted at rest.
+            </p>
+            <table class="guide-table">
+                <thead>
+                    <tr>
+                        <th>Setting Key</th>
+                        <th>Type</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code class="code-inline">oauth.microsoft.enabled</code></td>
+                        <td>Boolean</td>
+                        <td>Enable or disable Microsoft as a login provider</td>
+                    </tr>
+                    <tr>
+                        <td><code class="code-inline">oauth.microsoft.client_id</code> <i class="fas fa-lock text-danger"></i></td>
+                        <td>String</td>
+                        <td>Application (client) ID from Azure App Registration (encrypted, isSensitive)</td>
+                    </tr>
+                    <tr>
+                        <td><code class="code-inline">oauth.microsoft.client_secret</code> <i class="fas fa-lock text-danger"></i></td>
+                        <td>String</td>
+                        <td>Client secret value from Azure (encrypted, isSensitive)</td>
+                    </tr>
+                    <tr>
+                        <td><code class="code-inline">oauth.microsoft.tenant_id</code></td>
+                        <td>String</td>
+                        <td>Tenant ID or alias. Options: <code class="code-inline">common</code>, <code class="code-inline">organizations</code>, <code class="code-inline">consumers</code>, or a specific tenant GUID. Default: <code class="code-inline">common</code></td>
+                    </tr>
+                    <tr>
+                        <td><code class="code-inline">oauth.microsoft.redirect_uri</code></td>
+                        <td>String</td>
+                        <td>Redirect URI after Microsoft authentication (auto-configured)</td>
+                    </tr>
+                    <tr>
+                        <td><code class="code-inline">oauth.microsoft.scopes</code></td>
+                        <td>JSON</td>
+                        <td>JSON array of OAuth scopes. Default: <code class="code-inline">["openid","profile","email","User.Read","offline_access"]</code></td>
+                    </tr>
+                    <tr>
+                        <td><code class="code-inline">oauth.microsoft.secret_expiry</code></td>
+                        <td>Date</td>
+                        <td>Expiry date of the client secret (for rotation reminders)</td>
+                    </tr>
+                    <tr>
+                        <td><code class="code-inline">oauth.microsoft.prompt</code></td>
+                        <td>String</td>
+                        <td>OAuth prompt parameter. Options: <code class="code-inline">login</code>, <code class="code-inline">consent</code>, <code class="code-inline">select_account</code>, <code class="code-inline">none</code>. Default: <code class="code-inline">select_account</code></td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <hr class="section-divider">
+
+            <!-- ========================================
+                 Footer with Next Steps
+                 ======================================== -->
+            <div class="guide-footer">
+                <h3 style="color: #0f172a; font-size: 1.2rem; font-weight: 700; margin-bottom: 1rem; text-align: left;">
+                    <i class="fas fa-arrow-right me-2" style="color: var(--provider-color);"></i>Next Steps
+                </h3>
+                <div class="next-steps">
+                    <a href="apple-signin-setup.html" class="next-step-card">
+                        <h5><i class="fab fa-apple me-2"></i>Apple Sign In</h5>
+                        <p>Enable privacy-focused Sign in with Apple authentication.</p>
+                    </a>
+                    <a href="google-oauth-setup.html" class="next-step-card">
+                        <h5><i class="fab fa-google me-2" style="color: #4285F4;"></i>Google OAuth</h5>
+                        <p>Set up Google login for personal and Workspace accounts.</p>
+                    </a>
+                    <a href="index.html" class="next-step-card">
+                        <h5><i class="fas fa-th-large me-2" style="color: #6366f1;"></i>All Guides</h5>
+                        <p>Browse all payment and login provider setup guides.</p>
+                    </a>
+                </div>
+                <p>&copy; 2025&ndash;2026 MWBM Partners Ltd (t/a MWservices). All rights reserved.</p>
+            </div>
+
+        </div><!-- /.content-wrapper -->
+    </div><!-- /.main-content -->
+
+    <!-- ============================================================
+         Scripts
+         ============================================================ -->
+    <script>
+        /* ========================================
+           Copy-to-Clipboard Functionality
+           ======================================== */
+        function copyCode(button) {
+            var codeBlock = button.closest('.code-block').querySelector('code');
+            var text = codeBlock.textContent;
+
+            navigator.clipboard.writeText(text).then(function() {
+                button.classList.add('copied');
+                button.innerHTML = '<i class="fas fa-check me-1"></i>Copied!';
+                setTimeout(function() {
+                    button.classList.remove('copied');
+                    button.innerHTML = '<i class="fas fa-copy me-1"></i>Copy';
+                }, 2000);
+            }).catch(function() {
+                /* Fallback for older browsers */
+                var textarea = document.createElement('textarea');
+                textarea.value = text;
+                document.body.appendChild(textarea);
+                textarea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textarea);
+                button.classList.add('copied');
+                button.innerHTML = '<i class="fas fa-check me-1"></i>Copied!';
+                setTimeout(function() {
+                    button.classList.remove('copied');
+                    button.innerHTML = '<i class="fas fa-copy me-1"></i>Copy';
+                }, 2000);
+            });
+        }
+
+        /* ========================================
+           Mobile Sidebar Toggle
+           ======================================== */
+        var mobileToggle = document.getElementById('mobileToggle');
+        var sidebar = document.getElementById('sidebar');
+        var sidebarOverlay = document.getElementById('sidebarOverlay');
+
+        mobileToggle.addEventListener('click', function() {
+            sidebar.classList.toggle('show');
+            sidebarOverlay.classList.toggle('show');
+        });
+
+        sidebarOverlay.addEventListener('click', function() {
+            sidebar.classList.remove('show');
+            sidebarOverlay.classList.remove('show');
+        });
+
+        /* Close sidebar when a nav link is clicked on mobile */
+        var sidebarLinks = document.querySelectorAll('.sidebar-link, .sidebar-back a');
+        sidebarLinks.forEach(function(link) {
+            link.addEventListener('click', function() {
+                if (window.innerWidth < 992) {
+                    sidebar.classList.remove('show');
+                    sidebarOverlay.classList.remove('show');
+                }
+            });
+        });
+    </script>
+
+</body>
+</html>

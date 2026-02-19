@@ -1,0 +1,1325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="SIGNula - Ko-fi Donation and Membership Payment Provider Setup Guide">
+    <meta name="author" content="MWBM Partners Ltd">
+    <title>Ko-fi Setup - SIGNula Setup Guides</title>
+
+    <!-- Bootstrap 5.3.2 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"
+          integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN"
+          crossorigin="anonymous">
+
+    <!-- FontAwesome 6.4.2 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css"
+          integrity="sha512-z3gLpd7yknf1YoNbCzqRKc4qyor8gaKU1qmn+CShxbuBusANI9QpRohGBreCFkKxLhei6S9CQXFEbbKuqLg0DA=="
+          crossorigin="anonymous">
+
+    <!-- Google Fonts: Inter & Fira Code -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+
+    <!-- Highlight.js 11.9.0 CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+
+    <style>
+        /* ========================================
+           CSS Variables
+           ======================================== */
+        :root {
+            --primary: #3b82f6;
+            --primary-dark: #2563eb;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --sidebar-bg: #0f172a;
+            --sidebar-text: #94a3b8;
+            --sidebar-active: #e2e8f0;
+            --content-bg: #ffffff;
+            --text-primary: #1e293b;
+            --text-secondary: #64748b;
+            --border-color: #e2e8f0;
+            --code-bg: #f1f5f9;
+            --provider-color: #ff5e5b;
+        }
+
+        /* ========================================
+           Base Typography & Reset
+           ======================================== */
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: #f8fafc;
+            color: var(--text-primary);
+            margin: 0;
+            padding: 0;
+        }
+
+        code, pre, .code-inline {
+            font-family: 'Fira Code', 'Courier New', Courier, monospace;
+        }
+
+        /* ========================================
+           Sidebar Navigation
+           ======================================== */
+        .sidebar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 280px;
+            height: 100vh;
+            background-color: var(--sidebar-bg);
+            color: #cbd5e1;
+            overflow-y: auto;
+            z-index: 1000;
+            transition: transform 0.3s ease;
+            padding-bottom: 2rem;
+        }
+
+        .sidebar-header {
+            padding: 1.5rem 1.25rem;
+            border-bottom: 1px solid #1e293b;
+        }
+
+        .sidebar-header h5 {
+            color: #f1f5f9;
+            font-weight: 700;
+            margin: 0;
+            font-size: 1.1rem;
+        }
+
+        .sidebar-header small {
+            color: var(--text-secondary);
+            font-size: 0.75rem;
+        }
+
+        .sidebar-section {
+            padding: 1rem 0 0 0;
+        }
+
+        .sidebar-section-title {
+            font-size: 0.65rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-secondary);
+            padding: 0 1.25rem 0.5rem;
+        }
+
+        .sidebar-back {
+            display: flex;
+            align-items: center;
+            padding: 0.5rem 1.25rem;
+            color: var(--sidebar-text);
+            text-decoration: none;
+            font-size: 0.85rem;
+            transition: all 0.15s ease;
+            border-left: 3px solid transparent;
+        }
+
+        .sidebar-back:hover {
+            color: var(--sidebar-active);
+            background-color: #1e293b;
+        }
+
+        .sidebar-back i {
+            width: 20px;
+            margin-right: 0.75rem;
+            text-align: center;
+            font-size: 0.8rem;
+        }
+
+        .sidebar-nav a {
+            display: flex;
+            align-items: center;
+            padding: 0.5rem 1.25rem;
+            color: var(--sidebar-text);
+            text-decoration: none;
+            font-size: 0.85rem;
+            transition: all 0.15s ease;
+            border-left: 3px solid transparent;
+        }
+
+        .sidebar-nav a:hover {
+            color: var(--sidebar-active);
+            background-color: #1e293b;
+        }
+
+        .sidebar-nav a.active {
+            color: var(--provider-color);
+            background-color: rgba(255, 94, 91, 0.08);
+            border-left-color: var(--provider-color);
+            font-weight: 600;
+        }
+
+        .sidebar-nav a i {
+            width: 20px;
+            margin-right: 0.75rem;
+            text-align: center;
+            font-size: 0.8rem;
+        }
+
+        /* ========================================
+           Main Content Area
+           ======================================== */
+        .main-content {
+            margin-left: 280px;
+            padding: 2rem 2.5rem;
+            min-height: 100vh;
+        }
+
+        .content-wrapper {
+            max-width: 900px;
+            background-color: var(--content-bg);
+            border-radius: 12px;
+            padding: 2.5rem;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+        }
+
+        /* ========================================
+           Breadcrumb
+           ======================================== */
+        .breadcrumb-nav {
+            margin-bottom: 1.5rem;
+        }
+
+        .breadcrumb-nav .breadcrumb {
+            background: none;
+            padding: 0;
+            margin: 0;
+            font-size: 0.85rem;
+        }
+
+        .breadcrumb-nav .breadcrumb-item a {
+            color: #6366f1;
+            text-decoration: none;
+        }
+
+        .breadcrumb-nav .breadcrumb-item.active {
+            color: var(--text-secondary);
+        }
+
+        /* ========================================
+           Provider Header
+           ======================================== */
+        .provider-header {
+            background: linear-gradient(135deg, var(--provider-color), #e04e4b);
+            border-radius: 12px;
+            padding: 2rem 2.5rem;
+            color: #ffffff;
+            margin-bottom: 2rem;
+        }
+
+        .provider-header h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+
+        .provider-header p {
+            opacity: 0.9;
+            margin-bottom: 0;
+            font-size: 1.05rem;
+        }
+
+        .provider-header .provider-icon {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+            opacity: 0.9;
+        }
+
+        /* ========================================
+           Guide Sections
+           ======================================== */
+        .guide-section {
+            margin-bottom: 2.5rem;
+        }
+
+        .guide-section h2 {
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: #0f172a;
+            margin-bottom: 1rem;
+            padding-bottom: 0.75rem;
+            border-bottom: 2px solid #f1f5f9;
+        }
+
+        /* ========================================
+           Step Indicators
+           ======================================== */
+        .step {
+            display: flex;
+            margin-bottom: 2rem;
+        }
+
+        .step-number {
+            width: 36px;
+            height: 36px;
+            min-width: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #ffffff;
+            font-weight: 700;
+            font-size: 0.9rem;
+            margin-right: 1rem;
+            margin-top: 0.15rem;
+            background-color: var(--provider-color);
+        }
+
+        .step-content {
+            flex: 1;
+            color: #475569;
+            line-height: 1.7;
+        }
+
+        .step-content h3 {
+            font-size: 1.15rem;
+            font-weight: 600;
+            color: #0f172a;
+            margin: 0 0 0.75rem 0;
+        }
+
+        /* ========================================
+           Code Blocks & Copy Button
+           ======================================== */
+        .code-block {
+            position: relative;
+            background-color: #1e293b;
+            border-radius: 8px;
+            padding: 1rem 1.25rem;
+            margin: 1rem 0;
+            overflow-x: auto;
+        }
+
+        .code-block pre {
+            margin: 0;
+            padding: 0;
+            background: transparent;
+        }
+
+        .code-block code {
+            color: #e2e8f0;
+            font-size: 0.85rem;
+            background: transparent;
+        }
+
+        .copy-btn {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: rgba(255, 255, 255, 0.15);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #e2e8f0;
+            padding: 0.25rem 0.6rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .copy-btn:hover {
+            background: rgba(255, 255, 255, 0.25);
+            color: #ffffff;
+        }
+
+        .code-inline {
+            background-color: var(--code-bg);
+            color: #e11d48;
+            padding: 0.15rem 0.45rem;
+            border-radius: 4px;
+            font-size: 0.85em;
+        }
+
+        /* ========================================
+           Alert Boxes
+           ======================================== */
+        .alert-box {
+            border-radius: 8px;
+            padding: 1rem 1.25rem;
+            margin: 1rem 0;
+            font-size: 0.9rem;
+            border-left: 4px solid;
+        }
+
+        .alert-info {
+            background-color: #eff6ff;
+            border-left-color: var(--primary);
+            color: #1e40af;
+        }
+
+        .alert-warning {
+            background-color: #fffbeb;
+            border-left-color: var(--warning);
+            color: #92400e;
+        }
+
+        .alert-danger {
+            background-color: #fef2f2;
+            border-left-color: var(--danger);
+            color: #991b1b;
+        }
+
+        .alert-success {
+            background-color: #f0fdf4;
+            border-left-color: var(--success);
+            color: #166534;
+        }
+
+        .alert-tip {
+            background-color: #faf5ff;
+            border-left-color: #8b5cf6;
+            color: #5b21b6;
+        }
+
+        /* ========================================
+           Tables
+           ======================================== */
+        .guide-table {
+            width: 100%;
+            font-size: 0.88rem;
+            border-collapse: collapse;
+            margin: 1rem 0;
+        }
+
+        .guide-table th {
+            background-color: #f8fafc;
+            font-weight: 600;
+            color: #334155;
+            border-bottom: 2px solid var(--border-color);
+            padding: 0.75rem;
+            text-align: left;
+        }
+
+        .guide-table td {
+            vertical-align: top;
+            color: #475569;
+            padding: 0.75rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        /* ========================================
+           Info Cards
+           ======================================== */
+        .info-card {
+            background: #f8fafc;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 1.25rem;
+            margin: 1rem 0;
+        }
+
+        .info-card h4 {
+            font-size: 1rem;
+            font-weight: 600;
+            color: #0f172a;
+            margin-bottom: 0.5rem;
+        }
+
+        /* ========================================
+           Guide Footer & Next Steps
+           ======================================== */
+        .guide-footer {
+            margin-top: 3rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .next-steps {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .next-step-card {
+            display: block;
+            background: #f8fafc;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 1.25rem;
+            text-decoration: none;
+            color: inherit;
+            transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+        }
+
+        .next-step-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+            border-color: var(--provider-color);
+            text-decoration: none;
+            color: inherit;
+        }
+
+        .next-step-card i {
+            font-size: 1.2rem;
+            margin-bottom: 0.5rem;
+            display: block;
+        }
+
+        .next-step-card h5 {
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: #0f172a;
+            margin-bottom: 0.25rem;
+        }
+
+        .next-step-card p {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            margin: 0;
+        }
+
+        .guide-footer .copyright {
+            text-align: center;
+            font-size: 0.8rem;
+            color: var(--sidebar-text);
+            padding-top: 1rem;
+            border-top: 1px solid var(--border-color);
+        }
+
+        /* ========================================
+           Section Divider
+           ======================================== */
+        .section-divider {
+            border: none;
+            border-top: 2px solid #f1f5f9;
+            margin: 2.5rem 0;
+        }
+
+        /* ========================================
+           Mobile Toggle
+           ======================================== */
+        .mobile-toggle {
+            display: none;
+            position: fixed;
+            top: 1rem;
+            left: 1rem;
+            z-index: 1100;
+            background: var(--sidebar-bg);
+            color: #f1f5f9;
+            border: none;
+            border-radius: 8px;
+            padding: 0.6rem 0.8rem;
+            font-size: 1.1rem;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        /* ========================================
+           Responsive / Mobile
+           ======================================== */
+        @media (max-width: 768px) {
+            .sidebar {
+                transform: translateX(-100%);
+            }
+
+            .sidebar.open {
+                transform: translateX(0);
+            }
+
+            .mobile-toggle {
+                display: block;
+            }
+
+            .main-content {
+                margin-left: 0;
+                padding: 1.25rem;
+                padding-top: 4rem;
+            }
+
+            .content-wrapper {
+                padding: 1.5rem;
+            }
+
+            .provider-header {
+                padding: 1.5rem;
+            }
+
+            .provider-header h1 {
+                font-size: 1.5rem;
+            }
+
+            .next-steps {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- ============================================================
+         Mobile Toggle Button
+         ============================================================ -->
+    <button class="mobile-toggle" aria-label="Toggle navigation">
+        <i class="fas fa-bars"></i>
+    </button>
+
+    <!-- ============================================================
+         Sidebar Navigation
+         ============================================================ -->
+    <nav class="sidebar">
+        <div class="sidebar-header">
+            <h5><i class="fas fa-shield-halved me-2"></i>SIGNula Docs</h5>
+            <small>Provider Setup Guides</small>
+        </div>
+
+        <!-- Back to All Guides -->
+        <div class="sidebar-section">
+            <a href="index.html" class="sidebar-back">
+                <i class="fas fa-arrow-left"></i> Back to All Guides
+            </a>
+        </div>
+
+        <!-- Payment Providers -->
+        <div class="sidebar-section">
+            <div class="sidebar-section-title">Payment Providers</div>
+            <div class="sidebar-nav">
+                <a href="stripe-setup.html">
+                    <i class="fab fa-stripe-s"></i> Stripe Setup
+                </a>
+                <a href="paypal-setup.html">
+                    <i class="fab fa-paypal"></i> PayPal Setup
+                </a>
+                <a href="coinbase-setup.html">
+                    <i class="fab fa-bitcoin"></i> Coinbase Commerce Setup
+                </a>
+                <a href="kofi-setup.html" class="active">
+                    <i class="fas fa-mug-hot"></i> Ko-fi Setup
+                </a>
+                <a href="patreon-setup.html">
+                    <i class="fab fa-patreon"></i> Patreon Setup
+                </a>
+            </div>
+        </div>
+
+        <!-- Login Providers -->
+        <div class="sidebar-section">
+            <div class="sidebar-section-title">Login Providers</div>
+            <div class="sidebar-nav">
+                <a href="google-oauth-setup.html">
+                    <i class="fab fa-google"></i> Google OAuth
+                </a>
+                <a href="microsoft-oauth-setup.html">
+                    <i class="fab fa-microsoft"></i> Microsoft OAuth
+                </a>
+                <a href="apple-signin-setup.html">
+                    <i class="fab fa-apple"></i> Apple Sign In
+                </a>
+                <a href="facebook-oauth-setup.html">
+                    <i class="fab fa-facebook"></i> Facebook OAuth
+                </a>
+                <a href="linkedin-oauth-setup.html">
+                    <i class="fab fa-linkedin"></i> LinkedIn OAuth
+                </a>
+                <a href="github-oauth-setup.html">
+                    <i class="fab fa-github"></i> GitHub OAuth
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- ============================================================
+         Main Content
+         ============================================================ -->
+    <div class="main-content">
+        <!-- Breadcrumb -->
+        <nav class="breadcrumb-nav" aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="../index.html">Documentation</a></li>
+                <li class="breadcrumb-item"><a href="index.html">Setup Guides</a></li>
+                <li class="breadcrumb-item active" aria-current="page">Ko-fi</li>
+            </ol>
+        </nav>
+
+        <div class="content-wrapper">
+
+            <!-- ========================================
+                 Provider Header
+                 ======================================== -->
+            <div class="provider-header">
+                <div class="provider-icon">
+                    <i class="fas fa-mug-hot"></i>
+                </div>
+                <h1>Ko-fi Setup</h1>
+                <p>
+                    Integrate Ko-fi for donation-based payments, memberships, and shop orders.
+                    Ko-fi is a webhook-only integration &mdash; users pay on Ko-fi's hosted page
+                    and SIGNula is notified via webhook.
+                </p>
+            </div>
+
+            <!-- ========================================
+                 Overview
+                 ======================================== -->
+            <div class="guide-section" id="overview">
+                <h2><i class="fas fa-info-circle me-2" style="color: var(--primary);"></i>Overview</h2>
+                <p>
+                    Ko-fi is a creator-focused platform that allows supporters to make one-time donations
+                    ("coffees"), recurring memberships, and shop purchases. Unlike Stripe or PayPal, Ko-fi
+                    does <strong>not</strong> provide a charge creation API. Instead, all payments happen on
+                    Ko-fi's hosted page, and SIGNula receives webhook notifications when transactions occur.
+                </p>
+                <div class="alert-box alert-warning">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <strong>Important:</strong> Ko-fi is a <strong>webhook-only</strong> integration. There is no
+                    API to create charges or initiate payments programmatically. Users are directed to your Ko-fi
+                    page to make payments, and SIGNula receives notifications afterwards.
+                </div>
+                <div class="info-card">
+                    <h4><i class="fas fa-list-check me-2" style="color: var(--provider-color);"></i>Integration Type</h4>
+                    <p style="margin-bottom: 0;">
+                        <strong>Model:</strong> Webhook-Only (no charge creation API)<br>
+                        <strong>Payment Page:</strong> Hosted on Ko-fi (e.g., <code class="code-inline">https://ko-fi.com/yourusername</code>)<br>
+                        <strong>Webhook Format:</strong> POST with <code class="code-inline">application/x-www-form-urlencoded</code> containing a <code class="code-inline">data</code> field (JSON string)<br>
+                        <strong>Webhook Verification:</strong> <code class="code-inline">verification_token</code> field inside the JSON payload body (NOT an HMAC signature header)
+                    </p>
+                </div>
+            </div>
+
+            <hr class="section-divider">
+
+            <!-- ========================================
+                 Prerequisites
+                 ======================================== -->
+            <div class="guide-section" id="prerequisites">
+                <h2><i class="fas fa-clipboard-check me-2" style="color: var(--warning);"></i>Prerequisites</h2>
+                <ul>
+                    <li>A Ko-fi account at <a href="https://ko-fi.com" target="_blank" rel="noopener noreferrer">ko-fi.com</a></li>
+                    <li><strong>Ko-fi Gold subscription</strong> (recommended) &mdash; required for webhook functionality and advanced features</li>
+                    <li>A publicly accessible HTTPS endpoint for webhooks</li>
+                    <li>SIGNula Admin Panel access (for vendor setup) or Partner Dashboard access (for partner setup)</li>
+                </ul>
+                <div class="alert-box alert-info">
+                    <i class="fas fa-info-circle me-2"></i>
+                    <strong>Note:</strong> Ko-fi Gold is a paid upgrade that unlocks webhooks, custom branding,
+                    and additional features. Without Ko-fi Gold, webhook functionality is not available and
+                    SIGNula cannot receive payment notifications automatically.
+                </div>
+            </div>
+
+            <hr class="section-divider">
+
+            <!-- ========================================
+                 Part A: Vendor (Platform Owner) Setup
+                 ======================================== -->
+            <div class="guide-section" id="vendor-setup">
+                <h2><i class="fas fa-building me-2" style="color: var(--provider-color);"></i>Part A: Vendor (Platform Owner) Setup</h2>
+                <p class="text-muted mb-4">
+                    Follow these steps if you are the SIGNula platform owner and want to receive Ko-fi
+                    donations, memberships, and shop order notifications.
+                </p>
+
+                <!-- Step 1 -->
+                <div class="step">
+                    <div class="step-number">1</div>
+                    <div class="step-content">
+                        <h3>Create a Ko-fi Account</h3>
+                        <p>
+                            Visit <a href="https://ko-fi.com" target="_blank" rel="noopener noreferrer">ko-fi.com</a>
+                            and create an account. You can sign up with an email address or link an existing
+                            Google or Apple account.
+                        </p>
+                        <div class="alert-box alert-tip">
+                            <i class="fas fa-star me-2"></i>
+                            <strong>Recommendation:</strong> Upgrade to <strong>Ko-fi Gold</strong> to unlock
+                            webhook support, custom page branding, and the ability to remove Ko-fi branding
+                            from your page. This is required for the SIGNula integration to work.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 2 -->
+                <div class="step">
+                    <div class="step-number">2</div>
+                    <div class="step-content">
+                        <h3>Navigate to API Settings</h3>
+                        <p>
+                            Once logged in to your Ko-fi account:
+                        </p>
+                        <ol>
+                            <li>Click the <strong>Settings</strong> (gear icon) in the navigation.</li>
+                            <li>Select the <strong>API</strong> section from the settings menu.</li>
+                        </ol>
+                    </div>
+                </div>
+
+                <!-- Step 3 -->
+                <div class="step">
+                    <div class="step-number">3</div>
+                    <div class="step-content">
+                        <h3>Enable Webhooks</h3>
+                        <p>
+                            In the API settings page, toggle the <strong>Enable Webhooks</strong> switch to on.
+                            This enables Ko-fi to send POST requests to your specified URL when transactions occur.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Step 4 -->
+                <div class="step">
+                    <div class="step-number">4</div>
+                    <div class="step-content">
+                        <h3>Set Webhook URL</h3>
+                        <p>
+                            Enter your SIGNula webhook endpoint URL in the <strong>Webhook URL</strong> field:
+                        </p>
+                        <div class="code-block">
+                            <button class="copy-btn">Copy</button>
+                            <pre><code>https://yourdomain.com/webhooks/kofi</code></pre>
+                        </div>
+                        <div class="alert-box alert-warning">
+                            <i class="fas fa-shield-alt me-2"></i>
+                            <strong>Important:</strong> The webhook URL must use HTTPS. Ko-fi will not send
+                            webhooks to HTTP endpoints.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 5 -->
+                <div class="step">
+                    <div class="step-number">5</div>
+                    <div class="step-content">
+                        <h3>Copy the Verification Token</h3>
+                        <p>
+                            After enabling webhooks, Ko-fi will display a <strong>Verification Token</strong>
+                            on the same settings page. Copy this token &mdash; it is used to verify that
+                            incoming webhook payloads are genuinely from Ko-fi.
+                        </p>
+                        <div class="code-block">
+                            <button class="copy-btn">Copy</button>
+                            <pre><code># Example Verification Token format:
+xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx</code></pre>
+                        </div>
+                        <div class="alert-box alert-danger">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            <strong>Critical:</strong> Unlike other providers that use HMAC signature headers,
+                            Ko-fi includes the <code class="code-inline">verification_token</code> directly
+                            <strong>inside the webhook payload body</strong>. SIGNula compares this token against
+                            your stored token to verify authenticity.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 6 -->
+                <div class="step">
+                    <div class="step-number">6</div>
+                    <div class="step-content">
+                        <h3>Note Your Ko-fi Page URL</h3>
+                        <p>
+                            Your Ko-fi page URL is the public-facing page where supporters can make payments.
+                            Note it down as you will need to enter it into SIGNula. The URL follows the format:
+                        </p>
+                        <div class="code-block">
+                            <button class="copy-btn">Copy</button>
+                            <pre><code>https://ko-fi.com/yourusername</code></pre>
+                        </div>
+                        <p>
+                            This URL will be used in payment buttons and links throughout your application to
+                            direct users to the Ko-fi payment page.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Step 7 -->
+                <div class="step">
+                    <div class="step-number">7</div>
+                    <div class="step-content">
+                        <h3>Configure SIGNula Admin Panel</h3>
+                        <p>Now enter your credentials into SIGNula:</p>
+                        <ol>
+                            <li>Log in to your <strong>SIGNula Admin Panel</strong>.</li>
+                            <li>Navigate to <strong>Admin</strong> &rarr; <strong>Payments</strong> &rarr; <strong>Providers</strong> &rarr; <strong>Ko-fi</strong>.</li>
+                        </ol>
+                    </div>
+                </div>
+
+                <!-- Step 8 -->
+                <div class="step">
+                    <div class="step-number">8</div>
+                    <div class="step-content">
+                        <h3>Enter Verification Token and Page URL</h3>
+                        <p>In the Ko-fi provider settings:</p>
+                        <ul>
+                            <li>Paste your <strong>Verification Token</strong> into the corresponding field.</li>
+                            <li>Enter your <strong>Ko-fi Page URL</strong> (e.g., <code class="code-inline">https://ko-fi.com/yourusername</code>).</li>
+                        </ul>
+                        <div class="alert-box alert-info">
+                            <i class="fas fa-lock me-2"></i>
+                            <strong>Security:</strong> The Verification Token is stored encrypted in the SIGNula
+                            database (marked as <code class="code-inline">isSensitive</code>) and is only
+                            decrypted when processing incoming webhooks.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 9 -->
+                <div class="step">
+                    <div class="step-number">9</div>
+                    <div class="step-content">
+                        <h3>Enable Ko-fi Gold Toggle</h3>
+                        <p>
+                            If you have a Ko-fi Gold subscription, enable the <strong>Ko-fi Gold</strong> toggle
+                            in the SIGNula admin panel. This unlocks additional event types and features in
+                            the webhook integration.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Step 10 -->
+                <div class="step">
+                    <div class="step-number">10</div>
+                    <div class="step-content">
+                        <h3>Test Connection and Enable</h3>
+                        <p>
+                            Click the <strong>Test Connection</strong> button. Since Ko-fi does not provide a
+                            dedicated test API endpoint, the test will:
+                        </p>
+                        <ul>
+                            <li>Verify that the Verification Token is in a valid format.</li>
+                            <li>Confirm the webhook endpoint is configured and reachable.</li>
+                            <li>Validate the Ko-fi Page URL is accessible.</li>
+                        </ul>
+                        <p>
+                            Once the test passes, toggle the <strong>Enabled</strong> switch to activate Ko-fi
+                            as a payment provider.
+                        </p>
+                        <div class="alert-box alert-success">
+                            <i class="fas fa-check-circle me-2"></i>
+                            <strong>Success:</strong> Ko-fi is now configured. Supporters who make payments on
+                            your Ko-fi page will trigger webhook notifications to SIGNula.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <hr class="section-divider">
+
+            <!-- ========================================
+                 Part B: Partner Setup
+                 ======================================== -->
+            <div class="guide-section" id="partner-setup">
+                <h2><i class="fas fa-handshake me-2" style="color: var(--provider-color);"></i>Part B: Partner Setup</h2>
+                <p class="text-muted mb-4">
+                    Partners who want to receive Ko-fi payments through their own page must set up their own
+                    Ko-fi account and provide their credentials to SIGNula.
+                </p>
+
+                <div class="step">
+                    <div class="step-number">1</div>
+                    <div class="step-content">
+                        <h3>Create Your Own Ko-fi Page</h3>
+                        <p>
+                            Each partner must create their own Ko-fi account and page at
+                            <a href="https://ko-fi.com" target="_blank" rel="noopener noreferrer">ko-fi.com</a>.
+                            Ko-fi Gold is recommended for webhook support.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="step">
+                    <div class="step-number">2</div>
+                    <div class="step-content">
+                        <h3>Configure Webhooks on Ko-fi</h3>
+                        <p>
+                            Follow the same webhook setup steps as Part A, but set your webhook URL to
+                            your partner-specific endpoint provided by SIGNula:
+                        </p>
+                        <div class="code-block">
+                            <button class="copy-btn">Copy</button>
+                            <pre><code>https://yourdomain.com/webhooks/kofi/{partner_id}</code></pre>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="step">
+                    <div class="step-number">3</div>
+                    <div class="step-content">
+                        <h3>Enter Credentials in Partner Dashboard</h3>
+                        <p>
+                            In your SIGNula Partner Dashboard, navigate to <strong>Settings</strong> &rarr;
+                            <strong>Payment Providers</strong> &rarr; <strong>Ko-fi</strong> and enter:
+                        </p>
+                        <ul>
+                            <li>Your <strong>Verification Token</strong> from Ko-fi's API settings</li>
+                            <li>Your <strong>Ko-fi Page URL</strong></li>
+                            <li>Your <strong>Ko-fi Page Slug</strong> (username portion of your URL)</li>
+                            <li>Whether you have <strong>Ko-fi Gold</strong> enabled</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <hr class="section-divider">
+
+            <!-- ========================================
+                 Webhook Configuration
+                 ======================================== -->
+            <div class="guide-section" id="webhook-config">
+                <h2><i class="fas fa-satellite-dish me-2" style="color: #6366f1;"></i>Webhook Configuration</h2>
+
+                <div class="alert-box alert-danger">
+                    <i class="fas fa-exclamation-circle me-2"></i>
+                    <strong>Key Difference:</strong> Ko-fi webhooks are fundamentally different from other
+                    providers. Ko-fi sends a POST request with <code class="code-inline">application/x-www-form-urlencoded</code>
+                    content type. The body contains a single <code class="code-inline">data</code> field whose
+                    value is a <strong>JSON string</strong> (not raw JSON). You must parse this <code class="code-inline">data</code>
+                    field as JSON to access the event details.
+                </div>
+
+                <h4 class="fw-bold mt-4 mb-3">Webhook Payload Structure</h4>
+                <div class="code-block">
+                    <button class="copy-btn">Copy</button>
+                    <pre><code>// Raw POST body (application/x-www-form-urlencoded):
+// data={JSON_STRING}
+//
+// Decoded JSON structure:
+{
+    "verification_token": "your-token-here",
+    "message_id": "xxxx-xxxx-xxxx",
+    "timestamp": "2026-02-19T12:00:00Z",
+    "type": "Donation",
+    "is_public": true,
+    "from_name": "Supporter Name",
+    "message": "Great work!",
+    "amount": "5.00",
+    "url": "https://ko-fi.com/Home/CoffeeShop?txid=xxxx",
+    "email": "supporter@example.com",
+    "currency": "USD",
+    "is_subscription_payment": false,
+    "is_first_subscription_payment": false,
+    "kofi_transaction_id": "xxxx-xxxx-xxxx"
+}</code></pre>
+                </div>
+
+                <h4 class="fw-bold mt-4 mb-3">Event Types</h4>
+                <table class="guide-table">
+                    <thead>
+                        <tr>
+                            <th>Event Type</th>
+                            <th>Description</th>
+                            <th>SIGNula Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code class="code-inline">Donation</code></td>
+                            <td>A one-time "coffee" donation payment</td>
+                            <td>Records donation; credits account if applicable</td>
+                        </tr>
+                        <tr>
+                            <td><code class="code-inline">Subscription</code></td>
+                            <td>A recurring membership payment</td>
+                            <td>Activates/renews membership tier</td>
+                        </tr>
+                        <tr>
+                            <td><code class="code-inline">Shop Order</code></td>
+                            <td>A purchase from the Ko-fi shop</td>
+                            <td>Records shop order; triggers fulfilment</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h4 class="fw-bold mt-4 mb-3">Webhook Verification (Payload Token)</h4>
+                <p>
+                    Ko-fi does <strong>not</strong> use HMAC signature headers. Instead, every webhook payload
+                    includes a <code class="code-inline">verification_token</code> field. SIGNula compares this
+                    token against the stored token to verify authenticity.
+                </p>
+                <div class="code-block">
+                    <button class="copy-btn">Copy</button>
+                    <pre><code>// Webhook verification in PHP (simplified)
+// Ko-fi sends application/x-www-form-urlencoded with a 'data' field
+$rawData = $_POST['data'] ?? '';
+$data    = json_decode($rawData, true);
+
+if (json_last_error() !== JSON_ERROR_NONE || empty($data)) {
+    http_response_code(400);
+    exit('Invalid payload');
+}
+
+// Retrieve stored token (decrypted from tblSettings)
+$storedToken = $decryptedVerificationToken;
+
+// Compare the verification_token from the payload
+if (!isset($data['verification_token']) ||
+    !hash_equals($storedToken, $data['verification_token'])) {
+    http_response_code(401);
+    exit('Invalid verification token');
+}
+
+// Token valid - process the event
+$eventType = $data['type'] ?? 'Unknown';
+$amount    = $data['amount'] ?? '0.00';
+$fromName  = $data['from_name'] ?? 'Anonymous';</code></pre>
+                </div>
+
+                <div class="alert-box alert-warning">
+                    <i class="fas fa-flask me-2"></i>
+                    <strong>No Test/Sandbox Mode:</strong> Ko-fi does not provide a sandbox or test environment.
+                    To test webhooks, use a small real donation amount (e.g., the minimum allowed). Alternatively,
+                    you can manually send a test POST request to your webhook endpoint with a sample payload
+                    containing your verification token.
+                </div>
+            </div>
+
+            <hr class="section-divider">
+
+            <!-- ========================================
+                 Troubleshooting
+                 ======================================== -->
+            <div class="guide-section" id="troubleshooting">
+                <h2><i class="fas fa-wrench me-2" style="color: var(--danger);"></i>Troubleshooting</h2>
+
+                <div class="info-card">
+                    <h4>Webhooks are not being received</h4>
+                    <ul>
+                        <li>Confirm you have <strong>Ko-fi Gold</strong> &mdash; webhooks require a Gold subscription.</li>
+                        <li>Verify that webhooks are <strong>enabled</strong> in Ko-fi Settings &rarr; API.</li>
+                        <li>Check that your webhook URL uses HTTPS and is publicly accessible.</li>
+                        <li>Ensure your server returns a <code class="code-inline">200 OK</code> response quickly (within a few seconds).</li>
+                        <li>Check your server's access logs for incoming POST requests from Ko-fi.</li>
+                    </ul>
+                </div>
+
+                <div class="info-card">
+                    <h4>Verification token mismatch</h4>
+                    <ul>
+                        <li>Ensure the token in SIGNula exactly matches the one shown in Ko-fi Settings &rarr; API.</li>
+                        <li>Check that you are parsing the <code class="code-inline">data</code> POST field as JSON before comparing tokens.</li>
+                        <li>Verify no URL decoding issues are modifying the token value.</li>
+                        <li>Try re-copying the token from Ko-fi and updating it in SIGNula.</li>
+                    </ul>
+                </div>
+
+                <div class="info-card">
+                    <h4>Payload parsing errors</h4>
+                    <ul>
+                        <li>Remember: Ko-fi sends <code class="code-inline">application/x-www-form-urlencoded</code>, NOT <code class="code-inline">application/json</code>.</li>
+                        <li>Read the <code class="code-inline">data</code> field from <code class="code-inline">$_POST['data']</code>, not from <code class="code-inline">php://input</code> directly.</li>
+                        <li>The <code class="code-inline">data</code> field value is a JSON <strong>string</strong> that must be decoded with <code class="code-inline">json_decode()</code>.</li>
+                        <li>Check that your PHP configuration allows URL-encoded POST data of sufficient size.</li>
+                    </ul>
+                </div>
+
+                <div class="info-card">
+                    <h4>Subscription events not triggering tier activation</h4>
+                    <ul>
+                        <li>Check the <code class="code-inline">type</code> field in the payload &mdash; it should be <code class="code-inline">Subscription</code>.</li>
+                        <li>Verify that <code class="code-inline">is_subscription_payment</code> is <code class="code-inline">true</code>.</li>
+                        <li>For first-time subscriptions, <code class="code-inline">is_first_subscription_payment</code> will be <code class="code-inline">true</code>.</li>
+                        <li>Ensure you have mapped Ko-fi subscription tiers to SIGNula tiers in the admin panel.</li>
+                    </ul>
+                </div>
+
+                <div class="info-card">
+                    <h4>Ko-fi Gold features not working</h4>
+                    <ul>
+                        <li>Verify your Ko-fi Gold subscription is active and not expired.</li>
+                        <li>Ensure the <code class="code-inline">payment.kofi.gold_enabled</code> toggle is set to <code class="code-inline">true</code> in SIGNula.</li>
+                        <li>Some features (such as shop orders) may require additional Ko-fi Gold configuration on the Ko-fi platform itself.</li>
+                    </ul>
+                </div>
+            </div>
+
+            <hr class="section-divider">
+
+            <!-- ========================================
+                 Reference
+                 ======================================== -->
+            <div class="guide-section" id="reference">
+                <h2><i class="fas fa-book me-2" style="color: #8b5cf6;"></i>Reference</h2>
+
+                <h4 class="fw-bold mb-3">Webhook Payload Fields</h4>
+                <table class="guide-table">
+                    <thead>
+                        <tr>
+                            <th>Field</th>
+                            <th>Type</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code class="code-inline">verification_token</code></td>
+                            <td>String</td>
+                            <td>Token for verifying the webhook origin</td>
+                        </tr>
+                        <tr>
+                            <td><code class="code-inline">message_id</code></td>
+                            <td>String</td>
+                            <td>Unique identifier for the transaction message</td>
+                        </tr>
+                        <tr>
+                            <td><code class="code-inline">timestamp</code></td>
+                            <td>String (ISO 8601)</td>
+                            <td>Timestamp of the transaction</td>
+                        </tr>
+                        <tr>
+                            <td><code class="code-inline">type</code></td>
+                            <td>String</td>
+                            <td>Event type: <code class="code-inline">Donation</code>, <code class="code-inline">Subscription</code>, or <code class="code-inline">Shop Order</code></td>
+                        </tr>
+                        <tr>
+                            <td><code class="code-inline">from_name</code></td>
+                            <td>String</td>
+                            <td>Display name of the supporter</td>
+                        </tr>
+                        <tr>
+                            <td><code class="code-inline">message</code></td>
+                            <td>String</td>
+                            <td>Optional message from the supporter</td>
+                        </tr>
+                        <tr>
+                            <td><code class="code-inline">amount</code></td>
+                            <td>String</td>
+                            <td>Payment amount (e.g., <code class="code-inline">"5.00"</code>)</td>
+                        </tr>
+                        <tr>
+                            <td><code class="code-inline">currency</code></td>
+                            <td>String</td>
+                            <td>Currency code (e.g., <code class="code-inline">USD</code>, <code class="code-inline">GBP</code>)</td>
+                        </tr>
+                        <tr>
+                            <td><code class="code-inline">email</code></td>
+                            <td>String</td>
+                            <td>Supporter's email address (if provided)</td>
+                        </tr>
+                        <tr>
+                            <td><code class="code-inline">is_subscription_payment</code></td>
+                            <td>Boolean</td>
+                            <td>Whether this is a recurring subscription payment</td>
+                        </tr>
+                        <tr>
+                            <td><code class="code-inline">is_first_subscription_payment</code></td>
+                            <td>Boolean</td>
+                            <td>Whether this is the first payment of a new subscription</td>
+                        </tr>
+                        <tr>
+                            <td><code class="code-inline">kofi_transaction_id</code></td>
+                            <td>String</td>
+                            <td>Ko-fi's unique transaction identifier</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h4 class="fw-bold mt-4 mb-3">Settings Reference (<code class="code-inline">tblSettings</code>)</h4>
+                <p class="text-muted mb-3">
+                    Fields marked with <i class="fas fa-lock text-danger"></i> are encrypted at rest
+                    (<code class="code-inline">isSensitive = true</code>).
+                </p>
+                <table class="guide-table">
+                    <thead>
+                        <tr>
+                            <th>Setting Key</th>
+                            <th>Type</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code class="code-inline">payment.kofi.enabled</code></td>
+                            <td>Boolean</td>
+                            <td>Enable or disable Ko-fi as a payment provider</td>
+                        </tr>
+                        <tr>
+                            <td><code class="code-inline">payment.kofi.verification_token</code> <i class="fas fa-lock text-danger"></i></td>
+                            <td>String</td>
+                            <td>Ko-fi webhook verification token (encrypted, isSensitive)</td>
+                        </tr>
+                        <tr>
+                            <td><code class="code-inline">payment.kofi.page_url</code></td>
+                            <td>String</td>
+                            <td>Full Ko-fi page URL (e.g., <code class="code-inline">https://ko-fi.com/yourusername</code>)</td>
+                        </tr>
+                        <tr>
+                            <td><code class="code-inline">payment.kofi.page_slug</code></td>
+                            <td>String</td>
+                            <td>Ko-fi username/slug (e.g., <code class="code-inline">yourusername</code>)</td>
+                        </tr>
+                        <tr>
+                            <td><code class="code-inline">payment.kofi.gold_enabled</code></td>
+                            <td>Boolean</td>
+                            <td>Whether Ko-fi Gold features are active for this account</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h4 class="fw-bold mt-4 mb-3">Official Documentation</h4>
+                <ul>
+                    <li><a href="https://ko-fi.com/manage/webhooks" target="_blank" rel="noopener noreferrer">Ko-fi Webhook Settings</a></li>
+                    <li><a href="https://help.ko-fi.com/hc/en-us/articles/115004002614-Does-Ko-fi-have-an-API" target="_blank" rel="noopener noreferrer">Ko-fi API / Webhook Documentation</a></li>
+                    <li><a href="https://ko-fi.com/gold" target="_blank" rel="noopener noreferrer">Ko-fi Gold Features</a></li>
+                </ul>
+            </div>
+
+            <!-- ========================================
+                 Footer & Next Steps
+                 ======================================== -->
+            <div class="guide-footer">
+                <h4 class="fw-bold mb-3">Next Steps</h4>
+                <div class="next-steps">
+                    <a href="patreon-setup.html" class="next-step-card">
+                        <i class="fab fa-patreon" style="color: #f96854;"></i>
+                        <h5>Patreon Setup</h5>
+                        <p>Connect Patreon for membership-based recurring payments</p>
+                    </a>
+                    <a href="coinbase-setup.html" class="next-step-card">
+                        <i class="fab fa-bitcoin" style="color: #0052FF;"></i>
+                        <h5>Coinbase Commerce Setup</h5>
+                        <p>Accept cryptocurrency payments via Coinbase</p>
+                    </a>
+                    <a href="stripe-setup.html" class="next-step-card">
+                        <i class="fab fa-stripe-s" style="color: #635BFF;"></i>
+                        <h5>Stripe Setup</h5>
+                        <p>Configure credit/debit card payments via Stripe</p>
+                    </a>
+                </div>
+                <div class="copyright">
+                    <p>&copy; 2025&ndash;2026 MWBM Partners Ltd (t/a MWservices). All rights reserved.</p>
+                </div>
+            </div>
+
+        </div><!-- /.content-wrapper -->
+    </div><!-- /.main-content -->
+
+    <!-- ============================================================
+         Scripts
+         ============================================================ -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"
+            integrity="sha384-C6RzsynM9kWDrMNeT87bh95OGNyZPhcTNXj1NW7RuBCsyN/o0jlpcV8Qyq46cDfL"
+            crossorigin="anonymous"></script>
+
+    <script>
+        // Initialise Highlight.js
+        hljs.highlightAll();
+
+        // Mobile toggle
+        document.querySelector('.mobile-toggle')?.addEventListener('click', function () {
+            document.querySelector('.sidebar')?.classList.toggle('open');
+        });
+
+        // Copy buttons
+        document.querySelectorAll('.copy-btn').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var code = btn.parentElement.querySelector('code')?.textContent || btn.parentElement.textContent.replace('Copy', '').trim();
+                navigator.clipboard.writeText(code).then(function () {
+                    btn.textContent = 'Copied!';
+                    setTimeout(function () { btn.textContent = 'Copy'; }, 2000);
+                });
+            });
+        });
+
+        // Close sidebar on link click (mobile)
+        document.querySelectorAll('.sidebar-nav a').forEach(function (a) {
+            a.addEventListener('click', function () {
+                if (window.innerWidth <= 768) {
+                    document.querySelector('.sidebar')?.classList.remove('open');
+                }
+            });
+        });
+    </script>
+</body>
+</html>

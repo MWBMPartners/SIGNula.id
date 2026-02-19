@@ -1,0 +1,1431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="SIGNula - Patreon Payment Provider Setup Guide (OAuth 2.0 + Webhooks)">
+    <meta name="author" content="MWBM Partners Ltd">
+    <title>Patreon Setup - SIGNula Documentation</title>
+
+    <!-- Bootstrap 5.3.2 CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
+          integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN"
+          crossorigin="anonymous">
+
+    <!-- FontAwesome 6.4.2 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css"
+          integrity="sha512-z3gLpd7yknf1YoNbCzqRKc4qyor8gaKU1qmn+CShxbuBusANI9QpRohGBreCFkKxLhei6S9CQXFEbbKuqLg0DA=="
+          crossorigin="anonymous" referrerpolicy="no-referrer">
+
+    <!-- Google Fonts: Inter & Fira Code -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap">
+
+    <!-- Highlight.js 11.9.0 CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+
+    <style>
+        /* ========================================
+           Base Typography & Reset
+           ======================================== */
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: #f8fafc;
+            color: #1e293b;
+            margin: 0;
+            padding: 0;
+        }
+
+        code, pre, .code-inline {
+            font-family: 'Fira Code', 'Courier New', Courier, monospace;
+        }
+
+        /* ========================================
+           Sidebar Navigation
+           ======================================== */
+        .sidebar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 280px;
+            height: 100vh;
+            background-color: #0f172a;
+            color: #cbd5e1;
+            overflow-y: auto;
+            z-index: 1000;
+            transition: transform 0.3s ease;
+            padding-bottom: 2rem;
+        }
+
+        .sidebar-brand {
+            padding: 1.5rem 1.25rem;
+            border-bottom: 1px solid #1e293b;
+        }
+
+        .sidebar-brand h5 {
+            color: #f1f5f9;
+            font-weight: 700;
+            margin: 0;
+            font-size: 1.1rem;
+        }
+
+        .sidebar-brand small {
+            color: #64748b;
+            font-size: 0.75rem;
+        }
+
+        .sidebar-section {
+            padding: 1rem 0 0 0;
+        }
+
+        .sidebar-section-title {
+            font-size: 0.65rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: #64748b;
+            padding: 0 1.25rem 0.5rem;
+        }
+
+        .sidebar-link {
+            display: flex;
+            align-items: center;
+            padding: 0.5rem 1.25rem;
+            color: #94a3b8;
+            text-decoration: none;
+            font-size: 0.85rem;
+            transition: all 0.15s ease;
+            border-left: 3px solid transparent;
+        }
+
+        .sidebar-link:hover {
+            color: #e2e8f0;
+            background-color: #1e293b;
+        }
+
+        .sidebar-link.active {
+            color: #ff424d;
+            background-color: rgba(255, 66, 77, 0.08);
+            border-left-color: #ff424d;
+            font-weight: 600;
+        }
+
+        .sidebar-link i {
+            width: 20px;
+            margin-right: 0.75rem;
+            text-align: center;
+            font-size: 0.8rem;
+        }
+
+        /* ========================================
+           Main Content Area
+           ======================================== */
+        .main-content {
+            margin-left: 280px;
+            padding: 2rem 2.5rem;
+            min-height: 100vh;
+        }
+
+        .content-wrapper {
+            max-width: 900px;
+            background-color: #ffffff;
+            border-radius: 12px;
+            padding: 2.5rem;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+        }
+
+        /* ========================================
+           Breadcrumb
+           ======================================== */
+        .breadcrumb-nav {
+            margin-bottom: 1.5rem;
+        }
+
+        .breadcrumb-nav .breadcrumb {
+            background: none;
+            padding: 0;
+            margin: 0;
+            font-size: 0.85rem;
+        }
+
+        .breadcrumb-nav .breadcrumb-item a {
+            color: #6366f1;
+            text-decoration: none;
+        }
+
+        .breadcrumb-nav .breadcrumb-item.active {
+            color: #64748b;
+        }
+
+        /* ========================================
+           Page Header
+           ======================================== */
+        .guide-header {
+            margin-bottom: 2rem;
+            padding-bottom: 1.5rem;
+            border-bottom: 2px solid #f1f5f9;
+        }
+
+        .guide-header h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #0f172a;
+            margin-bottom: 0.5rem;
+        }
+
+        .guide-header .provider-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.35rem 0.85rem;
+            border-radius: 50px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .badge-patreon {
+            background-color: rgba(255, 66, 77, 0.1);
+            color: #ff424d;
+        }
+
+        /* ========================================
+           Step Indicators
+           ======================================== */
+        .step-section {
+            margin-bottom: 2rem;
+        }
+
+        .step-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .step-circle {
+            width: 36px;
+            height: 36px;
+            min-width: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #ffffff;
+            font-weight: 700;
+            font-size: 0.9rem;
+            margin-right: 0.85rem;
+        }
+
+        .step-circle-patreon {
+            background-color: #ff424d;
+        }
+
+        .step-header h3 {
+            font-size: 1.15rem;
+            font-weight: 600;
+            color: #0f172a;
+            margin: 0;
+        }
+
+        .step-content {
+            margin-left: 3.1rem;
+            color: #475569;
+            line-height: 1.7;
+        }
+
+        /* ========================================
+           Code Blocks & Copy Button
+           ======================================== */
+        .code-block-wrapper {
+            position: relative;
+            margin: 1rem 0;
+        }
+
+        .code-block-wrapper pre {
+            border-radius: 8px;
+            padding: 1rem 1.25rem;
+            margin: 0;
+            font-size: 0.85rem;
+        }
+
+        .copy-btn {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: rgba(255, 255, 255, 0.15);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #e2e8f0;
+            padding: 0.25rem 0.6rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .copy-btn:hover {
+            background: rgba(255, 255, 255, 0.25);
+            color: #ffffff;
+        }
+
+        .copy-btn.copied {
+            background: rgba(34, 197, 94, 0.3);
+            color: #4ade80;
+        }
+
+        .code-inline {
+            background-color: #f1f5f9;
+            color: #e11d48;
+            padding: 0.15rem 0.45rem;
+            border-radius: 4px;
+            font-size: 0.85em;
+        }
+
+        /* ========================================
+           Alert Boxes
+           ======================================== */
+        .alert {
+            border-radius: 8px;
+            font-size: 0.9rem;
+            border-left-width: 4px;
+        }
+
+        .alert-info {
+            background-color: #eff6ff;
+            border-color: #3b82f6;
+            color: #1e40af;
+        }
+
+        .alert-warning {
+            background-color: #fffbeb;
+            border-color: #f59e0b;
+            color: #92400e;
+        }
+
+        .alert-danger {
+            background-color: #fef2f2;
+            border-color: #ef4444;
+            color: #991b1b;
+        }
+
+        /* ========================================
+           Tables
+           ======================================== */
+        .settings-table {
+            font-size: 0.88rem;
+        }
+
+        .settings-table th {
+            background-color: #f8fafc;
+            font-weight: 600;
+            color: #334155;
+            border-bottom: 2px solid #e2e8f0;
+        }
+
+        .settings-table td {
+            vertical-align: top;
+            color: #475569;
+        }
+
+        /* ========================================
+           Tier Mapping Visual
+           ======================================== */
+        .tier-mapping-row {
+            display: flex;
+            align-items: center;
+            padding: 0.75rem 1rem;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            margin-bottom: 0.5rem;
+            background: #f8fafc;
+            gap: 1rem;
+        }
+
+        .tier-mapping-row .patreon-tier {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .tier-mapping-row .arrow {
+            color: #64748b;
+            font-size: 1.1rem;
+        }
+
+        .tier-mapping-row .signula-tier {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .tier-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        /* ========================================
+           Hamburger / Mobile Toggle
+           ======================================== */
+        .sidebar-toggle {
+            display: none;
+            position: fixed;
+            top: 1rem;
+            left: 1rem;
+            z-index: 1100;
+            background: #0f172a;
+            color: #f1f5f9;
+            border: none;
+            border-radius: 8px;
+            padding: 0.6rem 0.8rem;
+            font-size: 1.1rem;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        /* ========================================
+           Footer
+           ======================================== */
+        .guide-footer {
+            margin-top: 3rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid #e2e8f0;
+            text-align: center;
+            font-size: 0.8rem;
+            color: #94a3b8;
+        }
+
+        /* ========================================
+           Section Divider
+           ======================================== */
+        .section-divider {
+            border: none;
+            border-top: 2px solid #f1f5f9;
+            margin: 2.5rem 0;
+        }
+
+        /* ========================================
+           Responsive / Mobile
+           ======================================== */
+        @media (max-width: 991.98px) {
+            .sidebar {
+                transform: translateX(-100%);
+            }
+
+            .sidebar.show {
+                transform: translateX(0);
+            }
+
+            .sidebar-toggle {
+                display: block;
+            }
+
+            .main-content {
+                margin-left: 0;
+                padding: 1.25rem;
+                padding-top: 4rem;
+            }
+
+            .content-wrapper {
+                padding: 1.5rem;
+            }
+        }
+
+        /* ========================================
+           Sidebar Overlay (mobile)
+           ======================================== */
+        .sidebar-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 999;
+        }
+
+        .sidebar-overlay.show {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- ============================================================
+         Mobile Sidebar Toggle (Hamburger)
+         ============================================================ -->
+    <button class="sidebar-toggle" id="sidebarToggle" aria-label="Toggle navigation">
+        <i class="fas fa-bars"></i>
+    </button>
+
+    <!-- Sidebar Overlay for mobile -->
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+    <!-- ============================================================
+         Sidebar Navigation
+         ============================================================ -->
+    <nav class="sidebar" id="sidebar">
+        <div class="sidebar-brand">
+            <h5><i class="fas fa-shield-halved me-2"></i>SIGNula Docs</h5>
+            <small>Provider Setup Guides</small>
+        </div>
+
+        <!-- All Guides Link -->
+        <div class="sidebar-section">
+            <a href="index.html" class="sidebar-link">
+                <i class="fas fa-th-large"></i> All Guides
+            </a>
+        </div>
+
+        <!-- Payment Providers -->
+        <div class="sidebar-section">
+            <div class="sidebar-section-title">Payment Providers</div>
+            <a href="stripe-setup.html" class="sidebar-link">
+                <i class="fab fa-stripe-s"></i> Stripe
+            </a>
+            <a href="paypal-setup.html" class="sidebar-link">
+                <i class="fab fa-paypal"></i> PayPal
+            </a>
+            <a href="coinbase-setup.html" class="sidebar-link">
+                <i class="fab fa-bitcoin"></i> Coinbase Commerce
+            </a>
+            <a href="kofi-setup.html" class="sidebar-link">
+                <i class="fas fa-mug-hot"></i> Ko-fi
+            </a>
+            <a href="patreon-setup.html" class="sidebar-link active">
+                <i class="fab fa-patreon"></i> Patreon
+            </a>
+        </div>
+
+        <!-- Login Providers -->
+        <div class="sidebar-section">
+            <div class="sidebar-section-title">Login Providers</div>
+            <a href="google-setup.html" class="sidebar-link">
+                <i class="fab fa-google"></i> Google
+            </a>
+            <a href="microsoft-setup.html" class="sidebar-link">
+                <i class="fab fa-microsoft"></i> Microsoft
+            </a>
+            <a href="apple-setup.html" class="sidebar-link">
+                <i class="fab fa-apple"></i> Apple
+            </a>
+            <a href="facebook-setup.html" class="sidebar-link">
+                <i class="fab fa-facebook"></i> Facebook
+            </a>
+            <a href="linkedin-setup.html" class="sidebar-link">
+                <i class="fab fa-linkedin"></i> LinkedIn
+            </a>
+            <a href="github-setup.html" class="sidebar-link">
+                <i class="fab fa-github"></i> GitHub
+            </a>
+        </div>
+    </nav>
+
+    <!-- ============================================================
+         Main Content
+         ============================================================ -->
+    <div class="main-content">
+        <!-- Breadcrumb -->
+        <nav class="breadcrumb-nav" aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="../index.html">Documentation</a></li>
+                <li class="breadcrumb-item"><a href="index.html">Setup Guides</a></li>
+                <li class="breadcrumb-item active" aria-current="page">Patreon</li>
+            </ol>
+        </nav>
+
+        <div class="content-wrapper">
+            <!-- ========================================
+                 Page Header
+                 ======================================== -->
+            <div class="guide-header">
+                <div class="d-flex align-items-center mb-2">
+                    <span class="provider-badge badge-patreon me-2">
+                        <i class="fab fa-patreon me-1"></i> Payment Provider
+                    </span>
+                    <span class="provider-badge" style="background-color: rgba(99, 102, 241, 0.1); color: #6366f1;">
+                        <i class="fas fa-key me-1"></i> OAuth 2.0
+                    </span>
+                    <span class="provider-badge ms-2" style="background-color: rgba(16, 185, 129, 0.1); color: #10b981;">
+                        <i class="fas fa-satellite-dish me-1"></i> Webhooks
+                    </span>
+                </div>
+                <h1>Patreon Setup</h1>
+                <p class="text-muted mb-0">
+                    Integrate Patreon membership tiers with SIGNula subscription levels.
+                    Patreon uses <strong>OAuth 2.0</strong> for authentication and <strong>webhooks</strong>
+                    for real-time membership event notifications. The API follows the JSON:API specification.
+                </p>
+            </div>
+
+            <!-- ========================================
+                 PART A: Vendor (Platform Owner) Setup
+                 ======================================== -->
+            <h2 class="fw-bold mb-3" style="color: #ff424d;">
+                <i class="fas fa-building me-2"></i>Part A: Vendor (Platform Owner) Setup
+            </h2>
+            <p class="text-muted mb-4">
+                Follow these steps if you are the SIGNula platform owner and want to integrate Patreon
+                membership management with your application.
+            </p>
+
+            <!-- Step 1 -->
+            <div class="step-section">
+                <div class="step-header">
+                    <div class="step-circle step-circle-patreon">1</div>
+                    <h3>Log In to Your Patreon Creator Account</h3>
+                </div>
+                <div class="step-content">
+                    <p>
+                        Visit <a href="https://www.patreon.com" target="_blank" rel="noopener noreferrer">patreon.com</a>
+                        and log in with your creator account. You must have a creator account (not just a patron account)
+                        to access the developer portal and create API clients.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Step 2 -->
+            <div class="step-section">
+                <div class="step-header">
+                    <div class="step-circle step-circle-patreon">2</div>
+                    <h3>Navigate to the Developer Portal</h3>
+                </div>
+                <div class="step-content">
+                    <p>
+                        Go to <a href="https://www.patreon.com/portal" target="_blank" rel="noopener noreferrer">patreon.com/portal</a>
+                        and click the <strong>"My Clients"</strong> tab. This is where you manage your API clients
+                        (also known as Platform clients).
+                    </p>
+                    <div class="alert alert-info">
+                        <i class="fas fa-lightbulb me-2"></i>
+                        <strong>Tip:</strong> If you do not see the "My Clients" tab, ensure you are logged
+                        in with a creator account that has an active Patreon page.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 3 -->
+            <div class="step-section">
+                <div class="step-header">
+                    <div class="step-circle step-circle-patreon">3</div>
+                    <h3>Create a New Platform Client</h3>
+                </div>
+                <div class="step-content">
+                    <p>
+                        Click <strong>"Create Client"</strong> to register a new API application.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Step 4 -->
+            <div class="step-section">
+                <div class="step-header">
+                    <div class="step-circle step-circle-patreon">4</div>
+                    <h3>Fill In Client Details</h3>
+                </div>
+                <div class="step-content">
+                    <p>
+                        Complete the registration form with the following details:
+                    </p>
+                    <div class="table-responsive">
+                        <table class="table settings-table">
+                            <thead>
+                                <tr>
+                                    <th>Field</th>
+                                    <th>Example Value</th>
+                                    <th>Notes</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><strong>App Name</strong></td>
+                                    <td><code class="code-inline">SIGNula Integration</code></td>
+                                    <td>A descriptive name for your integration</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Description</strong></td>
+                                    <td><code class="code-inline">SIGNula membership tier sync</code></td>
+                                    <td>Brief description of what the integration does</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>App Category</strong></td>
+                                    <td>Community / Membership</td>
+                                    <td>Select the most relevant category</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Redirect URI</strong></td>
+                                    <td><code class="code-inline">https://yourdomain.com/auth/patreon/callback</code></td>
+                                    <td>OAuth 2.0 callback URL where Patreon redirects after authorisation</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 5 -->
+            <div class="step-section">
+                <div class="step-header">
+                    <div class="step-circle step-circle-patreon">5</div>
+                    <h3>Copy Client ID and Client Secret</h3>
+                </div>
+                <div class="step-content">
+                    <p>
+                        After creating the client, you will be shown:
+                    </p>
+                    <ul>
+                        <li><strong>Client ID</strong> &mdash; A public identifier for your application.</li>
+                        <li><strong>Client Secret</strong> &mdash; A confidential key used for OAuth token exchanges.</li>
+                    </ul>
+                    <div class="alert alert-danger">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        <strong>Critical:</strong> Copy the Client Secret immediately and store it securely.
+                        It may only be displayed once. If lost, you will need to regenerate it.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 6 -->
+            <div class="step-section">
+                <div class="step-header">
+                    <div class="step-circle step-circle-patreon">6</div>
+                    <h3>Set Up Webhooks</h3>
+                </div>
+                <div class="step-content">
+                    <p>
+                        Under your client settings in the developer portal, find the <strong>Webhooks</strong>
+                        section and configure as follows:
+                    </p>
+                    <ol>
+                        <li>
+                            Set the <strong>Webhook URL</strong>:
+                            <div class="code-block-wrapper">
+                                <button class="copy-btn" onclick="copyCode(this)"><i class="fas fa-copy me-1"></i>Copy</button>
+                                <pre><code class="language-plaintext">https://yourdomain.com/webhooks/patreon</code></pre>
+                            </div>
+                        </li>
+                        <li>
+                            Select the following <strong>webhook triggers</strong>:
+                            <ul>
+                                <li><code class="code-inline">members:pledge:create</code></li>
+                                <li><code class="code-inline">members:pledge:update</code></li>
+                                <li><code class="code-inline">members:pledge:delete</code></li>
+                                <li><code class="code-inline">members:create</code></li>
+                                <li><code class="code-inline">members:update</code></li>
+                                <li><code class="code-inline">members:delete</code></li>
+                            </ul>
+                        </li>
+                        <li>Save the webhook configuration.</li>
+                        <li>Copy the <strong>Webhook Secret</strong> that is generated.</li>
+                    </ol>
+                    <div class="alert alert-warning">
+                        <i class="fas fa-shield-alt me-2"></i>
+                        <strong>Important:</strong> Patreon uses <strong>HMAC-MD5</strong> (not SHA-256) for
+                        webhook signature verification via the <code class="code-inline">X-Patreon-Signature</code>
+                        header. This is a key difference from other providers.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 7 -->
+            <div class="step-section">
+                <div class="step-header">
+                    <div class="step-circle step-circle-patreon">7</div>
+                    <h3>Obtain Creator Access Token</h3>
+                </div>
+                <div class="step-content">
+                    <p>
+                        A Creator Access Token allows SIGNula to make API calls on behalf of your creator account
+                        (e.g., fetching campaign data, listing members). You can obtain it in two ways:
+                    </p>
+                    <ul>
+                        <li><strong>Option A:</strong> Use the OAuth 2.0 flow to obtain an access token and refresh token.</li>
+                        <li><strong>Option B:</strong> Generate a Creator Access Token directly from the developer portal
+                            (shown under your client's settings).</li>
+                    </ul>
+                    <div class="code-block-wrapper">
+                        <button class="copy-btn" onclick="copyCode(this)"><i class="fas fa-copy me-1"></i>Copy</button>
+                        <pre><code class="language-bash"># OAuth 2.0 token exchange (Option A)
+curl -X POST https://www.patreon.com/api/oauth2/token \
+  -d "code=AUTHORIZATION_CODE" \
+  -d "grant_type=authorization_code" \
+  -d "client_id=YOUR_CLIENT_ID" \
+  -d "client_secret=YOUR_CLIENT_SECRET" \
+  -d "redirect_uri=https://yourdomain.com/auth/patreon/callback"</code></pre>
+                    </div>
+                    <div class="alert alert-info">
+                        <i class="fas fa-lightbulb me-2"></i>
+                        <strong>Tip:</strong> Option B (portal-generated token) is simpler for initial setup.
+                        SIGNula will automatically refresh the token using the refresh token when it expires.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 8 -->
+            <div class="step-section">
+                <div class="step-header">
+                    <div class="step-circle step-circle-patreon">8</div>
+                    <h3>Get Your Campaign ID</h3>
+                </div>
+                <div class="step-content">
+                    <p>
+                        Your Campaign ID is needed to query membership data. Fetch it using the API:
+                    </p>
+                    <div class="code-block-wrapper">
+                        <button class="copy-btn" onclick="copyCode(this)"><i class="fas fa-copy me-1"></i>Copy</button>
+                        <pre><code class="language-bash"># Fetch campaign data to get your Campaign ID
+curl -X GET "https://www.patreon.com/api/oauth2/v2/campaigns" \
+  -H "Authorization: Bearer YOUR_CREATOR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json"</code></pre>
+                    </div>
+                    <p>The response will include your campaign(s):</p>
+                    <div class="code-block-wrapper">
+                        <button class="copy-btn" onclick="copyCode(this)"><i class="fas fa-copy me-1"></i>Copy</button>
+                        <pre><code class="language-json">{
+    "data": [
+        {
+            "type": "campaign",
+            "id": "1234567",
+            "attributes": {
+                "creation_name": "My Creator Page",
+                "patron_count": 150,
+                "is_monthly": true
+            }
+        }
+    ]
+}</code></pre>
+                    </div>
+                    <p>
+                        Note the <code class="code-inline">"id"</code> value (e.g., <code class="code-inline">1234567</code>)
+                        &mdash; this is your Campaign ID.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Step 9 -->
+            <div class="step-section">
+                <div class="step-header">
+                    <div class="step-circle step-circle-patreon">9</div>
+                    <h3>Configure SIGNula Admin Panel</h3>
+                </div>
+                <div class="step-content">
+                    <p>
+                        Enter all your Patreon credentials into SIGNula:
+                    </p>
+                    <ol>
+                        <li>Log in to your <strong>SIGNula Admin Panel</strong>.</li>
+                        <li>Navigate to <strong>Payments</strong> &rarr; <strong>Providers</strong> &rarr; <strong>Patreon</strong>.</li>
+                        <li>Toggle the <strong>Enabled</strong> switch to activate Patreon.</li>
+                        <li>Enter your <strong>Client ID</strong>.</li>
+                        <li>Enter your <strong>Client Secret</strong>.</li>
+                        <li>Enter your <strong>Webhook Secret</strong>.</li>
+                        <li>Enter your <strong>Creator Access Token</strong>.</li>
+                        <li>Enter your <strong>Campaign ID</strong>.</li>
+                        <li>Optionally toggle <strong>Sync Members</strong> to periodically synchronise member data.</li>
+                        <li>Click <strong>Save Settings</strong>.</li>
+                    </ol>
+                </div>
+            </div>
+
+            <!-- Step 10 -->
+            <div class="step-section">
+                <div class="step-header">
+                    <div class="step-circle step-circle-patreon">10</div>
+                    <h3>Test the Connection</h3>
+                </div>
+                <div class="step-content">
+                    <p>
+                        Click the <strong>Test Connection</strong> button. SIGNula will:
+                    </p>
+                    <ul>
+                        <li>Make an authenticated API call to <code class="code-inline">/api/oauth2/v2/campaigns/{campaign_id}</code>.</li>
+                        <li>Verify the Creator Access Token is valid and has the necessary scopes.</li>
+                        <li>Confirm the Campaign ID exists and is accessible.</li>
+                        <li>Display campaign name and patron count on success.</li>
+                    </ul>
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>
+                        <strong>Note:</strong> If the test fails with a 401 error, your access token may
+                        have expired. SIGNula will attempt to refresh it automatically using the stored
+                        refresh token.
+                    </div>
+                </div>
+            </div>
+
+            <hr class="section-divider">
+
+            <!-- ========================================
+                 PART B: Partner Setup
+                 ======================================== -->
+            <h2 class="fw-bold mb-3" style="color: #ff424d;">
+                <i class="fas fa-handshake me-2"></i>Part B: Partner Setup
+            </h2>
+            <p class="text-muted mb-4">
+                Partners who want to integrate their own Patreon campaigns with SIGNula follow the same
+                process as Part A, using their own creator accounts.
+            </p>
+
+            <div class="step-section">
+                <div class="step-header">
+                    <div class="step-circle step-circle-patreon">1</div>
+                    <h3>Create Your Own Patreon API Client</h3>
+                </div>
+                <div class="step-content">
+                    <p>
+                        Each partner must register their own API client in the Patreon developer portal.
+                        Use a partner-specific redirect URI:
+                    </p>
+                    <div class="code-block-wrapper">
+                        <button class="copy-btn" onclick="copyCode(this)"><i class="fas fa-copy me-1"></i>Copy</button>
+                        <pre><code class="language-plaintext">https://yourdomain.com/auth/patreon/callback/{partner_id}</code></pre>
+                    </div>
+                </div>
+            </div>
+
+            <div class="step-section">
+                <div class="step-header">
+                    <div class="step-circle step-circle-patreon">2</div>
+                    <h3>Enter Credentials in Partner Dashboard</h3>
+                </div>
+                <div class="step-content">
+                    <p>
+                        In the SIGNula Partner Dashboard, navigate to <strong>Settings</strong> &rarr;
+                        <strong>Payment Providers</strong> &rarr; <strong>Patreon</strong> and enter all
+                        credentials (Client ID, Client Secret, Webhook Secret, Creator Access Token,
+                        Campaign ID).
+                    </p>
+                </div>
+            </div>
+
+            <div class="step-section">
+                <div class="step-header">
+                    <div class="step-circle step-circle-patreon">3</div>
+                    <h3>Map Patreon Tiers to SIGNula Tiers</h3>
+                </div>
+                <div class="step-content">
+                    <p>
+                        Use the Tier Mapping section in the Partner Dashboard to map each Patreon
+                        membership tier to a corresponding SIGNula subscription tier. See the
+                        Tier Mapping section below for details.
+                    </p>
+                </div>
+            </div>
+
+            <hr class="section-divider">
+
+            <!-- ========================================
+                 Webhook Events
+                 ======================================== -->
+            <h2 class="fw-bold mb-3">
+                <i class="fas fa-satellite-dish me-2" style="color: #6366f1;"></i>Webhook Events
+            </h2>
+            <p class="text-muted mb-3">
+                Patreon sends webhook notifications via the <code class="code-inline">X-Patreon-Event</code>
+                header. SIGNula processes these automatically to manage membership status.
+            </p>
+
+            <div class="table-responsive">
+                <table class="table settings-table">
+                    <thead>
+                        <tr>
+                            <th>X-Patreon-Event Header</th>
+                            <th>Description</th>
+                            <th>SIGNula Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code class="code-inline">members:pledge:create</code></td>
+                            <td>A new patron has pledged to your campaign</td>
+                            <td>Creates or activates subscription at the mapped SIGNula tier</td>
+                        </tr>
+                        <tr>
+                            <td><code class="code-inline">members:pledge:update</code></td>
+                            <td>A patron has changed their pledge amount or tier</td>
+                            <td>Updates subscription tier mapping; adjusts access level</td>
+                        </tr>
+                        <tr>
+                            <td><code class="code-inline">members:pledge:delete</code></td>
+                            <td>A patron has cancelled their pledge</td>
+                            <td>Deactivates subscription; reverts to free tier</td>
+                        </tr>
+                        <tr>
+                            <td><code class="code-inline">members:create</code></td>
+                            <td>A new member has been added (may not have an active pledge)</td>
+                            <td>Records member association; no tier activation</td>
+                        </tr>
+                        <tr>
+                            <td><code class="code-inline">members:update</code></td>
+                            <td>Member information has been updated</td>
+                            <td>Updates member record in SIGNula database</td>
+                        </tr>
+                        <tr>
+                            <td><code class="code-inline">members:delete</code></td>
+                            <td>A member has been removed from the campaign</td>
+                            <td>Removes Patreon association; deactivates subscription</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <hr class="section-divider">
+
+            <!-- ========================================
+                 Tier Mapping
+                 ======================================== -->
+            <h2 class="fw-bold mb-3">
+                <i class="fas fa-layer-group me-2" style="color: #f59e0b;"></i>Tier Mapping
+            </h2>
+            <p class="text-muted mb-3">
+                Map your Patreon membership tiers to SIGNula subscription tiers so that when a patron
+                pledges at a certain level, SIGNula automatically grants the correct access.
+            </p>
+
+            <div class="tier-mapping-row">
+                <div class="patreon-tier">
+                    <span class="tier-dot" style="background-color: #ff424d;"></span>
+                    <strong>Patreon: Bronze Supporter</strong>
+                    <small class="text-muted">($3/month)</small>
+                </div>
+                <div class="arrow"><i class="fas fa-arrow-right"></i></div>
+                <div class="signula-tier">
+                    <span class="tier-dot" style="background-color: #6366f1;"></span>
+                    <strong>SIGNula: Basic</strong>
+                </div>
+            </div>
+
+            <div class="tier-mapping-row">
+                <div class="patreon-tier">
+                    <span class="tier-dot" style="background-color: #ff424d;"></span>
+                    <strong>Patreon: Silver Supporter</strong>
+                    <small class="text-muted">($10/month)</small>
+                </div>
+                <div class="arrow"><i class="fas fa-arrow-right"></i></div>
+                <div class="signula-tier">
+                    <span class="tier-dot" style="background-color: #8b5cf6;"></span>
+                    <strong>SIGNula: Pro</strong>
+                </div>
+            </div>
+
+            <div class="tier-mapping-row">
+                <div class="patreon-tier">
+                    <span class="tier-dot" style="background-color: #ff424d;"></span>
+                    <strong>Patreon: Gold Supporter</strong>
+                    <small class="text-muted">($25/month)</small>
+                </div>
+                <div class="arrow"><i class="fas fa-arrow-right"></i></div>
+                <div class="signula-tier">
+                    <span class="tier-dot" style="background-color: #f59e0b;"></span>
+                    <strong>SIGNula: Premium</strong>
+                </div>
+            </div>
+
+            <p class="mt-3">
+                Tier mapping is stored as JSON in the
+                <code class="code-inline">payment.patreon.tier_mapping</code> setting:
+            </p>
+
+            <div class="code-block-wrapper">
+                <button class="copy-btn" onclick="copyCode(this)"><i class="fas fa-copy me-1"></i>Copy</button>
+                <pre><code class="language-json">// Example tier_mapping JSON
+{
+    "patreon_tiers": {
+        "9876543": {
+            "patreon_name": "Bronze Supporter",
+            "patreon_amount_cents": 300,
+            "signula_tier_id": "tier_basic",
+            "signula_tier_name": "Basic"
+        },
+        "9876544": {
+            "patreon_name": "Silver Supporter",
+            "patreon_amount_cents": 1000,
+            "signula_tier_id": "tier_pro",
+            "signula_tier_name": "Pro"
+        },
+        "9876545": {
+            "patreon_name": "Gold Supporter",
+            "patreon_amount_cents": 2500,
+            "signula_tier_id": "tier_premium",
+            "signula_tier_name": "Premium"
+        }
+    }
+}</code></pre>
+            </div>
+
+            <hr class="section-divider">
+
+            <!-- ========================================
+                 API Details
+                 ======================================== -->
+            <h2 class="fw-bold mb-3">
+                <i class="fas fa-plug me-2" style="color: #10b981;"></i>API Details
+            </h2>
+
+            <div class="table-responsive">
+                <table class="table settings-table">
+                    <thead>
+                        <tr>
+                            <th>Property</th>
+                            <th>Value</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>API Base URL</strong></td>
+                            <td><code class="code-inline">https://www.patreon.com/api/oauth2/v2</code></td>
+                        </tr>
+                        <tr>
+                            <td><strong>API Format</strong></td>
+                            <td>JSON:API specification (<a href="https://jsonapi.org" target="_blank" rel="noopener noreferrer">jsonapi.org</a>)</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Authentication</strong></td>
+                            <td><code class="code-inline">Authorization: Bearer ACCESS_TOKEN</code></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Content Type</strong></td>
+                            <td><code class="code-inline">application/json</code></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Webhook Event Header</strong></td>
+                            <td><code class="code-inline">X-Patreon-Event</code></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Webhook Signature Header</strong></td>
+                            <td><code class="code-inline">X-Patreon-Signature</code></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Webhook Signature Algorithm</strong></td>
+                            <td>HMAC-MD5</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <h4 class="fw-bold mt-4 mb-3">Webhook Verification</h4>
+            <p>
+                Patreon signs webhooks using <strong>HMAC-MD5</strong> with your Webhook Secret.
+                The signature is sent in the <code class="code-inline">X-Patreon-Signature</code> header.
+            </p>
+
+            <div class="alert alert-warning mb-3">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                <strong>Important:</strong> Patreon uses <strong>HMAC-MD5</strong>, which is less common
+                than HMAC-SHA256. Ensure your verification code uses the <code class="code-inline">md5</code>
+                algorithm, not <code class="code-inline">sha256</code>.
+            </div>
+
+            <div class="code-block-wrapper">
+                <button class="copy-btn" onclick="copyCode(this)"><i class="fas fa-copy me-1"></i>Copy</button>
+                <pre><code class="language-php">// Patreon webhook verification in PHP (simplified)
+$payload   = file_get_contents('php://input');
+$sigHeader = $_SERVER['HTTP_X_PATREON_SIGNATURE'] ?? '';
+$event     = $_SERVER['HTTP_X_PATREON_EVENT'] ?? '';
+$secret    = $decryptedWebhookSecret; // Retrieved & decrypted from tblSettings
+
+// IMPORTANT: Patreon uses HMAC-MD5, NOT HMAC-SHA256
+$expectedSig = hash_hmac('md5', $payload, $secret);
+
+if (!hash_equals($expectedSig, $sigHeader)) {
+    // Signature mismatch - reject the request
+    http_response_code(401);
+    exit('Invalid signature');
+}
+
+// Signature valid - process the event
+$data = json_decode($payload, true);
+
+// The event type is in the header, NOT in the payload
+switch ($event) {
+    case 'members:pledge:create':
+        // Handle new pledge
+        break;
+    case 'members:pledge:update':
+        // Handle pledge update
+        break;
+    case 'members:pledge:delete':
+        // Handle pledge cancellation
+        break;
+    // ... handle other events
+}</code></pre>
+            </div>
+
+            <hr class="section-divider">
+
+            <!-- ========================================
+                 Settings Reference
+                 ======================================== -->
+            <h2 class="fw-bold mb-3">
+                <i class="fas fa-cog me-2" style="color: #8b5cf6;"></i>Settings Reference
+            </h2>
+            <p class="text-muted mb-3">
+                These settings are stored in <code class="code-inline">tblSettings</code> in the SIGNula backend database.
+                Fields marked with <i class="fas fa-lock text-danger"></i> are encrypted at rest.
+            </p>
+
+            <div class="table-responsive">
+                <table class="table settings-table">
+                    <thead>
+                        <tr>
+                            <th>Setting Key</th>
+                            <th>Type</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code class="code-inline">payment.patreon.enabled</code></td>
+                            <td>Boolean</td>
+                            <td>Enable or disable Patreon as a payment/membership provider</td>
+                        </tr>
+                        <tr>
+                            <td><code class="code-inline">payment.patreon.client_id</code> <i class="fas fa-lock text-danger"></i></td>
+                            <td>String</td>
+                            <td>Patreon API Client ID (encrypted, isSensitive)</td>
+                        </tr>
+                        <tr>
+                            <td><code class="code-inline">payment.patreon.client_secret</code> <i class="fas fa-lock text-danger"></i></td>
+                            <td>String</td>
+                            <td>Patreon API Client Secret (encrypted, isSensitive)</td>
+                        </tr>
+                        <tr>
+                            <td><code class="code-inline">payment.patreon.webhook_secret</code> <i class="fas fa-lock text-danger"></i></td>
+                            <td>String</td>
+                            <td>Webhook secret for HMAC-MD5 signature verification (encrypted, isSensitive)</td>
+                        </tr>
+                        <tr>
+                            <td><code class="code-inline">payment.patreon.campaign_id</code></td>
+                            <td>String</td>
+                            <td>Your Patreon Campaign ID</td>
+                        </tr>
+                        <tr>
+                            <td><code class="code-inline">payment.patreon.creator_access_token</code> <i class="fas fa-lock text-danger"></i></td>
+                            <td>String</td>
+                            <td>OAuth 2.0 access token for API calls (encrypted, isSensitive)</td>
+                        </tr>
+                        <tr>
+                            <td><code class="code-inline">payment.patreon.creator_refresh_token</code> <i class="fas fa-lock text-danger"></i></td>
+                            <td>String</td>
+                            <td>OAuth 2.0 refresh token for renewing access (encrypted, isSensitive)</td>
+                        </tr>
+                        <tr>
+                            <td><code class="code-inline">payment.patreon.tier_mapping</code></td>
+                            <td>JSON</td>
+                            <td>JSON mapping of Patreon tier IDs to SIGNula tier IDs</td>
+                        </tr>
+                        <tr>
+                            <td><code class="code-inline">payment.patreon.webhook_url</code></td>
+                            <td>String</td>
+                            <td>The configured webhook URL for Patreon events</td>
+                        </tr>
+                        <tr>
+                            <td><code class="code-inline">payment.patreon.log_all_events</code></td>
+                            <td>Boolean</td>
+                            <td>If enabled, logs all incoming Patreon events to the activity log</td>
+                        </tr>
+                        <tr>
+                            <td><code class="code-inline">payment.patreon.sync_members</code></td>
+                            <td>Boolean</td>
+                            <td>If enabled, periodically syncs member data from Patreon API</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <hr class="section-divider">
+
+            <!-- ========================================
+                 Troubleshooting
+                 ======================================== -->
+            <h2 class="fw-bold mb-3">
+                <i class="fas fa-wrench me-2" style="color: #ef4444;"></i>Troubleshooting
+            </h2>
+
+            <div class="accordion" id="troubleshootingAccordion">
+                <!-- Issue 1 -->
+                <div class="accordion-item">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#trouble1">
+                            Test Connection fails with 401 Unauthorized
+                        </button>
+                    </h2>
+                    <div id="trouble1" class="accordion-collapse collapse" data-bs-parent="#troubleshootingAccordion">
+                        <div class="accordion-body">
+                            <ul>
+                                <li>Your Creator Access Token may have expired. Patreon tokens have a limited lifetime.</li>
+                                <li>Check if the refresh token is still valid. SIGNula attempts automatic refresh on 401 responses.</li>
+                                <li>Try generating a new Creator Access Token from the developer portal.</li>
+                                <li>Verify the Client ID and Client Secret are correct.</li>
+                                <li>Ensure the token has the required scopes: <code class="code-inline">identity</code>, <code class="code-inline">campaigns</code>, <code class="code-inline">campaigns.members</code>.</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Issue 2 -->
+                <div class="accordion-item">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#trouble2">
+                            Webhook signature verification fails
+                        </button>
+                    </h2>
+                    <div id="trouble2" class="accordion-collapse collapse" data-bs-parent="#troubleshootingAccordion">
+                        <div class="accordion-body">
+                            <ul>
+                                <li>Patreon uses <strong>HMAC-MD5</strong>, not HMAC-SHA256. Ensure your code uses <code class="code-inline">hash_hmac('md5', ...)</code>.</li>
+                                <li>Verify the Webhook Secret in SIGNula matches what Patreon shows in the developer portal.</li>
+                                <li>Ensure you are reading the raw request body without modifications.</li>
+                                <li>Check that no proxy or middleware is altering the request payload.</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Issue 3 -->
+                <div class="accordion-item">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#trouble3">
+                            Campaign ID not found or returns empty data
+                        </button>
+                    </h2>
+                    <div id="trouble3" class="accordion-collapse collapse" data-bs-parent="#troubleshootingAccordion">
+                        <div class="accordion-body">
+                            <ul>
+                                <li>Verify the Campaign ID by calling the <code class="code-inline">/campaigns</code> endpoint directly.</li>
+                                <li>Ensure you are using the numeric Campaign ID, not the page slug or vanity URL.</li>
+                                <li>Confirm the Creator Access Token belongs to the same account that owns the campaign.</li>
+                                <li>Check that your campaign is active and not archived.</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Issue 4 -->
+                <div class="accordion-item">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#trouble4">
+                            Patron tier not mapping correctly to SIGNula tier
+                        </button>
+                    </h2>
+                    <div id="trouble4" class="accordion-collapse collapse" data-bs-parent="#troubleshootingAccordion">
+                        <div class="accordion-body">
+                            <ul>
+                                <li>Verify the <code class="code-inline">payment.patreon.tier_mapping</code> JSON contains the correct Patreon tier IDs.</li>
+                                <li>Patreon tier IDs are numeric strings. You can find them by querying <code class="code-inline">/campaigns/{id}?include=tiers</code>.</li>
+                                <li>Ensure the SIGNula tier IDs referenced in the mapping actually exist in your SIGNula tier configuration.</li>
+                                <li>If a patron is on a tier not in the mapping, SIGNula will log a warning but not activate any tier.</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Issue 5 -->
+                <div class="accordion-item">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#trouble5">
+                            Webhooks not being received from Patreon
+                        </button>
+                    </h2>
+                    <div id="trouble5" class="accordion-collapse collapse" data-bs-parent="#troubleshootingAccordion">
+                        <div class="accordion-body">
+                            <ul>
+                                <li>Verify the webhook URL in the Patreon developer portal matches your SIGNula endpoint.</li>
+                                <li>Ensure your endpoint is publicly accessible over HTTPS.</li>
+                                <li>Patreon may disable webhooks that consistently fail. Check the webhook status in the developer portal.</li>
+                                <li>Your endpoint must return a 2xx response within a reasonable timeframe.</li>
+                                <li>Check your server's access logs for incoming POST requests from Patreon.</li>
+                                <li>Enable <code class="code-inline">payment.patreon.log_all_events</code> and review the SIGNula activity log.</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Issue 6 -->
+                <div class="accordion-item">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#trouble6">
+                            Member sync not populating data
+                        </button>
+                    </h2>
+                    <div id="trouble6" class="accordion-collapse collapse" data-bs-parent="#troubleshootingAccordion">
+                        <div class="accordion-body">
+                            <ul>
+                                <li>Ensure <code class="code-inline">payment.patreon.sync_members</code> is set to <code class="code-inline">true</code>.</li>
+                                <li>Verify the Creator Access Token has the <code class="code-inline">campaigns.members</code> scope.</li>
+                                <li>The Patreon API paginates results. SIGNula handles pagination automatically, but check for errors in the activity log.</li>
+                                <li>Large campaigns with thousands of patrons may take several minutes to fully sync.</li>
+                                <li>Check the Patreon API rate limits (currently ~720 requests per hour).</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ========================================
+                 Footer
+                 ======================================== -->
+            <div class="guide-footer">
+                <p>&copy; 2025&ndash;2026 MWBM Partners Ltd (t/a MWservices). All rights reserved.</p>
+            </div>
+        </div><!-- /.content-wrapper -->
+    </div><!-- /.main-content -->
+
+    <!-- ============================================================
+         Scripts
+         ============================================================ -->
+
+    <!-- Highlight.js 11.9.0 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+    <!-- Bootstrap 5.3.2 JS Bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"
+            integrity="sha384-C6RzsynM9kWDrMNeT87bh95OGNyZPhcTNXj1NW7RuBCsyN/o0jlpcV8Qyq46cDfL"
+            crossorigin="anonymous"></script>
+
+    <script>
+        // Initialise Highlight.js
+        hljs.highlightAll();
+
+        // Copy-to-clipboard functionality
+        function copyCode(button) {
+            var codeBlock = button.closest('.code-block-wrapper').querySelector('code');
+            var text = codeBlock.textContent;
+
+            navigator.clipboard.writeText(text).then(function() {
+                button.classList.add('copied');
+                button.innerHTML = '<i class="fas fa-check me-1"></i>Copied!';
+                setTimeout(function() {
+                    button.classList.remove('copied');
+                    button.innerHTML = '<i class="fas fa-copy me-1"></i>Copy';
+                }, 2000);
+            }).catch(function() {
+                // Fallback for older browsers
+                var textarea = document.createElement('textarea');
+                textarea.value = text;
+                document.body.appendChild(textarea);
+                textarea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textarea);
+                button.classList.add('copied');
+                button.innerHTML = '<i class="fas fa-check me-1"></i>Copied!';
+                setTimeout(function() {
+                    button.classList.remove('copied');
+                    button.innerHTML = '<i class="fas fa-copy me-1"></i>Copy';
+                }, 2000);
+            });
+        }
+
+        // Sidebar toggle for mobile
+        var sidebarToggle = document.getElementById('sidebarToggle');
+        var sidebar = document.getElementById('sidebar');
+        var sidebarOverlay = document.getElementById('sidebarOverlay');
+
+        sidebarToggle.addEventListener('click', function() {
+            sidebar.classList.toggle('show');
+            sidebarOverlay.classList.toggle('show');
+        });
+
+        sidebarOverlay.addEventListener('click', function() {
+            sidebar.classList.remove('show');
+            sidebarOverlay.classList.remove('show');
+        });
+    </script>
+</body>
+</html>

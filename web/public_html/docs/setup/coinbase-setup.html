@@ -1,0 +1,1348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="SIGNula - Coinbase Commerce (Cryptocurrency) Payment Provider Setup Guide">
+    <meta name="author" content="MWBM Partners Ltd">
+    <title>Coinbase Commerce Setup - SIGNula Setup Guides</title>
+
+    <!-- Bootstrap 5.3.2 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"
+          integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN"
+          crossorigin="anonymous">
+
+    <!-- FontAwesome 6.4.2 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css"
+          integrity="sha512-z3gLpd7yknf1YoNbCzqRKc4qyor8gaKU1qmn+CShxbuBusANI9QpRohGBreCFkKxLhei6S9CQXFEbbKuqLg0DA=="
+          crossorigin="anonymous">
+
+    <!-- Google Fonts: Inter & Fira Code -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+
+    <!-- Highlight.js 11.9.0 CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+
+    <style>
+        /* ========================================
+           CSS Variables
+           ======================================== */
+        :root {
+            --primary: #3b82f6;
+            --primary-dark: #2563eb;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --sidebar-bg: #0f172a;
+            --sidebar-text: #94a3b8;
+            --sidebar-active: #e2e8f0;
+            --content-bg: #ffffff;
+            --text-primary: #1e293b;
+            --text-secondary: #64748b;
+            --border-color: #e2e8f0;
+            --code-bg: #f1f5f9;
+            --provider-color: #0052FF;
+        }
+
+        /* ========================================
+           Base Typography & Reset
+           ======================================== */
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: #f8fafc;
+            color: var(--text-primary);
+            margin: 0;
+            padding: 0;
+        }
+
+        code, pre, .code-inline {
+            font-family: 'Fira Code', 'Courier New', Courier, monospace;
+        }
+
+        /* ========================================
+           Sidebar Navigation
+           ======================================== */
+        .sidebar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 280px;
+            height: 100vh;
+            background-color: var(--sidebar-bg);
+            color: #cbd5e1;
+            overflow-y: auto;
+            z-index: 1000;
+            transition: transform 0.3s ease;
+            padding-bottom: 2rem;
+        }
+
+        .sidebar-header {
+            padding: 1.5rem 1.25rem;
+            border-bottom: 1px solid #1e293b;
+        }
+
+        .sidebar-header h5 {
+            color: #f1f5f9;
+            font-weight: 700;
+            margin: 0;
+            font-size: 1.1rem;
+        }
+
+        .sidebar-header small {
+            color: var(--text-secondary);
+            font-size: 0.75rem;
+        }
+
+        .sidebar-section {
+            padding: 1rem 0 0 0;
+        }
+
+        .sidebar-section-title {
+            font-size: 0.65rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-secondary);
+            padding: 0 1.25rem 0.5rem;
+        }
+
+        .sidebar-back {
+            display: flex;
+            align-items: center;
+            padding: 0.5rem 1.25rem;
+            color: var(--sidebar-text);
+            text-decoration: none;
+            font-size: 0.85rem;
+            transition: all 0.15s ease;
+            border-left: 3px solid transparent;
+        }
+
+        .sidebar-back:hover {
+            color: var(--sidebar-active);
+            background-color: #1e293b;
+        }
+
+        .sidebar-back i {
+            width: 20px;
+            margin-right: 0.75rem;
+            text-align: center;
+            font-size: 0.8rem;
+        }
+
+        .sidebar-nav a {
+            display: flex;
+            align-items: center;
+            padding: 0.5rem 1.25rem;
+            color: var(--sidebar-text);
+            text-decoration: none;
+            font-size: 0.85rem;
+            transition: all 0.15s ease;
+            border-left: 3px solid transparent;
+        }
+
+        .sidebar-nav a:hover {
+            color: var(--sidebar-active);
+            background-color: #1e293b;
+        }
+
+        .sidebar-nav a.active {
+            color: var(--provider-color);
+            background-color: rgba(0, 82, 255, 0.08);
+            border-left-color: var(--provider-color);
+            font-weight: 600;
+        }
+
+        .sidebar-nav a i {
+            width: 20px;
+            margin-right: 0.75rem;
+            text-align: center;
+            font-size: 0.8rem;
+        }
+
+        /* ========================================
+           Main Content Area
+           ======================================== */
+        .main-content {
+            margin-left: 280px;
+            padding: 2rem 2.5rem;
+            min-height: 100vh;
+        }
+
+        .content-wrapper {
+            max-width: 900px;
+            background-color: var(--content-bg);
+            border-radius: 12px;
+            padding: 2.5rem;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+        }
+
+        /* ========================================
+           Breadcrumb
+           ======================================== */
+        .breadcrumb-nav {
+            margin-bottom: 1.5rem;
+        }
+
+        .breadcrumb-nav .breadcrumb {
+            background: none;
+            padding: 0;
+            margin: 0;
+            font-size: 0.85rem;
+        }
+
+        .breadcrumb-nav .breadcrumb-item a {
+            color: #6366f1;
+            text-decoration: none;
+        }
+
+        .breadcrumb-nav .breadcrumb-item.active {
+            color: var(--text-secondary);
+        }
+
+        /* ========================================
+           Provider Header
+           ======================================== */
+        .provider-header {
+            background: linear-gradient(135deg, var(--provider-color), #0041cc);
+            border-radius: 12px;
+            padding: 2rem 2.5rem;
+            color: #ffffff;
+            margin-bottom: 2rem;
+        }
+
+        .provider-header h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+
+        .provider-header p {
+            opacity: 0.9;
+            margin-bottom: 0;
+            font-size: 1.05rem;
+        }
+
+        .provider-header .provider-icon {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+            opacity: 0.9;
+        }
+
+        /* ========================================
+           Guide Sections
+           ======================================== */
+        .guide-section {
+            margin-bottom: 2.5rem;
+        }
+
+        .guide-section h2 {
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: #0f172a;
+            margin-bottom: 1rem;
+            padding-bottom: 0.75rem;
+            border-bottom: 2px solid #f1f5f9;
+        }
+
+        /* ========================================
+           Step Indicators
+           ======================================== */
+        .step {
+            display: flex;
+            margin-bottom: 2rem;
+        }
+
+        .step-number {
+            width: 36px;
+            height: 36px;
+            min-width: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #ffffff;
+            font-weight: 700;
+            font-size: 0.9rem;
+            margin-right: 1rem;
+            margin-top: 0.15rem;
+            background-color: var(--provider-color);
+        }
+
+        .step-content {
+            flex: 1;
+            color: #475569;
+            line-height: 1.7;
+        }
+
+        .step-content h3 {
+            font-size: 1.15rem;
+            font-weight: 600;
+            color: #0f172a;
+            margin: 0 0 0.75rem 0;
+        }
+
+        /* ========================================
+           Code Blocks & Copy Button
+           ======================================== */
+        .code-block {
+            position: relative;
+            background-color: #1e293b;
+            border-radius: 8px;
+            padding: 1rem 1.25rem;
+            margin: 1rem 0;
+            overflow-x: auto;
+        }
+
+        .code-block pre {
+            margin: 0;
+            padding: 0;
+            background: transparent;
+        }
+
+        .code-block code {
+            color: #e2e8f0;
+            font-size: 0.85rem;
+            background: transparent;
+        }
+
+        .copy-btn {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: rgba(255, 255, 255, 0.15);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #e2e8f0;
+            padding: 0.25rem 0.6rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .copy-btn:hover {
+            background: rgba(255, 255, 255, 0.25);
+            color: #ffffff;
+        }
+
+        .code-inline {
+            background-color: var(--code-bg);
+            color: #e11d48;
+            padding: 0.15rem 0.45rem;
+            border-radius: 4px;
+            font-size: 0.85em;
+        }
+
+        /* ========================================
+           Alert Boxes
+           ======================================== */
+        .alert-box {
+            border-radius: 8px;
+            padding: 1rem 1.25rem;
+            margin: 1rem 0;
+            font-size: 0.9rem;
+            border-left: 4px solid;
+        }
+
+        .alert-info {
+            background-color: #eff6ff;
+            border-left-color: var(--primary);
+            color: #1e40af;
+        }
+
+        .alert-warning {
+            background-color: #fffbeb;
+            border-left-color: var(--warning);
+            color: #92400e;
+        }
+
+        .alert-danger {
+            background-color: #fef2f2;
+            border-left-color: var(--danger);
+            color: #991b1b;
+        }
+
+        .alert-success {
+            background-color: #f0fdf4;
+            border-left-color: var(--success);
+            color: #166534;
+        }
+
+        .alert-tip {
+            background-color: #faf5ff;
+            border-left-color: #8b5cf6;
+            color: #5b21b6;
+        }
+
+        /* ========================================
+           Tables
+           ======================================== */
+        .guide-table {
+            width: 100%;
+            font-size: 0.88rem;
+            border-collapse: collapse;
+            margin: 1rem 0;
+        }
+
+        .guide-table th {
+            background-color: #f8fafc;
+            font-weight: 600;
+            color: #334155;
+            border-bottom: 2px solid var(--border-color);
+            padding: 0.75rem;
+            text-align: left;
+        }
+
+        .guide-table td {
+            vertical-align: top;
+            color: #475569;
+            padding: 0.75rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        /* ========================================
+           Info Cards
+           ======================================== */
+        .info-card {
+            background: #f8fafc;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 1.25rem;
+            margin: 1rem 0;
+        }
+
+        .info-card h4 {
+            font-size: 1rem;
+            font-weight: 600;
+            color: #0f172a;
+            margin-bottom: 0.5rem;
+        }
+
+        /* ========================================
+           Crypto Icons Grid
+           ======================================== */
+        .crypto-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+            gap: 1rem;
+            margin: 1rem 0;
+        }
+
+        .crypto-card {
+            display: flex;
+            align-items: center;
+            padding: 0.85rem;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            background: #f8fafc;
+            gap: 0.75rem;
+        }
+
+        .crypto-card .crypto-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 0.7rem;
+            color: #fff;
+        }
+
+        .crypto-card .crypto-name {
+            font-weight: 600;
+            font-size: 0.85rem;
+            color: #0f172a;
+        }
+
+        .crypto-card .crypto-symbol {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        /* ========================================
+           Guide Footer & Next Steps
+           ======================================== */
+        .guide-footer {
+            margin-top: 3rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .next-steps {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .next-step-card {
+            display: block;
+            background: #f8fafc;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 1.25rem;
+            text-decoration: none;
+            color: inherit;
+            transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+        }
+
+        .next-step-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+            border-color: var(--provider-color);
+            text-decoration: none;
+            color: inherit;
+        }
+
+        .next-step-card i {
+            font-size: 1.2rem;
+            margin-bottom: 0.5rem;
+            display: block;
+        }
+
+        .next-step-card h5 {
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: #0f172a;
+            margin-bottom: 0.25rem;
+        }
+
+        .next-step-card p {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            margin: 0;
+        }
+
+        .guide-footer .copyright {
+            text-align: center;
+            font-size: 0.8rem;
+            color: var(--sidebar-text);
+            padding-top: 1rem;
+            border-top: 1px solid var(--border-color);
+        }
+
+        /* ========================================
+           Section Divider
+           ======================================== */
+        .section-divider {
+            border: none;
+            border-top: 2px solid #f1f5f9;
+            margin: 2.5rem 0;
+        }
+
+        /* ========================================
+           Mobile Toggle
+           ======================================== */
+        .mobile-toggle {
+            display: none;
+            position: fixed;
+            top: 1rem;
+            left: 1rem;
+            z-index: 1100;
+            background: var(--sidebar-bg);
+            color: #f1f5f9;
+            border: none;
+            border-radius: 8px;
+            padding: 0.6rem 0.8rem;
+            font-size: 1.1rem;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        /* ========================================
+           Responsive / Mobile
+           ======================================== */
+        @media (max-width: 768px) {
+            .sidebar {
+                transform: translateX(-100%);
+            }
+
+            .sidebar.open {
+                transform: translateX(0);
+            }
+
+            .mobile-toggle {
+                display: block;
+            }
+
+            .main-content {
+                margin-left: 0;
+                padding: 1.25rem;
+                padding-top: 4rem;
+            }
+
+            .content-wrapper {
+                padding: 1.5rem;
+            }
+
+            .provider-header {
+                padding: 1.5rem;
+            }
+
+            .provider-header h1 {
+                font-size: 1.5rem;
+            }
+
+            .next-steps {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- ============================================================
+         Mobile Toggle Button
+         ============================================================ -->
+    <button class="mobile-toggle" aria-label="Toggle navigation">
+        <i class="fas fa-bars"></i>
+    </button>
+
+    <!-- ============================================================
+         Sidebar Navigation
+         ============================================================ -->
+    <nav class="sidebar">
+        <div class="sidebar-header">
+            <h5><i class="fas fa-shield-halved me-2"></i>SIGNula Docs</h5>
+            <small>Provider Setup Guides</small>
+        </div>
+
+        <!-- Back to All Guides -->
+        <div class="sidebar-section">
+            <a href="index.html" class="sidebar-back">
+                <i class="fas fa-arrow-left"></i> Back to All Guides
+            </a>
+        </div>
+
+        <!-- Payment Providers -->
+        <div class="sidebar-section">
+            <div class="sidebar-section-title">Payment Providers</div>
+            <div class="sidebar-nav">
+                <a href="stripe-setup.html">
+                    <i class="fab fa-stripe-s"></i> Stripe Setup
+                </a>
+                <a href="paypal-setup.html">
+                    <i class="fab fa-paypal"></i> PayPal Setup
+                </a>
+                <a href="coinbase-setup.html" class="active">
+                    <i class="fab fa-bitcoin"></i> Coinbase Commerce Setup
+                </a>
+                <a href="kofi-setup.html">
+                    <i class="fas fa-mug-hot"></i> Ko-fi Setup
+                </a>
+                <a href="patreon-setup.html">
+                    <i class="fab fa-patreon"></i> Patreon Setup
+                </a>
+            </div>
+        </div>
+
+        <!-- Login Providers -->
+        <div class="sidebar-section">
+            <div class="sidebar-section-title">Login Providers</div>
+            <div class="sidebar-nav">
+                <a href="google-oauth-setup.html">
+                    <i class="fab fa-google"></i> Google OAuth
+                </a>
+                <a href="microsoft-oauth-setup.html">
+                    <i class="fab fa-microsoft"></i> Microsoft OAuth
+                </a>
+                <a href="apple-signin-setup.html">
+                    <i class="fab fa-apple"></i> Apple Sign In
+                </a>
+                <a href="facebook-oauth-setup.html">
+                    <i class="fab fa-facebook"></i> Facebook OAuth
+                </a>
+                <a href="linkedin-oauth-setup.html">
+                    <i class="fab fa-linkedin"></i> LinkedIn OAuth
+                </a>
+                <a href="github-oauth-setup.html">
+                    <i class="fab fa-github"></i> GitHub OAuth
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- ============================================================
+         Main Content
+         ============================================================ -->
+    <div class="main-content">
+        <!-- Breadcrumb -->
+        <nav class="breadcrumb-nav" aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="../index.html">Documentation</a></li>
+                <li class="breadcrumb-item"><a href="index.html">Setup Guides</a></li>
+                <li class="breadcrumb-item active" aria-current="page">Coinbase Commerce</li>
+            </ol>
+        </nav>
+
+        <div class="content-wrapper">
+
+            <!-- ========================================
+                 Provider Header
+                 ======================================== -->
+            <div class="provider-header">
+                <div class="provider-icon">
+                    <i class="fab fa-bitcoin"></i>
+                </div>
+                <h1>Coinbase Commerce Setup</h1>
+                <p>
+                    Accept cryptocurrency payments (BTC, ETH, USDT, USDC and more) through Coinbase Commerce.
+                    Customers pay on a Coinbase-hosted checkout page and SIGNula is notified via webhook.
+                </p>
+            </div>
+
+            <!-- ========================================
+                 Overview
+                 ======================================== -->
+            <div class="guide-section" id="overview">
+                <h2><i class="fas fa-info-circle me-2" style="color: var(--primary);"></i>Overview</h2>
+                <p>
+                    Coinbase Commerce is a cryptocurrency payment processor that enables merchants to accept
+                    payments in Bitcoin (BTC), Ethereum (ETH), Tether (USDT), USD Coin (USDC), and other
+                    supported digital currencies. Unlike traditional payment gateways, Coinbase Commerce uses
+                    a hosted checkout model where users are redirected to a Coinbase-hosted payment page.
+                </p>
+                <div class="alert-box alert-info">
+                    <i class="fas fa-lightbulb me-2"></i>
+                    <strong>Tip:</strong> Coinbase Commerce is a separate product from the main Coinbase exchange.
+                    You can link your existing Coinbase account to automatically convert received crypto to
+                    fiat currency if desired.
+                </div>
+                <div class="info-card">
+                    <h4><i class="fas fa-list-check me-2" style="color: var(--provider-color);"></i>Integration Type</h4>
+                    <p style="margin-bottom: 0;">
+                        <strong>Model:</strong> Hosted Checkout + Webhooks<br>
+                        <strong>API:</strong> REST API with JSON payloads<br>
+                        <strong>Authentication:</strong> API Key via <code class="code-inline">X-CC-Api-Key</code> header<br>
+                        <strong>Webhook Verification:</strong> HMAC-SHA256 via <code class="code-inline">X-CC-Webhook-Signature</code> header
+                    </p>
+                </div>
+            </div>
+
+            <hr class="section-divider">
+
+            <!-- ========================================
+                 Prerequisites
+                 ======================================== -->
+            <div class="guide-section" id="prerequisites">
+                <h2><i class="fas fa-clipboard-check me-2" style="color: var(--warning);"></i>Prerequisites</h2>
+                <ul>
+                    <li>A Coinbase account (personal or business) at <a href="https://www.coinbase.com" target="_blank" rel="noopener noreferrer">coinbase.com</a></li>
+                    <li>A Coinbase Commerce account at <a href="https://commerce.coinbase.com" target="_blank" rel="noopener noreferrer">commerce.coinbase.com</a></li>
+                    <li>A publicly accessible HTTPS endpoint for webhooks</li>
+                    <li>SIGNula Admin Panel access (for vendor setup) or Partner Dashboard access (for partner setup)</li>
+                    <li>A cryptocurrency wallet connected to your Coinbase Commerce account for receiving payments</li>
+                </ul>
+            </div>
+
+            <hr class="section-divider">
+
+            <!-- ========================================
+                 Part A: Vendor (Platform Owner) Setup
+                 ======================================== -->
+            <div class="guide-section" id="vendor-setup">
+                <h2><i class="fas fa-building me-2" style="color: var(--provider-color);"></i>Part A: Vendor (Platform Owner) Setup</h2>
+                <p class="text-muted mb-4">
+                    Follow these steps if you are the SIGNula platform owner and want to accept crypto payments
+                    directly into your own Coinbase Commerce account.
+                </p>
+
+                <!-- Step 1 -->
+                <div class="step">
+                    <div class="step-number">1</div>
+                    <div class="step-content">
+                        <h3>Create a Coinbase Commerce Account</h3>
+                        <p>
+                            Visit <a href="https://commerce.coinbase.com" target="_blank" rel="noopener noreferrer">commerce.coinbase.com</a>
+                            and create an account (or sign in with your existing Coinbase account).
+                            Coinbase Commerce is a separate product from the main Coinbase exchange, specifically
+                            designed for merchant payments.
+                        </p>
+                        <div class="alert-box alert-tip">
+                            <i class="fas fa-lightbulb me-2"></i>
+                            <strong>Tip:</strong> You can link your existing Coinbase exchange account to
+                            automatically convert received crypto to fiat currency if desired.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 2 -->
+                <div class="step">
+                    <div class="step-number">2</div>
+                    <div class="step-content">
+                        <h3>Generate an API Key</h3>
+                        <p>Once logged in to your Coinbase Commerce dashboard:</p>
+                        <ol>
+                            <li>Navigate to <strong>Settings</strong> in the left sidebar.</li>
+                            <li>Click the <strong>API Keys</strong> tab.</li>
+                            <li>Click <strong>Create an API Key</strong>.</li>
+                            <li>You may be asked to confirm via two-factor authentication.</li>
+                        </ol>
+                        <div class="alert-box alert-danger">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            <strong>Critical:</strong> Your API key is shown only once. Copy it immediately
+                            and store it securely. If you lose it, you will need to generate a new one.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 3 -->
+                <div class="step">
+                    <div class="step-number">3</div>
+                    <div class="step-content">
+                        <h3>Copy the API Key</h3>
+                        <p>Copy the generated API key string. It will look similar to this format:</p>
+                        <div class="code-block">
+                            <button class="copy-btn">Copy</button>
+                            <pre><code>xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx</code></pre>
+                        </div>
+                        <p>
+                            Keep this key in a secure location such as a password manager. You will enter it into
+                            SIGNula in a later step.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Step 4 -->
+                <div class="step">
+                    <div class="step-number">4</div>
+                    <div class="step-content">
+                        <h3>Set Up Webhook Subscription</h3>
+                        <p>
+                            Webhooks allow Coinbase Commerce to notify SIGNula when payment events occur
+                            (e.g., charge confirmed, charge failed).
+                        </p>
+                        <ol>
+                            <li>In the Coinbase Commerce dashboard, go to <strong>Settings</strong>.</li>
+                            <li>Click the <strong>Webhook subscriptions</strong> tab.</li>
+                            <li>Click <strong>Add an endpoint</strong>.</li>
+                            <li>
+                                Enter your webhook URL:
+                                <div class="code-block">
+                                    <button class="copy-btn">Copy</button>
+                                    <pre><code>https://yourdomain.com/webhooks/coinbase</code></pre>
+                                </div>
+                            </li>
+                            <li>Click <strong>Save</strong>.</li>
+                            <li>
+                                Copy the <strong>Webhook Shared Secret</strong> that is generated. This is used to
+                                verify that incoming webhooks are genuinely from Coinbase Commerce.
+                            </li>
+                        </ol>
+                        <div class="alert-box alert-warning">
+                            <i class="fas fa-shield-alt me-2"></i>
+                            <strong>Important:</strong> The Shared Secret is critical for webhook security.
+                            SIGNula uses it to verify the <code class="code-inline">X-CC-Webhook-Signature</code>
+                            header via HMAC-SHA256.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 5 -->
+                <div class="step">
+                    <div class="step-number">5</div>
+                    <div class="step-content">
+                        <h3>Configure SIGNula Admin Panel</h3>
+                        <p>Now enter your credentials into SIGNula:</p>
+                        <ol>
+                            <li>Log in to your <strong>SIGNula Admin Panel</strong>.</li>
+                            <li>Navigate to <strong>Admin</strong> &rarr; <strong>Payments</strong> &rarr; <strong>Providers</strong> &rarr; <strong>Cryptocurrency</strong>.</li>
+                            <li>Paste your <strong>API Key</strong> into the corresponding field.</li>
+                            <li>Paste your <strong>Webhook Shared Secret</strong> into the corresponding field.</li>
+                        </ol>
+                    </div>
+                </div>
+
+                <!-- Step 6 -->
+                <div class="step">
+                    <div class="step-number">6</div>
+                    <div class="step-content">
+                        <h3>Enter API Key and Webhook Secret</h3>
+                        <p>Both the API Key and Webhook Shared Secret are stored encrypted in the SIGNula database (fields marked as <code class="code-inline">isSensitive</code>). Double-check that you have pasted the complete values without any leading or trailing whitespace.</p>
+                        <div class="alert-box alert-info">
+                            <i class="fas fa-lock me-2"></i>
+                            <strong>Security:</strong> Both credentials are automatically encrypted at rest
+                            using SIGNula's built-in cryptographic encryption with salt, and are only decrypted
+                            when needed for API calls or webhook verification.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 7 -->
+                <div class="step">
+                    <div class="step-number">7</div>
+                    <div class="step-content">
+                        <h3>Select Supported Currencies</h3>
+                        <p>Choose which cryptocurrencies you want to accept. The default supported currencies are:</p>
+                        <div class="crypto-grid">
+                            <div class="crypto-card">
+                                <div class="crypto-icon" style="background-color: #f7931a;">
+                                    <i class="fab fa-bitcoin"></i>
+                                </div>
+                                <div>
+                                    <div class="crypto-name">Bitcoin</div>
+                                    <div class="crypto-symbol">BTC</div>
+                                </div>
+                            </div>
+                            <div class="crypto-card">
+                                <div class="crypto-icon" style="background-color: #627eea;">
+                                    <i class="fab fa-ethereum"></i>
+                                </div>
+                                <div>
+                                    <div class="crypto-name">Ethereum</div>
+                                    <div class="crypto-symbol">ETH</div>
+                                </div>
+                            </div>
+                            <div class="crypto-card">
+                                <div class="crypto-icon" style="background-color: #26a17b;">
+                                    USDT
+                                </div>
+                                <div>
+                                    <div class="crypto-name">Tether</div>
+                                    <div class="crypto-symbol">USDT</div>
+                                </div>
+                            </div>
+                            <div class="crypto-card">
+                                <div class="crypto-icon" style="background-color: #2775ca;">
+                                    USDC
+                                </div>
+                                <div>
+                                    <div class="crypto-name">USD Coin</div>
+                                    <div class="crypto-symbol">USDC</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 8 -->
+                <div class="step">
+                    <div class="step-number">8</div>
+                    <div class="step-content">
+                        <h3>Optional: Set Crypto Payment Discount</h3>
+                        <p>
+                            You can optionally set a percentage discount for customers who pay with cryptocurrency
+                            to incentivise adoption (e.g., 5% off). Set the discount percentage in the
+                            <code class="code-inline">payment.crypto.crypto_discount</code> field, or leave it at
+                            <code class="code-inline">0</code> to disable.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Step 9 -->
+                <div class="step">
+                    <div class="step-number">9</div>
+                    <div class="step-content">
+                        <h3>Test Connection and Enable</h3>
+                        <p>
+                            Click the <strong>Test Connection</strong> button in the SIGNula admin panel. This will:
+                        </p>
+                        <ul>
+                            <li>Make an authenticated API call to Coinbase Commerce to verify the API key.</li>
+                            <li>Confirm the webhook endpoint is reachable.</li>
+                            <li>Display a success or error message with details.</li>
+                        </ul>
+                        <div class="code-block">
+                            <button class="copy-btn">Copy</button>
+                            <pre><code># SIGNula internally performs a request like:
+curl -X GET https://api.commerce.coinbase.com/charges \
+  -H "X-CC-Api-Key: YOUR_API_KEY" \
+  -H "X-CC-Version: 2018-03-22" \
+  -H "Content-Type: application/json"</code></pre>
+                        </div>
+                        <p>Once the test passes, toggle the <strong>Enabled</strong> switch to activate Coinbase Commerce as a payment provider.</p>
+                        <div class="alert-box alert-success">
+                            <i class="fas fa-check-circle me-2"></i>
+                            <strong>Success:</strong> If the test passes, Coinbase Commerce is ready to accept
+                            cryptocurrency payments on your platform.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <hr class="section-divider">
+
+            <!-- ========================================
+                 Part B: Partner Setup
+                 ======================================== -->
+            <div class="guide-section" id="partner-setup">
+                <h2><i class="fas fa-handshake me-2" style="color: var(--provider-color);"></i>Part B: Partner Setup</h2>
+                <p class="text-muted mb-4">
+                    If you are a partner integrating with SIGNula's multi-tenant payment system, you will need
+                    to obtain your own Coinbase Commerce credentials.
+                </p>
+
+                <div class="step">
+                    <div class="step-number">1</div>
+                    <div class="step-content">
+                        <h3>Obtain Your Own Coinbase Commerce Account</h3>
+                        <p>
+                            Each partner must create their own Coinbase Commerce account at
+                            <a href="https://commerce.coinbase.com" target="_blank" rel="noopener noreferrer">commerce.coinbase.com</a>
+                            and generate their own API key and webhook secret following the same steps in Part A.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="step">
+                    <div class="step-number">2</div>
+                    <div class="step-content">
+                        <h3>Enter Credentials in Partner Dashboard</h3>
+                        <p>
+                            In your SIGNula Partner Dashboard, navigate to <strong>Settings</strong> &rarr;
+                            <strong>Payment Providers</strong> &rarr; <strong>Cryptocurrency</strong> and enter:
+                        </p>
+                        <ul>
+                            <li>Your Coinbase Commerce <strong>API Key</strong></li>
+                            <li>Your <strong>Webhook Shared Secret</strong></li>
+                            <li>Configure your webhook URL (SIGNula provides a partner-specific endpoint)</li>
+                        </ul>
+                        <div class="alert-box alert-info">
+                            <i class="fas fa-info-circle me-2"></i>
+                            <strong>Note:</strong> Partner webhook URLs follow the pattern:
+                            <code class="code-inline">https://yourdomain.com/webhooks/coinbase/{partner_id}</code>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="step">
+                    <div class="step-number">3</div>
+                    <div class="step-content">
+                        <h3>Revenue Sharing</h3>
+                        <p>
+                            Payments received via your Coinbase Commerce account are deposited directly into
+                            your crypto wallet. SIGNula manages subscription activation and tier assignment
+                            based on webhook confirmations. Revenue sharing (if applicable) is handled
+                            separately via the SIGNula Partner billing system.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <hr class="section-divider">
+
+            <!-- ========================================
+                 Webhook Configuration
+                 ======================================== -->
+            <div class="guide-section" id="webhook-config">
+                <h2><i class="fas fa-satellite-dish me-2" style="color: #6366f1;"></i>Webhook Configuration</h2>
+                <p>
+                    Coinbase Commerce sends webhook notifications for the following charge events.
+                    SIGNula processes these automatically.
+                </p>
+
+                <table class="guide-table">
+                    <thead>
+                        <tr>
+                            <th>Event</th>
+                            <th>Description</th>
+                            <th>SIGNula Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code class="code-inline">charge:created</code></td>
+                            <td>A new charge has been created</td>
+                            <td>Logs the charge; marks payment as pending</td>
+                        </tr>
+                        <tr>
+                            <td><code class="code-inline">charge:confirmed</code></td>
+                            <td>Payment has been confirmed on the blockchain</td>
+                            <td>Activates subscription / credits account</td>
+                        </tr>
+                        <tr>
+                            <td><code class="code-inline">charge:failed</code></td>
+                            <td>Charge has expired or failed</td>
+                            <td>Marks payment as failed; notifies user</td>
+                        </tr>
+                        <tr>
+                            <td><code class="code-inline">charge:pending</code></td>
+                            <td>Payment detected but awaiting blockchain confirmations</td>
+                            <td>Updates status to pending confirmation</td>
+                        </tr>
+                        <tr>
+                            <td><code class="code-inline">charge:resolved</code></td>
+                            <td>Charge has been resolved (manually or automatically)</td>
+                            <td>Finalises payment record</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h4 class="fw-bold mt-4 mb-3">Webhook Verification (HMAC-SHA256)</h4>
+                <p>
+                    Every webhook from Coinbase Commerce includes a
+                    <code class="code-inline">X-CC-Webhook-Signature</code> header. SIGNula verifies this
+                    using <strong>HMAC-SHA256</strong> with your Webhook Shared Secret.
+                </p>
+                <div class="code-block">
+                    <button class="copy-btn">Copy</button>
+                    <pre><code>// Webhook verification in PHP (simplified)
+$payload    = file_get_contents('php://input');
+$sigHeader  = $_SERVER['HTTP_X_CC_WEBHOOK_SIGNATURE'] ?? '';
+$secret     = $decryptedWebhookSecret; // Retrieved & decrypted from tblSettings
+
+$expectedSig = hash_hmac('sha256', $payload, $secret);
+
+if (!hash_equals($expectedSig, $sigHeader)) {
+    // Signature mismatch - reject the request
+    http_response_code(401);
+    exit('Invalid signature');
+}
+
+// Signature valid - process the event
+$event = json_decode($payload, true);</code></pre>
+                </div>
+
+                <h4 class="fw-bold mt-4 mb-3">Example Charge Creation</h4>
+                <div class="code-block">
+                    <button class="copy-btn">Copy</button>
+                    <pre><code>// Creating a Charge via Coinbase Commerce API
+POST https://api.commerce.coinbase.com/charges
+{
+    "name": "SIGNula Pro Subscription",
+    "description": "Monthly Pro tier subscription",
+    "pricing_type": "fixed_price",
+    "local_price": {
+        "amount": "9.99",
+        "currency": "USD"
+    },
+    "metadata": {
+        "user_id": "usr_abc123",
+        "plan_id": "plan_pro_monthly",
+        "signula_ref": "INV-20260219-001"
+    },
+    "redirect_url": "https://yourdomain.com/payment/success",
+    "cancel_url": "https://yourdomain.com/payment/cancel"
+}</code></pre>
+                </div>
+            </div>
+
+            <hr class="section-divider">
+
+            <!-- ========================================
+                 Troubleshooting
+                 ======================================== -->
+            <div class="guide-section" id="troubleshooting">
+                <h2><i class="fas fa-wrench me-2" style="color: var(--danger);"></i>Troubleshooting</h2>
+
+                <div class="info-card">
+                    <h4>Test Connection fails with "Invalid API Key"</h4>
+                    <ul>
+                        <li>Verify you copied the entire API key string without leading/trailing spaces.</li>
+                        <li>Ensure the API key has not been revoked in the Coinbase Commerce dashboard.</li>
+                        <li>Try generating a new API key and updating the setting in SIGNula.</li>
+                        <li>Check that you are using a <strong>Coinbase Commerce</strong> API key, not a regular Coinbase Exchange API key.</li>
+                    </ul>
+                </div>
+
+                <div class="info-card">
+                    <h4>Webhooks are not being received</h4>
+                    <ul>
+                        <li>Confirm your webhook URL is publicly accessible (not behind a firewall or VPN).</li>
+                        <li>Ensure your server returns a <code class="code-inline">200 OK</code> response within 30 seconds.</li>
+                        <li>Check your server's access logs for incoming POST requests from Coinbase.</li>
+                        <li>Verify SSL/TLS is correctly configured (webhooks require HTTPS).</li>
+                        <li>Check the SIGNula activity log for any webhook processing errors.</li>
+                    </ul>
+                </div>
+
+                <div class="info-card">
+                    <h4>Webhook signature verification fails</h4>
+                    <ul>
+                        <li>Ensure the Webhook Shared Secret in SIGNula matches exactly what is shown in Coinbase Commerce.</li>
+                        <li>Verify you are reading the raw request body (<code class="code-inline">php://input</code>) without any modifications.</li>
+                        <li>Check that no middleware or proxy is modifying the request body before it reaches SIGNula.</li>
+                        <li>The signature is computed as <code class="code-inline">HMAC-SHA256(raw_body, shared_secret)</code>.</li>
+                    </ul>
+                </div>
+
+                <div class="info-card">
+                    <h4>Payment confirmed but subscription not activated</h4>
+                    <ul>
+                        <li>Check the SIGNula activity log for the <code class="code-inline">charge:confirmed</code> event.</li>
+                        <li>Verify the <code class="code-inline">metadata</code> in the charge contains the correct <code class="code-inline">user_id</code> and <code class="code-inline">plan_id</code>.</li>
+                        <li>Ensure the user account exists and is not suspended.</li>
+                        <li>Check that the payment amount matches the expected plan price.</li>
+                    </ul>
+                </div>
+
+                <div class="info-card">
+                    <h4>Crypto discount not being applied</h4>
+                    <ul>
+                        <li>Verify <code class="code-inline">payment.crypto.crypto_discount</code> is set to a value greater than <code class="code-inline">0</code>.</li>
+                        <li>Ensure the discount is applied at charge creation time (the displayed price on the Coinbase page should already reflect the discount).</li>
+                        <li>Check that the cryptocurrency being used is in the <code class="code-inline">supported_currencies</code> list.</li>
+                    </ul>
+                </div>
+            </div>
+
+            <hr class="section-divider">
+
+            <!-- ========================================
+                 Reference
+                 ======================================== -->
+            <div class="guide-section" id="reference">
+                <h2><i class="fas fa-book me-2" style="color: #8b5cf6;"></i>Reference</h2>
+
+                <h4 class="fw-bold mb-3">API Details</h4>
+                <table class="guide-table">
+                    <thead>
+                        <tr>
+                            <th>Property</th>
+                            <th>Value</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>API Base URL</strong></td>
+                            <td><code class="code-inline">https://api.commerce.coinbase.com</code></td>
+                        </tr>
+                        <tr>
+                            <td><strong>API Version Header</strong></td>
+                            <td><code class="code-inline">X-CC-Version: 2018-03-22</code></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Authentication</strong></td>
+                            <td><code class="code-inline">X-CC-Api-Key: YOUR_API_KEY</code></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Content Type</strong></td>
+                            <td><code class="code-inline">application/json</code></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Webhook Signature Header</strong></td>
+                            <td><code class="code-inline">X-CC-Webhook-Signature</code></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Webhook Signature Algorithm</strong></td>
+                            <td>HMAC-SHA256</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h4 class="fw-bold mt-4 mb-3">Settings Reference (<code class="code-inline">tblSettings</code>)</h4>
+                <p class="text-muted mb-3">
+                    Fields marked with <i class="fas fa-lock text-danger"></i> are encrypted at rest
+                    (<code class="code-inline">isSensitive = true</code>).
+                </p>
+                <table class="guide-table">
+                    <thead>
+                        <tr>
+                            <th>Setting Key</th>
+                            <th>Type</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code class="code-inline">payment.crypto.enabled</code></td>
+                            <td>Boolean</td>
+                            <td>Enable or disable Coinbase Commerce as a payment provider</td>
+                        </tr>
+                        <tr>
+                            <td><code class="code-inline">payment.crypto.api_key</code> <i class="fas fa-lock text-danger"></i></td>
+                            <td>String</td>
+                            <td>Your Coinbase Commerce API key (encrypted, isSensitive)</td>
+                        </tr>
+                        <tr>
+                            <td><code class="code-inline">payment.crypto.webhook_secret</code> <i class="fas fa-lock text-danger"></i></td>
+                            <td>String</td>
+                            <td>Webhook shared secret for signature verification (encrypted, isSensitive)</td>
+                        </tr>
+                        <tr>
+                            <td><code class="code-inline">payment.crypto.supported_currencies</code></td>
+                            <td>JSON</td>
+                            <td>
+                                JSON array of accepted cryptocurrency symbols.
+                                <br>Default: <code class="code-inline">["BTC","ETH","USDT","USDC"]</code>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><code class="code-inline">payment.crypto.crypto_discount</code></td>
+                            <td>Decimal</td>
+                            <td>
+                                Percentage discount for crypto payments (e.g., <code class="code-inline">5.00</code> for 5%).
+                                Set to <code class="code-inline">0</code> to disable.
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h4 class="fw-bold mt-4 mb-3">Official Documentation</h4>
+                <ul>
+                    <li><a href="https://docs.cloud.coinbase.com/commerce/docs" target="_blank" rel="noopener noreferrer">Coinbase Commerce API Documentation</a></li>
+                    <li><a href="https://docs.cloud.coinbase.com/commerce/docs/webhooks" target="_blank" rel="noopener noreferrer">Coinbase Commerce Webhooks Guide</a></li>
+                    <li><a href="https://commerce.coinbase.com/docs/api/" target="_blank" rel="noopener noreferrer">Coinbase Commerce API Reference</a></li>
+                </ul>
+            </div>
+
+            <!-- ========================================
+                 Footer & Next Steps
+                 ======================================== -->
+            <div class="guide-footer">
+                <h4 class="fw-bold mb-3">Next Steps</h4>
+                <div class="next-steps">
+                    <a href="stripe-setup.html" class="next-step-card">
+                        <i class="fab fa-stripe-s" style="color: #635BFF;"></i>
+                        <h5>Stripe Setup</h5>
+                        <p>Configure credit/debit card payments via Stripe</p>
+                    </a>
+                    <a href="paypal-setup.html" class="next-step-card">
+                        <i class="fab fa-paypal" style="color: #003087;"></i>
+                        <h5>PayPal Setup</h5>
+                        <p>Set up PayPal Business for payments and subscriptions</p>
+                    </a>
+                    <a href="kofi-setup.html" class="next-step-card">
+                        <i class="fas fa-mug-hot" style="color: #ff5e5b;"></i>
+                        <h5>Ko-fi Setup</h5>
+                        <p>Integrate donation-based payments via Ko-fi</p>
+                    </a>
+                </div>
+                <div class="copyright">
+                    <p>&copy; 2025&ndash;2026 MWBM Partners Ltd (t/a MWservices). All rights reserved.</p>
+                </div>
+            </div>
+
+        </div><!-- /.content-wrapper -->
+    </div><!-- /.main-content -->
+
+    <!-- ============================================================
+         Scripts
+         ============================================================ -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"
+            integrity="sha384-C6RzsynM9kWDrMNeT87bh95OGNyZPhcTNXj1NW7RuBCsyN/o0jlpcV8Qyq46cDfL"
+            crossorigin="anonymous"></script>
+
+    <script>
+        // Initialise Highlight.js
+        hljs.highlightAll();
+
+        // Mobile toggle
+        document.querySelector('.mobile-toggle')?.addEventListener('click', function () {
+            document.querySelector('.sidebar')?.classList.toggle('open');
+        });
+
+        // Copy buttons
+        document.querySelectorAll('.copy-btn').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var code = btn.parentElement.querySelector('code')?.textContent || btn.parentElement.textContent.replace('Copy', '').trim();
+                navigator.clipboard.writeText(code).then(function () {
+                    btn.textContent = 'Copied!';
+                    setTimeout(function () { btn.textContent = 'Copy'; }, 2000);
+                });
+            });
+        });
+
+        // Close sidebar on link click (mobile)
+        document.querySelectorAll('.sidebar-nav a').forEach(function (a) {
+            a.addEventListener('click', function () {
+                if (window.innerWidth <= 768) {
+                    document.querySelector('.sidebar')?.classList.remove('open');
+                }
+            });
+        });
+    </script>
+</body>
+</html>

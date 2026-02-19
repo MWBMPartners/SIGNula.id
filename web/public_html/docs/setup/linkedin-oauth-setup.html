@@ -1,0 +1,1225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="SIGNula - LinkedIn OAuth Login Provider Setup Guide">
+    <meta name="author" content="MWBM Partners Ltd">
+    <title>LinkedIn OAuth Setup - SIGNula Documentation</title>
+
+    <!-- Bootstrap 5.3.2 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"
+          integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN"
+          crossorigin="anonymous">
+
+    <!-- FontAwesome 6.4.2 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css"
+          integrity="sha512-z3gLpd7yknf1YoNbCzqRKc4qyor8gaKU1qmn+CShxbuBusANI9QpRohGBreCFkKxLhei6S9CQXFEbbKuqLg0DA=="
+          crossorigin="anonymous" referrerpolicy="no-referrer">
+
+    <!-- Google Fonts: Inter & Fira Code -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+
+    <!-- Highlight.js 11.9.0 CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+
+    <style>
+        /* ========================================
+           CSS Custom Property: Provider Colour
+           ======================================== */
+        :root {
+            --provider-color: #0A66C2;
+        }
+
+        /* ========================================
+           Base Typography & Reset
+           ======================================== */
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: #f8fafc;
+            color: #1e293b;
+            margin: 0;
+            padding: 0;
+        }
+
+        code, pre, .code-inline {
+            font-family: 'Fira Code', 'Courier New', Courier, monospace;
+        }
+
+        /* ========================================
+           Sidebar Navigation
+           ======================================== */
+        .sidebar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 280px;
+            height: 100vh;
+            background-color: #0f172a;
+            color: #cbd5e1;
+            overflow-y: auto;
+            z-index: 1000;
+            transition: transform 0.3s ease;
+            padding-bottom: 2rem;
+        }
+
+        .sidebar-brand {
+            padding: 1.5rem 1.25rem;
+            border-bottom: 1px solid #1e293b;
+        }
+
+        .sidebar-brand h5 {
+            color: #f1f5f9;
+            font-weight: 700;
+            margin: 0;
+            font-size: 1.1rem;
+        }
+
+        .sidebar-brand small {
+            color: #64748b;
+            font-size: 0.75rem;
+        }
+
+        .sidebar-section {
+            padding: 1rem 0 0 0;
+        }
+
+        .sidebar-section-title {
+            font-size: 0.65rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: #64748b;
+            padding: 0 1.25rem 0.5rem;
+        }
+
+        .sidebar-link {
+            display: flex;
+            align-items: center;
+            padding: 0.5rem 1.25rem;
+            color: #94a3b8;
+            text-decoration: none;
+            font-size: 0.85rem;
+            transition: all 0.15s ease;
+            border-left: 3px solid transparent;
+        }
+
+        .sidebar-link:hover {
+            color: #e2e8f0;
+            background-color: #1e293b;
+        }
+
+        .sidebar-link.active {
+            color: #f97316;
+            background-color: rgba(249, 115, 22, 0.08);
+            border-left-color: #f97316;
+            font-weight: 600;
+        }
+
+        .sidebar-link i {
+            width: 20px;
+            margin-right: 0.75rem;
+            text-align: center;
+            font-size: 0.8rem;
+        }
+
+        /* ========================================
+           Main Content Area
+           ======================================== */
+        .main-content {
+            margin-left: 280px;
+            padding: 2rem 2.5rem;
+            min-height: 100vh;
+        }
+
+        .content-wrapper {
+            max-width: 900px;
+            background-color: #ffffff;
+            border-radius: 12px;
+            padding: 2.5rem;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+        }
+
+        /* ========================================
+           Breadcrumb
+           ======================================== */
+        .breadcrumb-nav {
+            margin-bottom: 1.5rem;
+        }
+
+        .breadcrumb-nav .breadcrumb {
+            background: none;
+            padding: 0;
+            margin: 0;
+            font-size: 0.85rem;
+        }
+
+        .breadcrumb-nav .breadcrumb-item a {
+            color: #6366f1;
+            text-decoration: none;
+        }
+
+        .breadcrumb-nav .breadcrumb-item.active {
+            color: #64748b;
+        }
+
+        /* ========================================
+           Page Header
+           ======================================== */
+        .guide-header {
+            margin-bottom: 2rem;
+            padding-bottom: 1.5rem;
+            border-bottom: 2px solid #f1f5f9;
+        }
+
+        .guide-header h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #0f172a;
+            margin-bottom: 0.5rem;
+        }
+
+        .guide-header .provider-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.35rem 0.85rem;
+            border-radius: 50px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .badge-linkedin {
+            background-color: rgba(10, 102, 194, 0.1);
+            color: #0A66C2;
+        }
+
+        /* ========================================
+           Step Indicators
+           ======================================== */
+        .step-section {
+            margin-bottom: 2rem;
+        }
+
+        .step-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .step-circle {
+            width: 36px;
+            height: 36px;
+            min-width: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #ffffff;
+            font-weight: 700;
+            font-size: 0.9rem;
+            margin-right: 0.85rem;
+            background-color: var(--provider-color);
+        }
+
+        .step-header h3 {
+            font-size: 1.15rem;
+            font-weight: 600;
+            color: #0f172a;
+            margin: 0;
+        }
+
+        .step-content {
+            margin-left: 3.1rem;
+            color: #475569;
+            line-height: 1.7;
+        }
+
+        /* ========================================
+           Code Blocks & Copy Button
+           ======================================== */
+        .code-block-wrapper {
+            position: relative;
+            margin: 1rem 0;
+        }
+
+        .code-block-wrapper pre {
+            border-radius: 8px;
+            padding: 1rem 1.25rem;
+            margin: 0;
+            font-size: 0.85rem;
+        }
+
+        .copy-btn {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: rgba(255, 255, 255, 0.15);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #e2e8f0;
+            padding: 0.25rem 0.6rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .copy-btn:hover {
+            background: rgba(255, 255, 255, 0.25);
+            color: #ffffff;
+        }
+
+        .copy-btn.copied {
+            background: rgba(34, 197, 94, 0.3);
+            color: #4ade80;
+        }
+
+        .code-inline {
+            background-color: #f1f5f9;
+            color: #e11d48;
+            padding: 0.15rem 0.45rem;
+            border-radius: 4px;
+            font-size: 0.85em;
+        }
+
+        /* ========================================
+           Alert Boxes
+           ======================================== */
+        .alert {
+            border-radius: 8px;
+            font-size: 0.9rem;
+            border-left-width: 4px;
+        }
+
+        .alert-info {
+            background-color: #eff6ff;
+            border-color: #3b82f6;
+            color: #1e40af;
+        }
+
+        .alert-warning {
+            background-color: #fffbeb;
+            border-color: #f59e0b;
+            color: #92400e;
+        }
+
+        .alert-danger {
+            background-color: #fef2f2;
+            border-color: #ef4444;
+            color: #991b1b;
+        }
+
+        .alert-success {
+            background-color: #f0fdf4;
+            border-color: #10b981;
+            color: #065f46;
+        }
+
+        .alert-tip {
+            background-color: #faf5ff;
+            border-color: #8b5cf6;
+            color: #5b21b6;
+        }
+
+        /* ========================================
+           Tables
+           ======================================== */
+        .settings-table {
+            font-size: 0.88rem;
+        }
+
+        .settings-table th {
+            background-color: #f8fafc;
+            font-weight: 600;
+            color: #334155;
+            border-bottom: 2px solid #e2e8f0;
+        }
+
+        .settings-table td {
+            vertical-align: top;
+            color: #475569;
+        }
+
+        .guide-table {
+            font-size: 0.88rem;
+        }
+
+        .guide-table th {
+            background-color: #f8fafc;
+            font-weight: 600;
+            color: #334155;
+            border-bottom: 2px solid #e2e8f0;
+        }
+
+        .guide-table td {
+            vertical-align: top;
+            color: #475569;
+        }
+
+        /* ========================================
+           Info Cards
+           ======================================== */
+        .info-card {
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 1.25rem;
+            background: #f8fafc;
+            margin-bottom: 1rem;
+        }
+
+        .info-card h5 {
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: #0f172a;
+            margin-bottom: 0.5rem;
+        }
+
+        .info-card p {
+            font-size: 0.88rem;
+            color: #475569;
+            margin-bottom: 0;
+        }
+
+        /* ========================================
+           Footer & Next Steps
+           ======================================== */
+        .guide-footer {
+            margin-top: 3rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid #e2e8f0;
+            text-align: center;
+            font-size: 0.8rem;
+            color: #94a3b8;
+        }
+
+        .next-steps {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+            gap: 1rem;
+            margin: 1.5rem 0;
+        }
+
+        .next-steps a {
+            display: block;
+            padding: 1rem 1.25rem;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            text-decoration: none;
+            color: #334155;
+            font-size: 0.9rem;
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+
+        .next-steps a:hover {
+            border-color: var(--provider-color);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+            transform: translateY(-1px);
+        }
+
+        .next-steps a i {
+            margin-right: 0.5rem;
+        }
+
+        /* ========================================
+           Section Divider
+           ======================================== */
+        .section-divider {
+            border: none;
+            border-top: 2px solid #f1f5f9;
+            margin: 2.5rem 0;
+        }
+
+        /* ========================================
+           Hamburger / Mobile Toggle
+           ======================================== */
+        .sidebar-toggle {
+            display: none;
+            position: fixed;
+            top: 1rem;
+            left: 1rem;
+            z-index: 1100;
+            background: #0f172a;
+            color: #f1f5f9;
+            border: none;
+            border-radius: 8px;
+            padding: 0.6rem 0.8rem;
+            font-size: 1.1rem;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        /* ========================================
+           Sidebar Overlay (mobile)
+           ======================================== */
+        .sidebar-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 999;
+        }
+
+        .sidebar-overlay.show {
+            display: block;
+        }
+
+        /* ========================================
+           Responsive / Mobile
+           ======================================== */
+        @media (max-width: 991.98px) {
+            .sidebar {
+                transform: translateX(-100%);
+            }
+
+            .sidebar.show {
+                transform: translateX(0);
+            }
+
+            .sidebar-toggle {
+                display: block;
+            }
+
+            .main-content {
+                margin-left: 0;
+                padding: 1.25rem;
+                padding-top: 4rem;
+            }
+
+            .content-wrapper {
+                padding: 1.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- ============================================================
+         Mobile Sidebar Toggle (Hamburger)
+         ============================================================ -->
+    <button class="sidebar-toggle" id="sidebarToggle" aria-label="Toggle navigation">
+        <i class="fas fa-bars"></i>
+    </button>
+
+    <!-- Sidebar Overlay for mobile -->
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+    <!-- ============================================================
+         Sidebar Navigation
+         ============================================================ -->
+    <nav class="sidebar" id="sidebar">
+        <div class="sidebar-brand">
+            <h5><i class="fas fa-shield-halved me-2"></i>SIGNula Docs</h5>
+            <small>Provider Setup Guides</small>
+        </div>
+
+        <!-- Back to All Guides -->
+        <div class="sidebar-section">
+            <a href="index.html" class="sidebar-link">
+                <i class="fas fa-arrow-left"></i> Back to All Guides
+            </a>
+        </div>
+
+        <!-- Payment Providers -->
+        <div class="sidebar-section">
+            <div class="sidebar-section-title">Payment Providers</div>
+            <a href="stripe-setup.html" class="sidebar-link">
+                <i class="fab fa-stripe-s"></i> Stripe
+            </a>
+            <a href="paypal-setup.html" class="sidebar-link">
+                <i class="fab fa-paypal"></i> PayPal
+            </a>
+            <a href="coinbase-setup.html" class="sidebar-link">
+                <i class="fab fa-bitcoin"></i> Coinbase Commerce
+            </a>
+            <a href="kofi-setup.html" class="sidebar-link">
+                <i class="fas fa-mug-hot"></i> Ko-fi
+            </a>
+            <a href="patreon-setup.html" class="sidebar-link">
+                <i class="fab fa-patreon"></i> Patreon
+            </a>
+        </div>
+
+        <!-- Login Providers -->
+        <div class="sidebar-section">
+            <div class="sidebar-section-title">Login Providers</div>
+            <a href="google-oauth-setup.html" class="sidebar-link">
+                <i class="fab fa-google"></i> Google
+            </a>
+            <a href="microsoft-oauth-setup.html" class="sidebar-link">
+                <i class="fab fa-microsoft"></i> Microsoft
+            </a>
+            <a href="apple-signin-setup.html" class="sidebar-link">
+                <i class="fab fa-apple"></i> Apple Sign In
+            </a>
+            <a href="facebook-oauth-setup.html" class="sidebar-link">
+                <i class="fab fa-facebook"></i> Facebook
+            </a>
+            <a href="linkedin-oauth-setup.html" class="sidebar-link active">
+                <i class="fab fa-linkedin"></i> LinkedIn
+            </a>
+            <a href="github-oauth-setup.html" class="sidebar-link">
+                <i class="fab fa-github"></i> GitHub
+            </a>
+        </div>
+    </nav>
+
+    <!-- ============================================================
+         Main Content
+         ============================================================ -->
+    <div class="main-content">
+        <!-- Breadcrumb -->
+        <nav class="breadcrumb-nav" aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="../index.html">Documentation</a></li>
+                <li class="breadcrumb-item"><a href="index.html">Setup Guides</a></li>
+                <li class="breadcrumb-item active" aria-current="page">LinkedIn OAuth</li>
+            </ol>
+        </nav>
+
+        <div class="content-wrapper">
+            <!-- ========================================
+                 Page Header
+                 ======================================== -->
+            <div class="guide-header">
+                <div class="d-flex align-items-center mb-2">
+                    <span class="provider-badge badge-linkedin me-2">
+                        <i class="fab fa-linkedin me-1"></i> Login Provider
+                    </span>
+                    <span class="provider-badge" style="background-color: rgba(10, 102, 194, 0.1); color: #0A66C2;">
+                        <i class="fas fa-id-badge me-1"></i> OpenID Connect
+                    </span>
+                </div>
+                <h1>LinkedIn OAuth Setup</h1>
+                <p class="text-muted mb-0">
+                    LinkedIn OAuth enables professional account authentication using "Sign In with LinkedIn using OpenID Connect".
+                    SIGNula gets access to basic profile information and email address, providing a trusted
+                    authentication option for professional and business-oriented users.
+                </p>
+            </div>
+
+            <!-- ========================================
+                 Overview
+                 ======================================== -->
+            <h2 class="fw-bold mb-3" style="color: var(--provider-color);">
+                <i class="fas fa-circle-info me-2"></i>Overview
+            </h2>
+            <p>
+                LinkedIn's authentication system uses the OpenID Connect (OIDC) protocol, which is built on top of
+                OAuth 2.0. When a user signs in with LinkedIn, SIGNula receives their basic profile information
+                (name, headline, profile picture) and email address. This is particularly popular for business-oriented
+                applications and professional user bases.
+            </p>
+            <div class="info-card">
+                <h5><i class="fab fa-linkedin me-2" style="color: var(--provider-color);"></i>OpenID Connect Standard</h5>
+                <p>
+                    LinkedIn has migrated to the OpenID Connect standard, replacing the older OAuth 2.0 scopes
+                    (<code class="code-inline">r_liteprofile</code> and <code class="code-inline">r_emailaddress</code>).
+                    SIGNula uses the modern <code class="code-inline">openid</code>, <code class="code-inline">profile</code>,
+                    and <code class="code-inline">email</code> scopes for authentication.
+                </p>
+            </div>
+
+            <hr class="section-divider">
+
+            <!-- ========================================
+                 Prerequisites
+                 ======================================== -->
+            <h2 class="fw-bold mb-3" style="color: var(--provider-color);">
+                <i class="fas fa-clipboard-check me-2"></i>Prerequisites
+            </h2>
+            <ul>
+                <li>A <strong>LinkedIn account</strong></li>
+                <li>Access to the <strong>LinkedIn Developer Portal</strong> at <a href="https://www.linkedin.com/developers/" target="_blank" rel="noopener noreferrer">linkedin.com/developers</a></li>
+                <li>A <strong>LinkedIn Company Page</strong> (required to create an app)</li>
+                <li>A publicly accessible domain with <strong>HTTPS</strong> enabled for your SIGNula instance</li>
+                <li>A <strong>Privacy Policy URL</strong> for your application</li>
+                <li>Access to the <strong>SIGNula Admin Panel</strong></li>
+            </ul>
+            <div class="alert alert-warning">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                <strong>Important:</strong> LinkedIn requires that you associate your app with a LinkedIn Company Page.
+                If you do not have one, you will need to create a Company Page on LinkedIn before proceeding.
+            </div>
+
+            <hr class="section-divider">
+
+            <!-- ========================================
+                 Step-by-Step Setup
+                 ======================================== -->
+            <h2 class="fw-bold mb-3" style="color: var(--provider-color);">
+                <i class="fas fa-list-ol me-2"></i>Step-by-Step Setup
+            </h2>
+
+            <!-- Step 1 -->
+            <div class="step-section">
+                <div class="step-header">
+                    <div class="step-circle">1</div>
+                    <h3>Go to LinkedIn Developers</h3>
+                </div>
+                <div class="step-content">
+                    <p>
+                        Visit <a href="https://www.linkedin.com/developers/" target="_blank" rel="noopener noreferrer">linkedin.com/developers</a>
+                        and sign in with your LinkedIn account. You will be taken to the LinkedIn Developer Portal.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Step 2 -->
+            <div class="step-section">
+                <div class="step-header">
+                    <div class="step-circle">2</div>
+                    <h3>Create a New App</h3>
+                </div>
+                <div class="step-content">
+                    <p>
+                        Click the <strong>Create App</strong> button in the top navigation.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Step 3 -->
+            <div class="step-section">
+                <div class="step-header">
+                    <div class="step-circle">3</div>
+                    <h3>Fill in App Details</h3>
+                </div>
+                <div class="step-content">
+                    <p>
+                        Complete the form with the following information:
+                    </p>
+                    <ul>
+                        <li><strong>App name:</strong> <code class="code-inline">SIGNula Authentication</code></li>
+                        <li><strong>LinkedIn Page:</strong> Select your company page or create a new one</li>
+                        <li><strong>Privacy policy URL:</strong></li>
+                    </ul>
+                    <div class="code-block-wrapper">
+                        <button class="copy-btn" onclick="copyCode(this)"><i class="fas fa-copy me-1"></i>Copy</button>
+                        <pre><code class="language-plaintext">https://yourdomain.com/legal/privacy</code></pre>
+                    </div>
+                    <ul>
+                        <li><strong>App logo:</strong> Upload your organisation's logo (100x100 px recommended)</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Step 4 -->
+            <div class="step-section">
+                <div class="step-header">
+                    <div class="step-circle">4</div>
+                    <h3>Create the App</h3>
+                </div>
+                <div class="step-content">
+                    <p>
+                        Click <strong>Create app</strong>. You will be taken to the app management dashboard.
+                    </p>
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>
+                        <strong>Note:</strong> You may be asked to verify your association with the LinkedIn Company Page.
+                        A page admin will need to approve the verification request.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 5 -->
+            <div class="step-section">
+                <div class="step-header">
+                    <div class="step-circle">5</div>
+                    <h3>Navigate to the Auth Tab</h3>
+                </div>
+                <div class="step-content">
+                    <p>
+                        In the app dashboard, click on the <strong>Auth</strong> tab. This is where you will find
+                        your credentials and configure OAuth settings.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Step 6 -->
+            <div class="step-section">
+                <div class="step-header">
+                    <div class="step-circle">6</div>
+                    <h3>Add Redirect URL</h3>
+                </div>
+                <div class="step-content">
+                    <p>
+                        Under <strong>OAuth 2.0 settings</strong>, click the pencil icon next to
+                        <strong>Authorized redirect URLs for your app</strong> and add:
+                    </p>
+                    <div class="code-block-wrapper">
+                        <button class="copy-btn" onclick="copyCode(this)"><i class="fas fa-copy me-1"></i>Copy</button>
+                        <pre><code class="language-plaintext">https://yourdomain.com/oauth/callback</code></pre>
+                    </div>
+                    <p>Click <strong>Update</strong> to save the redirect URL.</p>
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        <strong>Important:</strong> The redirect URL must match exactly, including the protocol
+                        (<code class="code-inline">https://</code>) and path. No trailing slash.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 7 -->
+            <div class="step-section">
+                <div class="step-header">
+                    <div class="step-circle">7</div>
+                    <h3>Copy Client ID and Client Secret</h3>
+                </div>
+                <div class="step-content">
+                    <p>
+                        On the <strong>Auth</strong> tab, locate and copy the following credentials:
+                    </p>
+                    <ul>
+                        <li><strong>Client ID:</strong> Displayed directly on the page</li>
+                        <li><strong>Client Secret:</strong> Click <strong>Show</strong> to reveal, then copy</li>
+                    </ul>
+                    <div class="alert alert-danger">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        <strong>Critical:</strong> Keep your Client Secret confidential. Never expose it in
+                        client-side code, public repositories, or browser-accessible files.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 8 -->
+            <div class="step-section">
+                <div class="step-header">
+                    <div class="step-circle">8</div>
+                    <h3>Navigate to the Products Tab</h3>
+                </div>
+                <div class="step-content">
+                    <p>
+                        Click on the <strong>Products</strong> tab in the app dashboard.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Step 9 -->
+            <div class="step-section">
+                <div class="step-header">
+                    <div class="step-circle">9</div>
+                    <h3>Request "Sign In with LinkedIn using OpenID Connect"</h3>
+                </div>
+                <div class="step-content">
+                    <p>
+                        Find <strong>Sign In with LinkedIn using OpenID Connect</strong> in the products list
+                        and click <strong>Request access</strong>.
+                    </p>
+                    <div class="alert alert-success">
+                        <i class="fas fa-check-circle me-2"></i>
+                        <strong>Good news:</strong> This product is usually auto-approved and access is granted
+                        immediately. You should see it move to the "Added products" section within moments.
+                    </div>
+                    <p>
+                        Once approved, the <code class="code-inline">openid</code>, <code class="code-inline">profile</code>,
+                        and <code class="code-inline">email</code> scopes will be available for your app.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Step 10 -->
+            <div class="step-section">
+                <div class="step-header">
+                    <div class="step-circle">10</div>
+                    <h3>Configure SIGNula Admin Panel</h3>
+                </div>
+                <div class="step-content">
+                    <p>
+                        Log in to your <strong>SIGNula Admin Panel</strong> and navigate to:
+                    </p>
+                    <p>
+                        <strong>System</strong> &rarr; <strong>OAuth Providers</strong> &rarr; <strong>LinkedIn</strong>
+                    </p>
+                    <ol>
+                        <li>Toggle the <strong>Enabled</strong> switch to activate LinkedIn OAuth.</li>
+                        <li>Paste your <strong>Client ID</strong> into the "Client ID" field.</li>
+                        <li>Paste your <strong>Client Secret</strong> into the "Client Secret" field.</li>
+                        <li>Click <strong>Save</strong>.</li>
+                    </ol>
+                    <div class="alert alert-info">
+                        <i class="fas fa-lock me-2"></i>
+                        <strong>Security:</strong> The Client Secret is stored encrypted in <code class="code-inline">tblSettings</code>
+                        (marked as <code class="code-inline">isSensitive</code>) and is never exposed in the admin UI after saving.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 11 -->
+            <div class="step-section">
+                <div class="step-header">
+                    <div class="step-circle">11</div>
+                    <h3>Test the Login</h3>
+                </div>
+                <div class="step-content">
+                    <p>
+                        Open your SIGNula login page and click the <strong>Sign in with LinkedIn</strong> button.
+                        You should be redirected to LinkedIn's consent screen, and upon approval, returned to
+                        SIGNula with your account linked.
+                    </p>
+                    <div class="alert alert-success">
+                        <i class="fas fa-check-circle me-2"></i>
+                        <strong>Success:</strong> If login completes without errors and your LinkedIn profile
+                        information appears in SIGNula, the integration is working correctly.
+                    </div>
+                </div>
+            </div>
+
+            <hr class="section-divider">
+
+            <!-- ========================================
+                 Scopes & Permissions
+                 ======================================== -->
+            <h2 class="fw-bold mb-3" style="color: var(--provider-color);">
+                <i class="fas fa-key me-2"></i>Scopes &amp; Permissions
+            </h2>
+            <p>
+                SIGNula requests the following OpenID Connect scopes from LinkedIn:
+            </p>
+
+            <div class="table-responsive">
+                <table class="table guide-table">
+                    <thead>
+                        <tr>
+                            <th>Scope</th>
+                            <th>Description</th>
+                            <th>Required</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code class="code-inline">openid</code></td>
+                            <td>OpenID Connect authentication. Enables the use of the ID token for user identity verification.</td>
+                            <td>Yes</td>
+                        </tr>
+                        <tr>
+                            <td><code class="code-inline">profile</code></td>
+                            <td>Access to basic profile information including name, headline, and profile picture URL.</td>
+                            <td>Yes</td>
+                        </tr>
+                        <tr>
+                            <td><code class="code-inline">email</code></td>
+                            <td>Access to the user's primary email address associated with their LinkedIn account.</td>
+                            <td>Yes</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="alert alert-info">
+                <i class="fas fa-info-circle me-2"></i>
+                <strong>Deprecation Notice:</strong> LinkedIn has deprecated the older scopes
+                <code class="code-inline">r_liteprofile</code> and <code class="code-inline">r_emailaddress</code>
+                in favour of the OpenID Connect standard scopes listed above. If you are migrating from an older
+                integration, update your scopes accordingly.
+            </div>
+
+            <hr class="section-divider">
+
+            <!-- ========================================
+                 Important Notes
+                 ======================================== -->
+            <h2 class="fw-bold mb-3" style="color: var(--provider-color);">
+                <i class="fas fa-exclamation-circle me-2"></i>Important Notes
+            </h2>
+
+            <div class="info-card">
+                <h5><i class="fas fa-building me-2" style="color: var(--provider-color);"></i>Company Page Requirement</h5>
+                <p>
+                    LinkedIn requires that every developer app is associated with a LinkedIn Company Page. If your
+                    organisation does not have one, create it at
+                    <a href="https://www.linkedin.com/company/setup/new/" target="_blank" rel="noopener noreferrer">linkedin.com/company/setup/new</a>
+                    before creating the app.
+                </p>
+            </div>
+
+            <div class="info-card">
+                <h5><i class="fas fa-puzzle-piece me-2" style="color: #f59e0b;"></i>"Sign In with LinkedIn" Product</h5>
+                <p>
+                    The "Sign In with LinkedIn using OpenID Connect" product must be added to your app from the
+                    Products tab. Without it, authentication requests will fail with a scope error. This product
+                    is typically auto-approved.
+                </p>
+            </div>
+
+            <div class="info-card">
+                <h5><i class="fas fa-clock me-2" style="color: #10b981;"></i>Token Lifetime</h5>
+                <p>
+                    LinkedIn access tokens have a default lifetime of <strong>60 days</strong>. With the
+                    <code class="code-inline">offline_access</code> scope (if supported), refresh tokens can be
+                    used to obtain new access tokens without requiring the user to re-authenticate. SIGNula handles
+                    token refresh automatically.
+                </p>
+            </div>
+
+            <div class="info-card">
+                <h5><i class="fas fa-tachometer-alt me-2" style="color: #ef4444;"></i>API Rate Limits</h5>
+                <p>
+                    LinkedIn API rate limits apply to all requests. The specific limits depend on your app's usage
+                    tier. For authentication-only usage (as with SIGNula), you are unlikely to hit rate limits
+                    under normal circumstances. Monitor the <code class="code-inline">X-Li-RateLimit-Remaining</code>
+                    response header if needed.
+                </p>
+            </div>
+
+            <hr class="section-divider">
+
+            <!-- ========================================
+                 Troubleshooting
+                 ======================================== -->
+            <h2 class="fw-bold mb-3">
+                <i class="fas fa-wrench me-2" style="color: #ef4444;"></i>Troubleshooting
+            </h2>
+
+            <div class="accordion" id="troubleshootingAccordion">
+                <!-- Issue 1 -->
+                <div class="accordion-item">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#trouble1">
+                            "Unauthorized scope" or scope error during login
+                        </button>
+                    </h2>
+                    <div id="trouble1" class="accordion-collapse collapse" data-bs-parent="#troubleshootingAccordion">
+                        <div class="accordion-body">
+                            <ul>
+                                <li>Ensure you have added the <strong>Sign In with LinkedIn using OpenID Connect</strong> product from the Products tab.</li>
+                                <li>Verify the product shows as "Added" in your app dashboard.</li>
+                                <li>If you recently added the product, wait a few minutes for it to propagate.</li>
+                                <li>Check that you are using the correct scopes: <code class="code-inline">openid profile email</code> (not the deprecated <code class="code-inline">r_liteprofile</code>).</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Issue 2 -->
+                <div class="accordion-item">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#trouble2">
+                            "Redirect URI mismatch" error
+                        </button>
+                    </h2>
+                    <div id="trouble2" class="accordion-collapse collapse" data-bs-parent="#troubleshootingAccordion">
+                        <div class="accordion-body">
+                            <ul>
+                                <li>The redirect URL configured in the LinkedIn app must match <strong>exactly</strong> what SIGNula sends in the OAuth request.</li>
+                                <li>Check for protocol mismatches (<code class="code-inline">http</code> vs <code class="code-inline">https</code>).</li>
+                                <li>Ensure there are no trailing slashes or extra path segments.</li>
+                                <li>Verify the redirect URL in the SIGNula settings matches the one in LinkedIn: <code class="code-inline">oauth.linkedin.redirect_uri</code>.</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Issue 3 -->
+                <div class="accordion-item">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#trouble3">
+                            Cannot create app - "Company Page required"
+                        </button>
+                    </h2>
+                    <div id="trouble3" class="accordion-collapse collapse" data-bs-parent="#troubleshootingAccordion">
+                        <div class="accordion-body">
+                            <ul>
+                                <li>LinkedIn requires all apps to be associated with a Company Page.</li>
+                                <li>Create a Company Page at <a href="https://www.linkedin.com/company/setup/new/" target="_blank" rel="noopener noreferrer">linkedin.com/company/setup/new</a>.</li>
+                                <li>You must be an admin of the Company Page to associate it with your app.</li>
+                                <li>If you select an existing page, the page admin may need to approve the verification request.</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Issue 4 -->
+                <div class="accordion-item">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#trouble4">
+                            App verification pending or rejected
+                        </button>
+                    </h2>
+                    <div id="trouble4" class="accordion-collapse collapse" data-bs-parent="#troubleshootingAccordion">
+                        <div class="accordion-body">
+                            <ul>
+                                <li>App verification requires a page admin to confirm the association between the app and the Company Page.</li>
+                                <li>Check the Company Page admin's LinkedIn notifications for a pending verification request.</li>
+                                <li>The app can still be used in development mode while verification is pending.</li>
+                                <li>If rejected, ensure the correct Company Page was selected and retry the verification.</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Issue 5 -->
+                <div class="accordion-item">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#trouble5">
+                            Profile picture or email not returned
+                        </button>
+                    </h2>
+                    <div id="trouble5" class="accordion-collapse collapse" data-bs-parent="#troubleshootingAccordion">
+                        <div class="accordion-body">
+                            <ul>
+                                <li>Ensure the <code class="code-inline">profile</code> and <code class="code-inline">email</code> scopes are included in the OAuth request.</li>
+                                <li>Some LinkedIn users may have restricted their profile visibility, which can limit the data returned.</li>
+                                <li>Verify that the "Sign In with LinkedIn using OpenID Connect" product is active on your app.</li>
+                                <li>Check the SIGNula activity log for the raw API response from LinkedIn to identify missing fields.</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <hr class="section-divider">
+
+            <!-- ========================================
+                 Settings Reference
+                 ======================================== -->
+            <h2 class="fw-bold mb-3">
+                <i class="fas fa-cog me-2" style="color: #8b5cf6;"></i>Settings Reference
+            </h2>
+            <p class="text-muted mb-3">
+                These settings are stored in <code class="code-inline">tblSettings</code> in the SIGNula backend database.
+                Fields marked with <i class="fas fa-lock text-danger"></i> are encrypted at rest.
+            </p>
+
+            <div class="table-responsive">
+                <table class="table settings-table">
+                    <thead>
+                        <tr>
+                            <th>Setting Key</th>
+                            <th>Type</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code class="code-inline">oauth.linkedin.enabled</code></td>
+                            <td>Boolean</td>
+                            <td>Enable or disable LinkedIn OAuth as a login provider</td>
+                        </tr>
+                        <tr>
+                            <td><code class="code-inline">oauth.linkedin.client_id</code></td>
+                            <td>String</td>
+                            <td>Your LinkedIn app Client ID</td>
+                        </tr>
+                        <tr>
+                            <td><code class="code-inline">oauth.linkedin.client_secret</code> <i class="fas fa-lock text-danger"></i></td>
+                            <td>String</td>
+                            <td>Your LinkedIn app Client Secret (encrypted, isSensitive)</td>
+                        </tr>
+                        <tr>
+                            <td><code class="code-inline">oauth.linkedin.redirect_uri</code></td>
+                            <td>String</td>
+                            <td>OAuth callback URL (e.g., <code class="code-inline">https://yourdomain.com/oauth/callback</code>)</td>
+                        </tr>
+                        <tr>
+                            <td><code class="code-inline">oauth.linkedin.scopes</code></td>
+                            <td>String</td>
+                            <td>Space-separated list of OAuth scopes. Default: <code class="code-inline">openid profile email</code></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <hr class="section-divider">
+
+            <!-- ========================================
+                 Next Steps
+                 ======================================== -->
+            <h2 class="fw-bold mb-3">
+                <i class="fas fa-forward me-2" style="color: #10b981;"></i>Next Steps
+            </h2>
+            <div class="next-steps">
+                <a href="github-oauth-setup.html">
+                    <i class="fab fa-github" style="color: #333333;"></i> Set up GitHub OAuth
+                </a>
+                <a href="facebook-oauth-setup.html">
+                    <i class="fab fa-facebook" style="color: #1877F2;"></i> Set up Facebook OAuth
+                </a>
+                <a href="google-oauth-setup.html">
+                    <i class="fab fa-google" style="color: #4285F4;"></i> Set up Google OAuth
+                </a>
+                <a href="index.html">
+                    <i class="fas fa-th-large" style="color: #6366f1;"></i> View All Setup Guides
+                </a>
+            </div>
+
+            <!-- ========================================
+                 Footer
+                 ======================================== -->
+            <div class="guide-footer">
+                <p>&copy; 2025&ndash;2026 MWBM Partners Ltd (t/a MWservices). All rights reserved.</p>
+            </div>
+        </div><!-- /.content-wrapper -->
+    </div><!-- /.main-content -->
+
+    <!-- ============================================================
+         Scripts
+         ============================================================ -->
+
+    <!-- Highlight.js 11.9.0 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+    <!-- Bootstrap 5.3.2 JS Bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"
+            integrity="sha384-C6RzsynM9kWDrMNeT87bh95OGNyZPhcTNXj1NW7RuBCsyN/o0jlpcV8Qyq46cDfL"
+            crossorigin="anonymous"></script>
+
+    <script>
+        // Initialise Highlight.js
+        hljs.highlightAll();
+
+        // Copy-to-clipboard functionality
+        function copyCode(button) {
+            var codeBlock = button.closest('.code-block-wrapper').querySelector('code');
+            var text = codeBlock.textContent;
+
+            navigator.clipboard.writeText(text).then(function() {
+                button.classList.add('copied');
+                button.innerHTML = '<i class="fas fa-check me-1"></i>Copied!';
+                setTimeout(function() {
+                    button.classList.remove('copied');
+                    button.innerHTML = '<i class="fas fa-copy me-1"></i>Copy';
+                }, 2000);
+            }).catch(function() {
+                // Fallback for older browsers
+                var textarea = document.createElement('textarea');
+                textarea.value = text;
+                document.body.appendChild(textarea);
+                textarea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textarea);
+                button.classList.add('copied');
+                button.innerHTML = '<i class="fas fa-check me-1"></i>Copied!';
+                setTimeout(function() {
+                    button.classList.remove('copied');
+                    button.innerHTML = '<i class="fas fa-copy me-1"></i>Copy';
+                }, 2000);
+            });
+        }
+
+        // Sidebar toggle for mobile
+        var sidebarToggle = document.getElementById('sidebarToggle');
+        var sidebar = document.getElementById('sidebar');
+        var sidebarOverlay = document.getElementById('sidebarOverlay');
+
+        sidebarToggle.addEventListener('click', function() {
+            sidebar.classList.toggle('show');
+            sidebarOverlay.classList.toggle('show');
+        });
+
+        sidebarOverlay.addEventListener('click', function() {
+            sidebar.classList.remove('show');
+            sidebarOverlay.classList.remove('show');
+        });
+
+        // Close sidebar on mobile when a link is clicked
+        var sidebarLinks = document.querySelectorAll('.sidebar-link');
+        sidebarLinks.forEach(function(link) {
+            link.addEventListener('click', function() {
+                if (window.innerWidth < 992) {
+                    sidebar.classList.remove('show');
+                    sidebarOverlay.classList.remove('show');
+                }
+            });
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,1238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="SIGNula - Apple Sign In Setup Guide for privacy-focused authentication with Apple ID">
+    <meta name="author" content="MWBM Partners Ltd">
+    <title>Apple Sign In Setup - SIGNula Documentation</title>
+
+    <!-- Bootstrap 5.3.2 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"
+          integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN"
+          crossorigin="anonymous">
+
+    <!-- FontAwesome 6.4.2 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css"
+          integrity="sha512-z3gLpd7yknf1YoNbCzqRKc4qyor8gaKU1qmn+CShxbuBusANI9QpRohGBreCFkKxLhei6S9CQXFEbbKuqLg0DA=="
+          crossorigin="anonymous">
+
+    <!-- Google Fonts: Inter & Fira Code -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+
+    <style>
+        /* ========================================
+           CSS Custom Property: Provider Colour
+           ======================================== */
+        :root {
+            --provider-color: #000000;
+        }
+
+        /* ========================================
+           Base Typography & Reset
+           ======================================== */
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: #f8fafc;
+            color: #1e293b;
+            margin: 0;
+            padding: 0;
+        }
+
+        code, pre, .code-inline {
+            font-family: 'Fira Code', 'Courier New', Courier, monospace;
+        }
+
+        /* ========================================
+           Sidebar Navigation
+           ======================================== */
+        .sidebar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 280px;
+            height: 100vh;
+            background-color: #0f172a;
+            color: #cbd5e1;
+            overflow-y: auto;
+            z-index: 1000;
+            transition: transform 0.3s ease;
+            padding-bottom: 2rem;
+        }
+
+        .sidebar-header {
+            padding: 1.5rem 1.25rem;
+            border-bottom: 1px solid #1e293b;
+        }
+
+        .sidebar-header h5 {
+            color: #f1f5f9;
+            font-weight: 700;
+            margin: 0;
+            font-size: 1.1rem;
+        }
+
+        .sidebar-header small {
+            color: #64748b;
+            font-size: 0.75rem;
+        }
+
+        .sidebar-nav {
+            padding: 1rem 0 0 0;
+        }
+
+        .sidebar-section-title {
+            font-size: 0.65rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: #64748b;
+            padding: 0 1.25rem 0.5rem;
+        }
+
+        .sidebar-link {
+            display: flex;
+            align-items: center;
+            padding: 0.5rem 1.25rem;
+            color: #94a3b8;
+            text-decoration: none;
+            font-size: 0.85rem;
+            transition: all 0.15s ease;
+            border-left: 3px solid transparent;
+        }
+
+        .sidebar-link:hover {
+            color: #e2e8f0;
+            background-color: #1e293b;
+        }
+
+        .sidebar-link.active {
+            color: #f97316;
+            background-color: rgba(249, 115, 22, 0.08);
+            border-left-color: #f97316;
+            font-weight: 600;
+        }
+
+        .sidebar-link i {
+            width: 20px;
+            margin-right: 0.75rem;
+            text-align: center;
+            font-size: 0.8rem;
+        }
+
+        .sidebar-back {
+            padding: 1rem 1.25rem;
+            border-bottom: 1px solid #1e293b;
+        }
+
+        .sidebar-back a {
+            color: #60a5fa;
+            text-decoration: none;
+            font-size: 0.85rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: color 0.15s ease;
+        }
+
+        .sidebar-back a:hover {
+            color: #93c5fd;
+        }
+
+        /* ========================================
+           Main Content Area
+           ======================================== */
+        .main-content {
+            margin-left: 280px;
+            padding: 48px;
+            min-height: 100vh;
+        }
+
+        .content-wrapper {
+            max-width: 900px;
+        }
+
+        /* ========================================
+           Provider Header
+           ======================================== */
+        .provider-header {
+            background: linear-gradient(135deg, #1a1a1a, #000000);
+            color: #ffffff;
+            border-radius: 12px;
+            padding: 2.5rem;
+            margin-bottom: 2.5rem;
+        }
+
+        .provider-header h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+
+        .provider-header p {
+            opacity: 0.9;
+            margin-bottom: 0;
+            font-size: 1.05rem;
+        }
+
+        .provider-header .provider-icon {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+            opacity: 0.9;
+        }
+
+        /* ========================================
+           Section Headings
+           ======================================== */
+        .section-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #0f172a;
+            margin-bottom: 1rem;
+            padding-bottom: 0.75rem;
+            border-bottom: 2px solid #f1f5f9;
+        }
+
+        .section-title i {
+            margin-right: 0.5rem;
+        }
+
+        /* ========================================
+           Steps
+           ======================================== */
+        .step {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .step-number {
+            width: 36px;
+            height: 36px;
+            min-width: 36px;
+            border-radius: 50%;
+            background-color: var(--provider-color);
+            color: #ffffff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 0.9rem;
+            margin-top: 0.15rem;
+        }
+
+        .step-content {
+            flex: 1;
+        }
+
+        .step-content h3 {
+            font-size: 1.15rem;
+            font-weight: 600;
+            color: #0f172a;
+            margin-bottom: 0.75rem;
+        }
+
+        .step-content p,
+        .step-content ul,
+        .step-content ol {
+            color: #475569;
+            line-height: 1.7;
+        }
+
+        /* ========================================
+           Alert Boxes
+           ======================================== */
+        .alert-box {
+            border-radius: 8px;
+            padding: 1rem 1.25rem;
+            margin: 1rem 0;
+            font-size: 0.9rem;
+            border-left: 4px solid;
+        }
+
+        .alert-info {
+            background-color: #eff6ff;
+            border-color: #3b82f6;
+            color: #1e40af;
+        }
+
+        .alert-warning {
+            background-color: #fffbeb;
+            border-color: #f59e0b;
+            color: #92400e;
+        }
+
+        .alert-danger {
+            background-color: #fef2f2;
+            border-color: #ef4444;
+            color: #991b1b;
+        }
+
+        .alert-success {
+            background-color: #f0fdf4;
+            border-color: #22c55e;
+            color: #166534;
+        }
+
+        .alert-tip {
+            background-color: #f5f3ff;
+            border-color: #8b5cf6;
+            color: #5b21b6;
+        }
+
+        /* ========================================
+           Code Blocks & Inline Code
+           ======================================== */
+        .code-block {
+            position: relative;
+            background-color: #1e293b;
+            border-radius: 8px;
+            padding: 1.25rem;
+            margin: 1rem 0;
+            overflow-x: auto;
+        }
+
+        .code-block code {
+            color: #e2e8f0;
+            font-size: 0.85rem;
+            line-height: 1.6;
+            white-space: pre;
+        }
+
+        .copy-btn {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: rgba(255, 255, 255, 0.15);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #e2e8f0;
+            padding: 0.25rem 0.6rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .copy-btn:hover {
+            background: rgba(255, 255, 255, 0.25);
+            color: #ffffff;
+        }
+
+        .copy-btn.copied {
+            background: rgba(34, 197, 94, 0.3);
+            color: #4ade80;
+        }
+
+        .code-inline {
+            background-color: #f1f5f9;
+            color: #e11d48;
+            padding: 0.15rem 0.45rem;
+            border-radius: 4px;
+            font-size: 0.85em;
+        }
+
+        /* ========================================
+           Tables
+           ======================================== */
+        .guide-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.88rem;
+            margin: 1rem 0;
+        }
+
+        .guide-table th {
+            background-color: #f8fafc;
+            font-weight: 600;
+            color: #334155;
+            border-bottom: 2px solid #e2e8f0;
+            padding: 0.75rem 1rem;
+            text-align: left;
+        }
+
+        .guide-table td {
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid #e2e8f0;
+            vertical-align: top;
+            color: #475569;
+        }
+
+        .guide-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        /* ========================================
+           Info Cards
+           ======================================== */
+        .info-card {
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 1.25rem;
+            margin: 1rem 0;
+        }
+
+        .info-card h4 {
+            font-size: 1rem;
+            font-weight: 600;
+            color: #0f172a;
+            margin-bottom: 0.5rem;
+        }
+
+        .info-card p {
+            color: #475569;
+            margin-bottom: 0;
+            font-size: 0.9rem;
+        }
+
+        /* ========================================
+           Checklist
+           ======================================== */
+        .checklist {
+            list-style: none;
+            padding: 0;
+            margin: 1rem 0;
+        }
+
+        .checklist li {
+            padding: 0.5rem 0;
+            padding-left: 1.75rem;
+            position: relative;
+            color: #475569;
+            font-size: 0.9rem;
+        }
+
+        .checklist li::before {
+            content: '\f00c';
+            font-family: 'Font Awesome 6 Free';
+            font-weight: 900;
+            position: absolute;
+            left: 0;
+            color: #22c55e;
+            font-size: 0.8rem;
+        }
+
+        /* ========================================
+           Section Divider
+           ======================================== */
+        .section-divider {
+            border: none;
+            border-top: 2px solid #f1f5f9;
+            margin: 2.5rem 0;
+        }
+
+        /* ========================================
+           Footer
+           ======================================== */
+        .guide-footer {
+            margin-top: 3rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid #e2e8f0;
+            text-align: center;
+            font-size: 0.8rem;
+            color: #94a3b8;
+        }
+
+        .guide-footer .next-steps {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+            text-align: left;
+        }
+
+        .next-step-card {
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 1.25rem;
+            text-decoration: none;
+            color: inherit;
+            transition: transform 0.2s, box-shadow 0.2s;
+            display: block;
+        }
+
+        .next-step-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+            text-decoration: none;
+            color: inherit;
+        }
+
+        .next-step-card h5 {
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: #0f172a;
+            margin-bottom: 0.25rem;
+        }
+
+        .next-step-card p {
+            font-size: 0.8rem;
+            color: #64748b;
+            margin-bottom: 0;
+        }
+
+        /* ========================================
+           Mobile Toggle
+           ======================================== */
+        .mobile-toggle {
+            display: none;
+            position: fixed;
+            top: 1rem;
+            left: 1rem;
+            z-index: 1100;
+            background: #0f172a;
+            color: #f1f5f9;
+            border: none;
+            border-radius: 8px;
+            padding: 0.6rem 0.8rem;
+            font-size: 1.1rem;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        /* ========================================
+           Sidebar Overlay (mobile)
+           ======================================== */
+        .sidebar-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 999;
+        }
+
+        .sidebar-overlay.show {
+            display: block;
+        }
+
+        /* ========================================
+           Responsive / Mobile
+           ======================================== */
+        @media (max-width: 991.98px) {
+            .sidebar {
+                transform: translateX(-100%);
+            }
+
+            .sidebar.show {
+                transform: translateX(0);
+            }
+
+            .mobile-toggle {
+                display: block;
+            }
+
+            .main-content {
+                margin-left: 0;
+                padding: 1.25rem;
+                padding-top: 4rem;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- ============================================================
+         Mobile Sidebar Toggle
+         ============================================================ -->
+    <button class="mobile-toggle" id="mobileToggle" aria-label="Toggle navigation">
+        <i class="fas fa-bars"></i>
+    </button>
+
+    <!-- Sidebar Overlay for mobile -->
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+    <!-- ============================================================
+         Sidebar Navigation
+         ============================================================ -->
+    <nav class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <h5><i class="fas fa-shield-halved me-2"></i>SIGNula Docs</h5>
+            <small>Provider Setup Guides</small>
+        </div>
+
+        <div class="sidebar-back">
+            <a href="index.html"><i class="fas fa-arrow-left"></i> Back to All Guides</a>
+        </div>
+
+        <div class="sidebar-nav">
+            <!-- Payment Providers -->
+            <div style="padding: 1rem 0 0 0;">
+                <div class="sidebar-section-title">Payment Providers</div>
+                <a href="stripe-setup.html" class="sidebar-link">
+                    <i class="fab fa-stripe-s"></i> Stripe
+                </a>
+                <a href="paypal-setup.html" class="sidebar-link">
+                    <i class="fab fa-paypal"></i> PayPal
+                </a>
+                <a href="coinbase-setup.html" class="sidebar-link">
+                    <i class="fab fa-bitcoin"></i> Coinbase Commerce
+                </a>
+                <a href="kofi-setup.html" class="sidebar-link">
+                    <i class="fas fa-mug-hot"></i> Ko-fi
+                </a>
+                <a href="patreon-setup.html" class="sidebar-link">
+                    <i class="fab fa-patreon"></i> Patreon
+                </a>
+            </div>
+
+            <!-- Login Providers -->
+            <div style="padding: 1rem 0 0 0;">
+                <div class="sidebar-section-title">Login Providers</div>
+                <a href="google-oauth-setup.html" class="sidebar-link">
+                    <i class="fab fa-google"></i> Google
+                </a>
+                <a href="microsoft-oauth-setup.html" class="sidebar-link">
+                    <i class="fab fa-microsoft"></i> Microsoft
+                </a>
+                <a href="apple-signin-setup.html" class="sidebar-link active">
+                    <i class="fab fa-apple"></i> Apple
+                </a>
+                <a href="facebook-setup.html" class="sidebar-link">
+                    <i class="fab fa-facebook"></i> Facebook
+                </a>
+                <a href="linkedin-setup.html" class="sidebar-link">
+                    <i class="fab fa-linkedin"></i> LinkedIn
+                </a>
+                <a href="github-setup.html" class="sidebar-link">
+                    <i class="fab fa-github"></i> GitHub
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- ============================================================
+         Main Content
+         ============================================================ -->
+    <div class="main-content">
+        <div class="content-wrapper">
+
+            <!-- ========================================
+                 Provider Header
+                 ======================================== -->
+            <div class="provider-header">
+                <div class="provider-icon">
+                    <i class="fab fa-apple"></i>
+                </div>
+                <h1>Apple Sign In Setup</h1>
+                <p>
+                    Configure Sign In with Apple for privacy-focused authentication. Apple provides a
+                    unique, secure sign-in experience with built-in private email relay support.
+                </p>
+            </div>
+
+            <!-- ========================================
+                 Section 1: Overview
+                 ======================================== -->
+            <h2 class="section-title">
+                <i class="fas fa-info-circle" style="color: #333;"></i>Overview
+            </h2>
+            <p>
+                Sign In with Apple provides a privacy-focused authentication mechanism for SIGNula users.
+                Unlike other OAuth providers, Apple has several unique characteristics that require special
+                handling:
+            </p>
+            <ul>
+                <li><strong>User name is only shared on the first sign-in.</strong> Subsequent sign-ins will not include the user's name. SIGNula must store the name during the initial authorisation.</li>
+                <li><strong>Private Email Relay:</strong> Users can choose to hide their real email address. Apple generates a unique, anonymous relay address (e.g., <code class="code-inline">xxxxx@privaterelay.appleid.com</code>) that forwards to the user's real email.</li>
+                <li><strong>JWT Client Authentication:</strong> Apple uses ES256-signed JWTs for client authentication instead of a simple client_secret string.</li>
+                <li><strong>Form POST Response Mode:</strong> Apple returns authentication data via <code class="code-inline">form_post</code> (HTTP POST) rather than query parameters.</li>
+            </ul>
+            <div class="alert-box alert-warning">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                <strong>Important:</strong> Because Apple only provides the user's name on the first authorisation,
+                SIGNula must capture and store this information immediately. If the initial callback is not
+                processed correctly, the name will be permanently unavailable via Apple's API.
+            </div>
+
+            <hr class="section-divider">
+
+            <!-- ========================================
+                 Section 2: Prerequisites
+                 ======================================== -->
+            <h2 class="section-title">
+                <i class="fas fa-clipboard-check" style="color: #333;"></i>Prerequisites
+            </h2>
+            <ul class="checklist">
+                <li>An Apple Developer account ($99/year) &mdash; <a href="https://developer.apple.com/programs/" target="_blank" rel="noopener noreferrer">developer.apple.com/programs</a></li>
+                <li>Access to <a href="https://developer.apple.com" target="_blank" rel="noopener noreferrer">developer.apple.com</a> &rarr; Certificates, Identifiers &amp; Profiles</li>
+                <li>A registered domain for your SIGNula installation</li>
+                <li>HTTPS enabled on your domain (required by Apple)</li>
+                <li>The ability to host a domain verification file on your web server</li>
+            </ul>
+            <div class="alert-box alert-info">
+                <i class="fas fa-info-circle me-2"></i>
+                <strong>Note:</strong> An Apple Developer account requires an annual fee of $99 USD. This is
+                required to access the Sign In with Apple service, create keys, and register Service IDs.
+            </div>
+
+            <hr class="section-divider">
+
+            <!-- ========================================
+                 Section 3: Step-by-Step Setup
+                 ======================================== -->
+            <h2 class="section-title">
+                <i class="fas fa-list-ol" style="color: #333;"></i>Step-by-Step Setup
+            </h2>
+
+            <!-- Step 1 -->
+            <div class="step">
+                <div class="step-number">1</div>
+                <div class="step-content">
+                    <h3>Go to Apple Developer Portal</h3>
+                    <p>
+                        Navigate to <a href="https://developer.apple.com" target="_blank" rel="noopener noreferrer">developer.apple.com</a>,
+                        sign in with your Apple ID, and go to <strong>Certificates, Identifiers &amp; Profiles</strong>.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Step 2 -->
+            <div class="step">
+                <div class="step-number">2</div>
+                <div class="step-content">
+                    <h3>Register an App ID</h3>
+                    <p>
+                        If you do not already have an App ID registered, create one:
+                    </p>
+                    <ol>
+                        <li>Go to <strong>Identifiers</strong> &rarr; click the <strong>+</strong> button</li>
+                        <li>Select <strong>App IDs</strong> &rarr; click <strong>Continue</strong></li>
+                        <li>Select type: <strong>App</strong></li>
+                        <li><strong>Description:</strong> <code class="code-inline">SIGNula</code></li>
+                        <li><strong>Bundle ID:</strong> <code class="code-inline">com.yourdomain.signula</code> (Explicit)</li>
+                        <li>Under <strong>Capabilities</strong>, enable <strong>"Sign In with Apple"</strong></li>
+                        <li>Click <strong>Continue</strong> &rarr; <strong>Register</strong></li>
+                    </ol>
+                </div>
+            </div>
+
+            <!-- Step 3 -->
+            <div class="step">
+                <div class="step-number">3</div>
+                <div class="step-content">
+                    <h3>Register a Services ID</h3>
+                    <p>
+                        A Services ID is required for web-based Sign In with Apple (as opposed to native iOS/macOS apps).
+                    </p>
+                    <ol>
+                        <li>Go to <strong>Identifiers</strong> &rarr; click the <strong>+</strong> button</li>
+                        <li>Select <strong>Services IDs</strong> &rarr; click <strong>Continue</strong></li>
+                        <li><strong>Description:</strong> <code class="code-inline">SIGNula Web Login</code></li>
+                        <li><strong>Identifier:</strong> <code class="code-inline">com.yourdomain.signula.web</code></li>
+                        <li>Click <strong>Continue</strong> &rarr; <strong>Register</strong></li>
+                    </ol>
+                    <div class="alert-box alert-warning">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        <strong>Important:</strong> The Services ID identifier must be different from your App ID
+                        Bundle ID. The Services ID identifier is what you will use as the
+                        <code class="code-inline">client_id</code> in SIGNula.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 4 -->
+            <div class="step">
+                <div class="step-number">4</div>
+                <div class="step-content">
+                    <h3>Configure the Services ID</h3>
+                    <p>
+                        After registering the Services ID, configure it for Sign In with Apple:
+                    </p>
+                    <ol>
+                        <li>Click on the newly created Services ID in the Identifiers list</li>
+                        <li>Enable <strong>"Sign In with Apple"</strong> checkbox</li>
+                        <li>Click <strong>Configure</strong></li>
+                        <li><strong>Primary App ID:</strong> Select your App ID (created in Step 2)</li>
+                        <li>
+                            <strong>Website URLs:</strong>
+                            <ul>
+                                <li><strong>Domains:</strong> <code class="code-inline">yourdomain.com</code> (without https://)</li>
+                                <li>
+                                    <strong>Return URLs:</strong>
+                                    <div class="code-block">
+                                        <button class="copy-btn" onclick="copyCode(this)"><i class="fas fa-copy me-1"></i>Copy</button>
+                                        <code>https://yourdomain.com/oauth/callback</code>
+                                    </div>
+                                </li>
+                            </ul>
+                        </li>
+                        <li>Click <strong>Save</strong> &rarr; <strong>Continue</strong> &rarr; <strong>Save</strong></li>
+                    </ol>
+                    <div class="alert-box alert-info">
+                        <i class="fas fa-globe me-2"></i>
+                        <strong>Domain Verification:</strong> Apple may require you to verify domain ownership by
+                        placing a verification file at
+                        <code class="code-inline">https://yourdomain.com/.well-known/apple-developer-domain-association.txt</code>.
+                        Download this file from the Apple Developer portal when prompted and upload it to your server.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 5 -->
+            <div class="step">
+                <div class="step-number">5</div>
+                <div class="step-content">
+                    <h3>Create a Sign In with Apple Key</h3>
+                    <p>
+                        Apple uses a private key (rather than a client secret) for authentication. You must
+                        generate a key specifically for Sign In with Apple.
+                    </p>
+                    <ol>
+                        <li>Go to <strong>Keys</strong> &rarr; click the <strong>+</strong> button (Create a new key)</li>
+                        <li><strong>Key Name:</strong> <code class="code-inline">SIGNula Sign In Key</code></li>
+                        <li>Enable <strong>"Sign In with Apple"</strong> &rarr; click <strong>Configure</strong></li>
+                        <li><strong>Primary App ID:</strong> Select your App ID</li>
+                        <li>Click <strong>Save</strong> &rarr; <strong>Continue</strong> &rarr; <strong>Register</strong></li>
+                        <li><strong>Download the .p8 key file immediately</strong></li>
+                        <li>Note the <strong>Key ID</strong> displayed on the confirmation page</li>
+                    </ol>
+                    <div class="alert-box alert-danger">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        <strong>Critical:</strong> You can only download the <code class="code-inline">.p8</code>
+                        key file <strong>ONCE</strong>. If you lose it, you will need to revoke the key and create
+                        a new one. Store this file in a secure location immediately after downloading.
+                    </div>
+                    <p>The downloaded file will look like:</p>
+                    <div class="code-block">
+                        <button class="copy-btn" onclick="copyCode(this)"><i class="fas fa-copy me-1"></i>Copy</button>
+                        <code>-----BEGIN PRIVATE KEY-----
+MIGTAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBHkwdwIBAQQg...
+(multiple lines of base64 encoded key data)
+...
+-----END PRIVATE KEY-----</code>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 6 -->
+            <div class="step">
+                <div class="step-number">6</div>
+                <div class="step-content">
+                    <h3>Note Your Team ID</h3>
+                    <p>
+                        Your <strong>Team ID</strong> is a 10-character alphanumeric string that identifies your
+                        Apple Developer account. You can find it in:
+                    </p>
+                    <ul>
+                        <li>The top-right corner of the Apple Developer portal</li>
+                        <li><strong>Account</strong> &rarr; <strong>Membership Details</strong></li>
+                    </ul>
+                    <div class="code-block">
+                        <button class="copy-btn" onclick="copyCode(this)"><i class="fas fa-copy me-1"></i>Copy</button>
+                        <code>Team ID: XXXXXXXXXX (10 characters)</code>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 7 -->
+            <div class="step">
+                <div class="step-number">7</div>
+                <div class="step-content">
+                    <h3>Configure SIGNula Admin Panel</h3>
+                    <p>
+                        Log in to your <strong>SIGNula Admin Panel</strong> and navigate to
+                        <strong>System</strong> &rarr; <strong>OAuth Providers</strong> &rarr; <strong>Apple</strong>.
+                    </p>
+                    <ul>
+                        <li><strong>Client ID:</strong> Enter the Services ID identifier (e.g., <code class="code-inline">com.yourdomain.signula.web</code>)</li>
+                        <li><strong>Team ID:</strong> Your 10-character Team ID</li>
+                        <li><strong>Key ID:</strong> The Key ID from Step 5</li>
+                        <li><strong>Private Key:</strong> Paste the <strong>full contents</strong> of the <code class="code-inline">.p8</code> file, including the <code class="code-inline">-----BEGIN PRIVATE KEY-----</code> and <code class="code-inline">-----END PRIVATE KEY-----</code> lines</li>
+                        <li>Click <strong>Save</strong></li>
+                    </ul>
+                    <div class="alert-box alert-success">
+                        <i class="fas fa-lock me-2"></i>
+                        <strong>Security:</strong> The private key is stored encrypted at rest in the SIGNula
+                        database using cryptographic encryption with salt (marked as
+                        <code class="code-inline">isSensitive</code>).
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 8 -->
+            <div class="step">
+                <div class="step-number">8</div>
+                <div class="step-content">
+                    <h3>Test the Integration</h3>
+                    <p>
+                        Visit your SIGNula login page and click the <strong>"Sign in with Apple"</strong> button.
+                        You will be redirected to Apple's sign-in page. After authenticating with your Apple ID,
+                        you will be asked to choose whether to share your real email or use a private relay address,
+                        and then redirected back to SIGNula.
+                    </p>
+                    <div class="alert-box alert-tip">
+                        <i class="fas fa-lightbulb me-2"></i>
+                        <strong>Tip:</strong> On your first test, verify that SIGNula captures and stores the
+                        user's name correctly. Sign out and sign in again to confirm that subsequent logins
+                        work even without the name being provided by Apple.
+                    </div>
+                </div>
+            </div>
+
+            <hr class="section-divider">
+
+            <!-- ========================================
+                 Section 4: How Apple Sign In Works (Technical)
+                 ======================================== -->
+            <h2 class="section-title">
+                <i class="fas fa-cogs" style="color: #333;"></i>How Apple Sign In Works (Technical)
+            </h2>
+            <p>
+                Apple's authentication flow differs significantly from other OAuth providers. Here is how
+                SIGNula handles the Sign In with Apple process:
+            </p>
+
+            <h4 style="margin-top: 1.5rem; font-weight: 600;">JWT Client Secret Generation</h4>
+            <p>
+                Instead of using a static client secret, SIGNula generates a short-lived JWT (JSON Web Token)
+                that serves as the client_secret. This JWT is signed using the <strong>ES256</strong> (ECDSA with P-256
+                curve and SHA-256) algorithm.
+            </p>
+            <div class="code-block">
+                <button class="copy-btn" onclick="copyCode(this)"><i class="fas fa-copy me-1"></i>Copy</button>
+                <code>// JWT Header
+{
+    "alg": "ES256",
+    "kid": "YOUR_KEY_ID"
+}
+
+// JWT Payload (Claims)
+{
+    "iss": "YOUR_TEAM_ID",
+    "iat": 1708300800,
+    "exp": 1708387200,
+    "aud": "https://appleid.apple.com",
+    "sub": "com.yourdomain.signula.web"
+}
+
+// The JWT is signed with your .p8 private key</code>
+            </div>
+
+            <h4 style="margin-top: 1.5rem; font-weight: 600;">Authentication Flow</h4>
+            <ol>
+                <li>SIGNula redirects the user to Apple's authorisation endpoint with the Services ID as <code class="code-inline">client_id</code></li>
+                <li>The user authenticates with their Apple ID (Face ID, Touch ID, or password)</li>
+                <li>Apple returns an authorisation code via <strong>form_post</strong> (HTTP POST to the return URL)</li>
+                <li>SIGNula generates a JWT client_secret using the ES256 algorithm and private key</li>
+                <li>SIGNula exchanges the authorisation code for tokens using the generated client_secret</li>
+                <li>The ID token is decoded to extract the user's information</li>
+            </ol>
+
+            <div class="alert-box alert-info">
+                <i class="fas fa-info-circle me-2"></i>
+                <strong>Form POST Response Mode:</strong> Apple sends authentication data via an HTTP POST
+                request (not a URL query parameter redirect). SIGNula's callback handler reads the data from
+                the POST body (<code class="code-inline">$_POST</code>) rather than from
+                <code class="code-inline">$_GET</code>.
+            </div>
+
+            <h4 style="margin-top: 1.5rem; font-weight: 600;">First Sign-In vs Subsequent Sign-Ins</h4>
+            <p>
+                On the <strong>first sign-in</strong>, Apple includes a <code class="code-inline">user</code>
+                JSON object in the POST body containing the user's name (first name and last name). This is the
+                <strong>only time</strong> this data is provided. On all subsequent sign-ins, only the
+                <code class="code-inline">code</code> and <code class="code-inline">id_token</code> are returned.
+            </p>
+
+            <hr class="section-divider">
+
+            <!-- ========================================
+                 Section 5: Private Email Relay
+                 ======================================== -->
+            <h2 class="section-title">
+                <i class="fas fa-envelope-circle-check" style="color: #333;"></i>Private Email Relay
+            </h2>
+            <p>
+                Apple's Private Email Relay allows users to hide their real email address when signing in.
+                When a user chooses "Hide My Email", Apple generates a unique relay address in the format:
+            </p>
+            <div class="code-block">
+                <button class="copy-btn" onclick="copyCode(this)"><i class="fas fa-copy me-1"></i>Copy</button>
+                <code>xxxxxxxxxxxxxxxxxxxxxxxx@privaterelay.appleid.com</code>
+            </div>
+
+            <h4 style="margin-top: 1.5rem; font-weight: 600;">How It Works</h4>
+            <ul>
+                <li>Emails sent to the relay address are forwarded to the user's real email address</li>
+                <li>The relay address is unique per app &mdash; different apps receive different relay addresses for the same user</li>
+                <li>The user can disable forwarding at any time from their Apple ID settings</li>
+            </ul>
+
+            <h4 style="margin-top: 1.5rem; font-weight: 600;">Mail Server Configuration</h4>
+            <p>
+                To send emails to private relay addresses, your mail server must be registered with Apple:
+            </p>
+            <ol>
+                <li>Go to <a href="https://developer.apple.com" target="_blank" rel="noopener noreferrer">developer.apple.com</a> &rarr; <strong>Certificates, Identifiers &amp; Profiles</strong></li>
+                <li>Navigate to <strong>Services</strong> &rarr; <strong>Sign in with Apple for Email Communication</strong></li>
+                <li>Register your outbound email domains and/or individual email addresses</li>
+                <li>Verify domain ownership via SPF and DKIM records</li>
+            </ol>
+            <div class="alert-box alert-warning">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                <strong>Important:</strong> If your mail server is not registered with Apple, emails sent to
+                <code class="code-inline">@privaterelay.appleid.com</code> addresses will bounce. This affects
+                password reset emails, notifications, and any other communications from SIGNula.
+            </div>
+
+            <hr class="section-divider">
+
+            <!-- ========================================
+                 Section 6: Important Limitations
+                 ======================================== -->
+            <h2 class="section-title">
+                <i class="fas fa-triangle-exclamation" style="color: #f59e0b;"></i>Important Limitations
+            </h2>
+
+            <div class="info-card" style="margin-bottom: 1rem;">
+                <h4><i class="fas fa-user me-2" style="color: #ef4444;"></i>Name Only Available on First Authorisation</h4>
+                <p>
+                    Apple only provides the user's name (first and last) during the very first authorisation.
+                    If the user revokes access and re-authorises, the name is provided again. However, this
+                    is the only mechanism to re-obtain the name. SIGNula must store the name immediately when
+                    first received.
+                </p>
+            </div>
+
+            <div class="info-card" style="margin-bottom: 1rem;">
+                <h4><i class="fas fa-envelope me-2" style="color: #f59e0b;"></i>Private Relay Emails Require Special Configuration</h4>
+                <p>
+                    As described above, sending emails to <code class="code-inline">@privaterelay.appleid.com</code>
+                    addresses requires registering your sending domains/addresses with Apple. Without this
+                    configuration, transactional emails will not be delivered to users who chose "Hide My Email".
+                </p>
+            </div>
+
+            <div class="info-card" style="margin-bottom: 1rem;">
+                <h4><i class="fas fa-key me-2" style="color: #3b82f6;"></i>Keys Expire and Need Rotation</h4>
+                <p>
+                    Sign In with Apple keys do not technically expire, but Apple recommends rotating keys
+                    periodically for security. You can have up to two active keys at a time, which allows
+                    for seamless rotation: create a new key, update SIGNula to use it, then revoke the old key.
+                </p>
+            </div>
+
+            <div class="info-card" style="margin-bottom: 1rem;">
+                <h4><i class="fas fa-download me-2" style="color: #ef4444;"></i>.p8 File Can Only Be Downloaded Once</h4>
+                <p>
+                    The private key file (<code class="code-inline">.p8</code>) is only available for download at
+                    the moment of creation. If lost, the key must be revoked and a new one created. Store the
+                    file securely (e.g., in a password manager or encrypted vault) immediately after downloading.
+                </p>
+            </div>
+
+            <hr class="section-divider">
+
+            <!-- ========================================
+                 Section 7: Troubleshooting
+                 ======================================== -->
+            <h2 class="section-title">
+                <i class="fas fa-wrench" style="color: #ef4444;"></i>Troubleshooting
+            </h2>
+
+            <div class="info-card" style="margin-bottom: 1rem;">
+                <h4><code class="code-inline">invalid_client</code> &mdash; Wrong Client ID</h4>
+                <p>
+                    This error typically occurs when you are using the <strong>App ID Bundle ID</strong> instead of the
+                    <strong>Services ID identifier</strong> as the client_id. For web-based Sign In with Apple, the
+                    client_id must be the Services ID (e.g., <code class="code-inline">com.yourdomain.signula.web</code>),
+                    not the App ID (e.g., <code class="code-inline">com.yourdomain.signula</code>).
+                </p>
+            </div>
+
+            <div class="info-card" style="margin-bottom: 1rem;">
+                <h4>JWT Generation Failures</h4>
+                <p>
+                    If SIGNula fails to generate the JWT client_secret, check the following:
+                </p>
+                <ul style="margin-top: 0.5rem; margin-bottom: 0;">
+                    <li>The private key is correctly pasted in the SIGNula admin panel (including BEGIN/END lines)</li>
+                    <li>The Key ID matches the key associated with your .p8 file</li>
+                    <li>The Team ID is correct (10-character alphanumeric string)</li>
+                    <li>Your PHP installation has the OpenSSL extension enabled with ES256 support</li>
+                </ul>
+            </div>
+
+            <div class="info-card" style="margin-bottom: 1rem;">
+                <h4>Key File Issues</h4>
+                <p>
+                    If the .p8 key file appears corrupted or invalid, ensure that no extra whitespace,
+                    line breaks, or encoding issues were introduced when pasting the key contents. The key
+                    should be in PEM format with exactly the <code class="code-inline">-----BEGIN PRIVATE KEY-----</code>
+                    and <code class="code-inline">-----END PRIVATE KEY-----</code> delimiters.
+                </p>
+            </div>
+
+            <div class="info-card" style="margin-bottom: 1rem;">
+                <h4>Domain Verification Problems</h4>
+                <p>
+                    If Apple cannot verify your domain, ensure that:
+                </p>
+                <ul style="margin-top: 0.5rem; margin-bottom: 0;">
+                    <li>The verification file is accessible at <code class="code-inline">https://yourdomain.com/.well-known/apple-developer-domain-association.txt</code></li>
+                    <li>The file is served with the correct content type</li>
+                    <li>There are no redirects (e.g., HTTP to HTTPS, www to non-www) that might prevent Apple from accessing the file</li>
+                    <li>The domain in the Services ID configuration matches exactly (no protocol prefix, no trailing slash)</li>
+                </ul>
+            </div>
+
+            <hr class="section-divider">
+
+            <!-- ========================================
+                 Section 8: Settings Reference
+                 ======================================== -->
+            <h2 class="section-title">
+                <i class="fas fa-cog" style="color: #8b5cf6;"></i>Settings Reference
+            </h2>
+            <p>
+                These settings are stored in <code class="code-inline">tblSettings</code> in the SIGNula backend database.
+                Fields marked with <i class="fas fa-lock text-danger"></i> are encrypted at rest.
+            </p>
+            <table class="guide-table">
+                <thead>
+                    <tr>
+                        <th>Setting Key</th>
+                        <th>Type</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code class="code-inline">oauth.apple.enabled</code></td>
+                        <td>Boolean</td>
+                        <td>Enable or disable Apple as a login provider</td>
+                    </tr>
+                    <tr>
+                        <td><code class="code-inline">oauth.apple.client_id</code></td>
+                        <td>String</td>
+                        <td>Services ID identifier (e.g., <code class="code-inline">com.yourdomain.signula.web</code>). This is NOT the App ID.</td>
+                    </tr>
+                    <tr>
+                        <td><code class="code-inline">oauth.apple.team_id</code></td>
+                        <td>String</td>
+                        <td>Your 10-character Apple Developer Team ID</td>
+                    </tr>
+                    <tr>
+                        <td><code class="code-inline">oauth.apple.key_id</code></td>
+                        <td>String</td>
+                        <td>The Key ID associated with your Sign In with Apple key</td>
+                    </tr>
+                    <tr>
+                        <td><code class="code-inline">oauth.apple.private_key</code> <i class="fas fa-lock text-danger"></i></td>
+                        <td>Text</td>
+                        <td>Full contents of the .p8 private key file, including BEGIN/END delimiters (encrypted, isSensitive)</td>
+                    </tr>
+                    <tr>
+                        <td><code class="code-inline">oauth.apple.redirect_uri</code></td>
+                        <td>String</td>
+                        <td>Return URL after Apple authentication (auto-configured)</td>
+                    </tr>
+                    <tr>
+                        <td><code class="code-inline">oauth.apple.scopes</code></td>
+                        <td>JSON</td>
+                        <td>JSON array of requested scopes. Default: <code class="code-inline">["name","email"]</code></td>
+                    </tr>
+                    <tr>
+                        <td><code class="code-inline">oauth.apple.response_mode</code></td>
+                        <td>String</td>
+                        <td>Response mode for Apple's callback. Fixed: <code class="code-inline">form_post</code></td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <hr class="section-divider">
+
+            <!-- ========================================
+                 Footer with Next Steps
+                 ======================================== -->
+            <div class="guide-footer">
+                <h3 style="color: #0f172a; font-size: 1.2rem; font-weight: 700; margin-bottom: 1rem; text-align: left;">
+                    <i class="fas fa-arrow-right me-2" style="color: #333;"></i>Next Steps
+                </h3>
+                <div class="next-steps">
+                    <a href="google-oauth-setup.html" class="next-step-card">
+                        <h5><i class="fab fa-google me-2" style="color: #4285F4;"></i>Google OAuth</h5>
+                        <p>Set up Google login for personal and Workspace accounts.</p>
+                    </a>
+                    <a href="microsoft-oauth-setup.html" class="next-step-card">
+                        <h5><i class="fab fa-microsoft me-2" style="color: #00a4ef;"></i>Microsoft OAuth</h5>
+                        <p>Configure Microsoft login for personal and Work/School accounts.</p>
+                    </a>
+                    <a href="index.html" class="next-step-card">
+                        <h5><i class="fas fa-th-large me-2" style="color: #6366f1;"></i>All Guides</h5>
+                        <p>Browse all payment and login provider setup guides.</p>
+                    </a>
+                </div>
+                <p>&copy; 2025&ndash;2026 MWBM Partners Ltd (t/a MWservices). All rights reserved.</p>
+            </div>
+
+        </div><!-- /.content-wrapper -->
+    </div><!-- /.main-content -->
+
+    <!-- ============================================================
+         Scripts
+         ============================================================ -->
+    <script>
+        /* ========================================
+           Copy-to-Clipboard Functionality
+           ======================================== */
+        function copyCode(button) {
+            var codeBlock = button.closest('.code-block').querySelector('code');
+            var text = codeBlock.textContent;
+
+            navigator.clipboard.writeText(text).then(function() {
+                button.classList.add('copied');
+                button.innerHTML = '<i class="fas fa-check me-1"></i>Copied!';
+                setTimeout(function() {
+                    button.classList.remove('copied');
+                    button.innerHTML = '<i class="fas fa-copy me-1"></i>Copy';
+                }, 2000);
+            }).catch(function() {
+                /* Fallback for older browsers */
+                var textarea = document.createElement('textarea');
+                textarea.value = text;
+                document.body.appendChild(textarea);
+                textarea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textarea);
+                button.classList.add('copied');
+                button.innerHTML = '<i class="fas fa-check me-1"></i>Copied!';
+                setTimeout(function() {
+                    button.classList.remove('copied');
+                    button.innerHTML = '<i class="fas fa-copy me-1"></i>Copy';
+                }, 2000);
+            });
+        }
+
+        /* ========================================
+           Mobile Sidebar Toggle
+           ======================================== */
+        var mobileToggle = document.getElementById('mobileToggle');
+        var sidebar = document.getElementById('sidebar');
+        var sidebarOverlay = document.getElementById('sidebarOverlay');
+
+        mobileToggle.addEventListener('click', function() {
+            sidebar.classList.toggle('show');
+            sidebarOverlay.classList.toggle('show');
+        });
+
+        sidebarOverlay.addEventListener('click', function() {
+            sidebar.classList.remove('show');
+            sidebarOverlay.classList.remove('show');
+        });
+
+        /* Close sidebar when a nav link is clicked on mobile */
+        var sidebarLinks = document.querySelectorAll('.sidebar-link, .sidebar-back a');
+        sidebarLinks.forEach(function(link) {
+            link.addEventListener('click', function() {
+                if (window.innerWidth < 992) {
+                    sidebar.classList.remove('show');
+                    sidebarOverlay.classList.remove('show');
+                }
+            });
+        });
+    </script>
+
+</body>
+</html>
