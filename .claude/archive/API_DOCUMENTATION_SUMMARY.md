@@ -1,6 +1,6 @@
 # 📚 SIGNula API Documentation - Complete Summary
 
-**Date**: 2026-02-03
+**Date**: 2026-02-18
 **Status**: ✅ **COMPLETE**
 
 ---
@@ -119,7 +119,8 @@
 | OAuth Linking | 5 | ✅ Complete |
 | Utilities | 2 | ✅ Complete |
 | WebAuthn | 4 | ✅ Documented separately |
-| **Total** | **33** | **✅ Complete** |
+| Webhooks (Inbound) | 5 | ✅ Complete (Stripe, PayPal, Coinbase, Ko-fi, Patreon) |
+| **Total** | **38** | **✅ Complete** |
 
 ### Documentation Features
 

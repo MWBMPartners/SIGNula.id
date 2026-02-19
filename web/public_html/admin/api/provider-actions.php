@@ -5,7 +5,7 @@
  * ============================================================================
  *
  * Purpose: Admin API endpoint for managing payment provider configuration
- *          (Stripe, PayPal, Coinbase Commerce). Allows super admins to view,
+ *          (Stripe, PayPal, Coinbase Commerce, Ko-fi, Patreon). Allows super admins to view,
  *          update, and test payment provider settings stored in tblSettings.
  *
  * Actions (GET):
@@ -175,9 +175,11 @@ function handleGetProviders(): void
     // 🏗️ Initialize provider structure with empty defaults
     // This ensures all expected keys exist even if not yet in the database
     $providers = [
-        'stripe' => [],
-        'paypal' => [],
-        'crypto' => [],
+        'stripe'  => [],
+        'paypal'  => [],
+        'crypto'  => [],
+        'kofi'    => [],
+        'patreon' => [],
     ];
 
     // 🔑 Keys that should NEVER be masked — they are public by design
@@ -188,6 +190,8 @@ function handleGetProviders(): void
     $publicKeys = [
         'payment.stripe.publishable_key',
         'payment.paypal.client_id',
+        'payment.kofi.page_url',
+        'payment.patreon.campaign_id',
     ];
 
     // 🔄 Process each setting and organize by provider
@@ -284,7 +288,7 @@ function handleUpdateProvider(?array $input): void
 {
     // ✅ Validate provider name
     $provider = trim($input['provider'] ?? '');
-    $validProviders = ['stripe', 'paypal', 'crypto'];
+    $validProviders = ['stripe', 'paypal', 'crypto', 'kofi', 'patreon'];
 
     if (!in_array($provider, $validProviders, true)) {
         throw new Exception('Invalid provider. Must be one of: ' . implode(', ', $validProviders));
@@ -306,6 +310,12 @@ function handleUpdateProvider(?array $input): void
         'payment.paypal.client_secret',
         'payment.crypto.api_key',
         'payment.crypto.webhook_secret',
+        'payment.kofi.verification_token',
+        'payment.patreon.client_id',
+        'payment.patreon.client_secret',
+        'payment.patreon.webhook_secret',
+        'payment.patreon.creator_access_token',
+        'payment.patreon.creator_refresh_token',
     ];
 
     // 📝 Track which keys were actually updated (for activity logging)
@@ -411,7 +421,7 @@ function handleTestConnection(?array $input): void
 {
     // ✅ Validate provider name
     $provider = trim($input['provider'] ?? '');
-    $validProviders = ['stripe', 'paypal', 'crypto'];
+    $validProviders = ['stripe', 'paypal', 'crypto', 'kofi', 'patreon'];
 
     if (!in_array($provider, $validProviders, true)) {
         throw new Exception('Invalid provider. Must be one of: ' . implode(', ', $validProviders));
@@ -465,6 +475,34 @@ function handleTestConnection(?array $input): void
 
             require_once $filePath;
             return CoinbaseProvider::testConnection();
+        })(),
+
+        // ☕ KO-FI — Test configuration
+        // @see https://ko-fi.com/manage/webhooks — Ko-fi Webhook Settings
+        'kofi' => (function () use ($providerBasePath) {
+            $filePath = $providerBasePath . 'KofiProvider.php';
+
+            // 📂 Verify the provider class file exists before loading
+            if (!file_exists($filePath)) {
+                throw new Exception('Ko-fi provider class not found. Ensure KofiProvider.php exists in the payments directory.');
+            }
+
+            require_once $filePath;
+            return KofiProvider::testConnection();
+        })(),
+
+        // 🎨 PATREON — Test by fetching campaign info
+        // @see https://docs.patreon.com/ — Patreon API Documentation
+        'patreon' => (function () use ($providerBasePath) {
+            $filePath = $providerBasePath . 'PatreonProvider.php';
+
+            // 📂 Verify the provider class file exists before loading
+            if (!file_exists($filePath)) {
+                throw new Exception('Patreon provider class not found. Ensure PatreonProvider.php exists in the payments directory.');
+            }
+
+            require_once $filePath;
+            return PatreonProvider::testConnection();
         })(),
 
         // ❌ Fallback (should not reach here due to earlier validation)
@@ -527,7 +565,7 @@ function handleGetWebhookLogs(): void
 
     // 🔍 Optional provider filter — only return logs for a specific provider
     if ($provider !== '') {
-        $validProviders = ['stripe', 'paypal', 'coinbase'];
+        $validProviders = ['stripe', 'paypal', 'coinbase', 'kofi', 'patreon'];
 
         if (!in_array($provider, $validProviders, true)) {
             throw new Exception('Invalid provider filter. Must be one of: ' . implode(', ', $validProviders));

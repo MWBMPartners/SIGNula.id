@@ -1,7 +1,7 @@
 # 📚 SIGNula Documentation Index
 
-**Version:** 2.1.0-beta
-**Last Updated:** February 4, 2026
+**Version:** 2.5.0-beta
+**Last Updated:** February 18, 2026
 
 ---
 
@@ -28,6 +28,9 @@
 ### 🧪 Testing
 - [TESTING_GUIDE_COMPREHENSIVE.md](TESTING_GUIDE_COMPREHENSIVE.md) - Complete test suite (300+ tests)
 - [QUICK_TEST_REFERENCE.md](QUICK_TEST_REFERENCE.md) - 30-minute rapid validation
+- [testing/TESTING_LOCAL_ACCOUNTS.md](testing/TESTING_LOCAL_ACCOUNTS.md) - Local account testing (registration, login, MFA, passkeys)
+- [testing/TESTING_THIRD_PARTY_LINKING.md](testing/TESTING_THIRD_PARTY_LINKING.md) - Third-party OAuth linking tests
+- [testing/TESTING_API_INTEGRATION.md](testing/TESTING_API_INTEGRATION.md) - API integration setup and testing guide
 
 ### 🌐 API Documentation
 - **For Partners:**
@@ -132,6 +135,9 @@
 | Delegate Email Docs | ✅ Current | 2026-02-03 | Admins/Devs |
 | OAuth Integration Examples | ✅ Current | 2026-02-03 | Partners |
 | Version Management | ✅ Current | 2026-02-03 | Developers |
+| Testing: Local Accounts | ✅ Current | 2026-02-18 | QA/Admins |
+| Testing: Third-Party Linking | ✅ Current | 2026-02-18 | QA/Admins |
+| Testing: API Integration | ✅ Current | 2026-02-18 | Partners/Devs |
 
 ### Archived (Still Valid but Superseded)
 | Document | Superseded By | Notes |
@@ -211,8 +217,8 @@
 
 ---
 
-**Last Updated:** February 4, 2026
-**Documentation Version:** 2.1.0-beta
+**Last Updated:** February 18, 2026
+**Documentation Version:** 2.5.0-beta
 **Maintained by:** SIGNula Development Team
 
 ---

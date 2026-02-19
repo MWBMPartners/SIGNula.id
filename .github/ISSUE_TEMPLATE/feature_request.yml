@@ -1,0 +1,60 @@
+name: "\u2728 Feature Request"
+description: Suggest a new feature or enhancement
+title: "[Feature]: "
+labels: ["type: feature", "status: needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Have an idea for a new feature or improvement? We'd love to hear it!
+        Please describe the feature and the problem it would solve.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: What problem would this feature solve?
+      placeholder: I'm frustrated when...
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: How would you like this to work?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Other approaches you've considered
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which part of SIGNula would this affect?
+      options:
+        - Authentication
+        - API
+        - Payments
+        - OAuth
+        - Admin Panel
+        - Partner Dashboard
+        - Email System
+        - UI/Frontend
+        - Database
+        - Other
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Suggested Priority
+      description: How important do you consider this feature?
+      options:
+        - Nice to have
+        - Should have
+        - Must have
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: Any other context, mockups, or references

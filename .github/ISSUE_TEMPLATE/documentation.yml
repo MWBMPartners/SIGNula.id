@@ -1,0 +1,67 @@
+name: "\U0001F4DA Documentation Issue"
+description: Report missing, incorrect, or unclear documentation
+title: "[Docs]: "
+labels: ["type: docs", "status: needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Help us improve SIGNula's documentation! Please describe the issue below.
+  - type: input
+    id: page
+    attributes:
+      label: Page or Section
+      description: Which documentation page or section is affected?
+      placeholder: e.g., API Reference > Authentication, README.md, CONTRIBUTING.md
+    validations:
+      required: true
+  - type: dropdown
+    id: issue_type
+    attributes:
+      label: Issue Type
+      description: What kind of documentation issue is this?
+      options:
+        - Missing documentation
+        - Incorrect information
+        - Unclear or confusing
+        - Outdated content
+        - Typo or formatting
+        - Missing code examples
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Describe the documentation issue in detail
+      placeholder: The documentation states... but actually...
+    validations:
+      required: true
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Suggested Improvement
+      description: How would you improve this documentation?
+      placeholder: I suggest changing it to...
+  - type: dropdown
+    id: component
+    attributes:
+      label: Documentation Area
+      description: Which area of documentation is affected?
+      options:
+        - API Reference
+        - Getting Started / Setup
+        - Configuration
+        - Authentication Guide
+        - Payment Integration
+        - Partner Integration
+        - Admin Guide
+        - Code Comments / Inline Docs
+        - README
+        - CHANGELOG
+        - Other
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: Any other context, links, or screenshots

@@ -1,6 +1,6 @@
 # SIGNula.ID - Universal Login System
 
-![Version](https://img.shields.io/badge/version-2.4.0--beta-blue)
+![Version](https://img.shields.io/badge/version-2.5.0--beta-blue)
 ![PHP](https://img.shields.io/badge/PHP-8.3%2B-777BB4?logo=php)
 ![MySQL](https://img.shields.io/badge/MySQL-8.0%2B-4479A1?logo=mysql)
 ![License](https://img.shields.io/badge/license-Proprietary-red)
@@ -10,9 +10,9 @@
 
 **SIGNula** is a comprehensive, universal single sign-on (SSO) authentication system designed to provide seamless user authentication across multiple web and mobile applications. Built with security, scalability, and user experience as top priorities, SIGNula offers a modern authentication solution for today's interconnected digital ecosystem.
 
-**Current Status:** Core Platform Complete ✅ | Security 100% ✅ | Webhooks ✅ | Payments 100% ✅ | Two-Tier Payments ✅
+**Current Status:** Core Platform Complete ✅ | Security 100% ✅ | Webhooks ✅ | Payments 100% ✅ | Two-Tier Payments ✅ | Ko-fi & Patreon ✅
 
-**Latest Version:** 2.4.0-beta (February 13, 2026)
+**Latest Version:** 2.5.0-beta (February 18, 2026)
 
 **Completed Phases:**
 
@@ -22,6 +22,7 @@
 - ✅ Phase 3.6: Webhook Signatures, Payment System & Deployment Prep (100%)
 - ✅ Phase 3.7: Payment Provider Integration — Stripe, PayPal, Coinbase Commerce (100%)
 - ✅ Phase 3.8: Two-Tier Payment System Expansion — Invoices, Credits, Service Fees, Billing (100%)
+- ✅ Phase 3.9: Ko-fi & Patreon Payment Providers + Testing Documentation (100%)
 - ✅ Phase 4: Public Web Interface (100%)
 - ✅ Phase 5: Organization Management (100%)
 - ✅ Phase 6: Support Ticket System (100%)
@@ -91,6 +92,8 @@
   - **Stripe** (Card, Link, Apple Pay, Google Pay) via Checkout Sessions
   - **PayPal** (REST API v2, Orders, Subscriptions)
   - **Coinbase Commerce** (BTC, ETH, USDT, USDC) with configurable crypto discount
+  - **Ko-fi** (Donations, Subscriptions, Shop Orders) via webhook integration
+  - **Patreon** (Pledge management, tier mapping) via OAuth 2.0 API v2
   - Public pricing page with monthly/yearly toggle and discount codes
   - Checkout flow with provider selection and order summary
   - Inbound webhook receivers with signature verification (HMAC-SHA256)

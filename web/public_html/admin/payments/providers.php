@@ -185,6 +185,14 @@ $accessControl->requireSuperAdmin();
         /* @see https://docs.cdp.coinbase.com/commerce-onchain/docs/ — Coinbase Commerce API */
         .crypto-header { background: linear-gradient(135deg, #f7931a, #ffb347); }
 
+        /* ☕ Ko-fi — official brand colour #ff5e5b (Ko-fi coral red) */
+        /* @see https://ko-fi.com/brand — Ko-fi Brand Guidelines */
+        .kofi-header { background: linear-gradient(135deg, #ff5e5b, #ff8a88); }
+
+        /* 🎨 Patreon — official brand colour #f96854 (Patreon coral) */
+        /* @see https://www.patreon.com/brand — Patreon Brand Guidelines */
+        .patreon-header { background: linear-gradient(135deg, #f96854, #ff8c7c); }
+
         /* ═══════════════════════════════════════════════════════════════ */
         /* 📱 Responsive form adjustments for smaller screens            */
         /* ═══════════════════════════════════════════════════════════════ */
@@ -211,7 +219,7 @@ $accessControl->requireSuperAdmin();
                     <h1 class="mb-2">
                         <i class="fas fa-plug me-2"></i>Payment Providers
                     </h1>
-                    <p class="mb-0 opacity-75">Configure Stripe, PayPal, and cryptocurrency payment processing</p>
+                    <p class="mb-0 opacity-75">Configure payment and subscription provider settings</p>
                 </div>
                 <div class="col-md-4 text-end">
                     <!-- 🔄 Refresh button — reloads all provider data via AJAX -->
@@ -575,6 +583,161 @@ $accessControl->requireSuperAdmin();
                     </div>
                 </div>
             </div>
+
+            <!-- ═══════════════════════════════════════════════════════ -->
+            <!-- ☕ KO-FI CONFIGURATION CARD                             -->
+            <!-- @see https://ko-fi.com/manage/webhooks — Ko-fi Webhooks -->
+            <!-- ═══════════════════════════════════════════════════════ -->
+            <div class="col-lg-4">
+                <div class="provider-card">
+                    <!-- ☕ Ko-fi card header with brand colour -->
+                    <div class="card-header kofi-header d-flex justify-content-between align-items-center">
+                        <div>
+                            <i class="fas fa-mug-hot fa-lg me-2"></i>Ko-fi
+                        </div>
+                        <!-- 🏷️ Enabled/Disabled badge — updated dynamically -->
+                        <span id="kofi-status-badge" class="badge bg-secondary">Loading...</span>
+                    </div>
+                    <div class="card-body">
+                        <!-- 🔘 Enabled toggle switch -->
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" id="kofi-enabled" role="switch">
+                            <label class="form-check-label fw-semibold" for="kofi-enabled">
+                                <i class="fas fa-power-off me-1"></i>Enable Ko-fi
+                            </label>
+                        </div>
+
+                        <!-- 🔒 Verification Token — masked by default with reveal toggle -->
+                        <!-- @see https://ko-fi.com/manage/webhooks — Ko-fi Webhook Verification -->
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold"><i class="fas fa-lock me-1"></i>Verification Token</label>
+                            <div class="credential-field">
+                                <input type="password" id="kofi-verification-token" class="form-control" placeholder="Ko-fi Verification Token..." autocomplete="off">
+                                <button type="button" class="toggle-visibility" onclick="togglePasswordVisibility('kofi-verification-token')" title="Toggle visibility">
+                                    <i class="fas fa-eye"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- 🔗 Page URL — public Ko-fi page address -->
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold"><i class="fas fa-link me-1"></i>Page URL</label>
+                            <input type="text" id="kofi-page-url" class="form-control" placeholder="https://ko-fi.com/yourpage" autocomplete="off">
+                        </div>
+
+                        <!-- 🔗 Ko-fi Gold toggle — enables subscription support -->
+                        <!-- @see https://ko-fi.com/gold — Ko-fi Gold (Subscriptions) -->
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" id="kofi-gold-enabled" role="switch">
+                            <label class="form-check-label fw-semibold" for="kofi-gold-enabled">
+                                <i class="fas fa-crown me-1"></i>Enable Ko-fi Gold (Subscriptions)
+                            </label>
+                        </div>
+
+                        <!-- 🔧 Action buttons — Test Connection + Save -->
+                        <div class="d-grid gap-2">
+                            <button id="test-kofi-btn" class="btn btn-outline-primary" onclick="testConnection('kofi')">
+                                <i class="fas fa-plug me-1"></i>Test Connection
+                            </button>
+                            <button class="btn btn-success" onclick="saveProvider('kofi')">
+                                <i class="fas fa-save me-1"></i>Save Ko-fi Settings
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ═══════════════════════════════════════════════════════ -->
+            <!-- 🎨 PATREON CONFIGURATION CARD                           -->
+            <!-- @see https://docs.patreon.com/ — Patreon API Docs      -->
+            <!-- ═══════════════════════════════════════════════════════ -->
+            <div class="col-lg-4">
+                <div class="provider-card">
+                    <!-- 🎨 Patreon card header with brand colour -->
+                    <div class="card-header patreon-header d-flex justify-content-between align-items-center">
+                        <div>
+                            <i class="fab fa-patreon fa-lg me-2"></i>Patreon
+                        </div>
+                        <!-- 🏷️ Enabled/Disabled badge — updated dynamically -->
+                        <span id="patreon-status-badge" class="badge bg-secondary">Loading...</span>
+                    </div>
+                    <div class="card-body">
+                        <!-- 🔘 Enabled toggle switch -->
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" id="patreon-enabled" role="switch">
+                            <label class="form-check-label fw-semibold" for="patreon-enabled">
+                                <i class="fas fa-power-off me-1"></i>Enable Patreon
+                            </label>
+                        </div>
+
+                        <!-- 🔑 Client ID — shown in full (not masked) -->
+                        <!-- @see https://docs.patreon.com/#clients-and-api-keys — Patreon API Keys -->
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold"><i class="fas fa-id-badge me-1"></i>Client ID</label>
+                            <input type="text" id="patreon-client-id" class="form-control" placeholder="Patreon Client ID..." autocomplete="off">
+                        </div>
+
+                        <!-- 🔒 Client Secret — masked by default with reveal toggle -->
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold"><i class="fas fa-lock me-1"></i>Client Secret</label>
+                            <div class="credential-field">
+                                <input type="password" id="patreon-client-secret" class="form-control" placeholder="Patreon Client Secret..." autocomplete="off">
+                                <button type="button" class="toggle-visibility" onclick="togglePasswordVisibility('patreon-client-secret')" title="Toggle visibility">
+                                    <i class="fas fa-eye"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- 🔒 Webhook Secret — masked by default with reveal toggle -->
+                        <!-- @see https://docs.patreon.com/#webhooks — Patreon Webhooks -->
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold"><i class="fas fa-satellite-dish me-1"></i>Webhook Secret</label>
+                            <div class="credential-field">
+                                <input type="password" id="patreon-webhook-secret" class="form-control" placeholder="Patreon Webhook Secret..." autocomplete="off">
+                                <button type="button" class="toggle-visibility" onclick="togglePasswordVisibility('patreon-webhook-secret')" title="Toggle visibility">
+                                    <i class="fas fa-eye"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- 🔒 Creator Access Token — masked by default with reveal toggle -->
+                        <!-- @see https://docs.patreon.com/#apiv2-oauth — Patreon OAuth -->
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold"><i class="fas fa-key me-1"></i>Creator Access Token</label>
+                            <div class="credential-field">
+                                <input type="password" id="patreon-access-token" class="form-control" placeholder="Creator Access Token..." autocomplete="off">
+                                <button type="button" class="toggle-visibility" onclick="togglePasswordVisibility('patreon-access-token')" title="Toggle visibility">
+                                    <i class="fas fa-eye"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- 📝 Campaign ID — plain text input -->
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold"><i class="fas fa-bullhorn me-1"></i>Campaign ID</label>
+                            <input type="text" id="patreon-campaign-id" class="form-control" placeholder="Campaign ID..." autocomplete="off">
+                        </div>
+
+                        <!-- 🔗 Sync Members toggle — enables member synchronization -->
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" id="patreon-sync-members" role="switch">
+                            <label class="form-check-label fw-semibold" for="patreon-sync-members">
+                                <i class="fas fa-users me-1"></i>Sync Patreon Members
+                            </label>
+                        </div>
+
+                        <!-- 🔧 Action buttons — Test Connection + Save -->
+                        <div class="d-grid gap-2">
+                            <button id="test-patreon-btn" class="btn btn-outline-primary" onclick="testConnection('patreon')">
+                                <i class="fas fa-plug me-1"></i>Test Connection
+                            </button>
+                            <button class="btn btn-success" onclick="saveProvider('patreon')">
+                                <i class="fas fa-save me-1"></i>Save Patreon Settings
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- ═══════════════════════════════════════════════════════════════ -->
@@ -812,6 +975,8 @@ $accessControl->requireSuperAdmin();
                 populateStripeForm(result.providers.stripe || {});
                 populatePayPalForm(result.providers.paypal || {});
                 populateCryptoForm(result.providers.crypto || {});
+                populateKofiForm(result.providers.kofi || {});
+                populatePatreonForm(result.providers.patreon || {});
                 showAlert('<i class="fas fa-check-circle me-1"></i> Provider settings loaded successfully', 'success');
             } else {
                 showAlert(result.message || 'Failed to load provider settings', 'danger');
@@ -953,6 +1118,75 @@ $accessControl->requireSuperAdmin();
         }
     }
 
+    /**
+     * ☕ Populate the Ko-fi configuration form with data from the API.
+     *
+     * @param {Object} data — Ko-fi provider settings object from the API
+     * @see https://ko-fi.com/manage/webhooks — Ko-fi Webhook Settings
+     */
+    function populateKofiForm(data) {
+        // 🔘 Set the enabled toggle
+        document.getElementById('kofi-enabled').checked = data.enabled === true || data.enabled === 1 || data.enabled === '1';
+
+        // 🏷️ Update the status badge
+        updateStatusBadge('kofi', document.getElementById('kofi-enabled').checked);
+
+        // 🔒 Verification Token — may be masked from API
+        if (data.verification_token) {
+            document.getElementById('kofi-verification-token').value = data.verification_token;
+        }
+
+        // 🔗 Page URL — shown in full
+        if (data.page_url) {
+            document.getElementById('kofi-page-url').value = data.page_url;
+        }
+
+        // 🔗 Ko-fi Gold toggle
+        document.getElementById('kofi-gold-enabled').checked = data.gold_enabled === true || data.gold_enabled === 1 || data.gold_enabled === '1';
+    }
+
+    /**
+     * 🎨 Populate the Patreon configuration form with data from the API.
+     *
+     * @param {Object} data — Patreon provider settings object from the API
+     * @see https://docs.patreon.com/ — Patreon API Documentation
+     */
+    function populatePatreonForm(data) {
+        // 🔘 Set the enabled toggle
+        document.getElementById('patreon-enabled').checked = data.enabled === true || data.enabled === 1 || data.enabled === '1';
+
+        // 🏷️ Update the status badge
+        updateStatusBadge('patreon', document.getElementById('patreon-enabled').checked);
+
+        // 🔑 Client ID — may be masked from API
+        if (data.client_id) {
+            document.getElementById('patreon-client-id').value = data.client_id;
+        }
+
+        // 🔒 Client Secret — may be masked from API
+        if (data.client_secret) {
+            document.getElementById('patreon-client-secret').value = data.client_secret;
+        }
+
+        // 🔒 Webhook Secret — may be masked from API
+        if (data.webhook_secret) {
+            document.getElementById('patreon-webhook-secret').value = data.webhook_secret;
+        }
+
+        // 🔒 Creator Access Token — may be masked from API
+        if (data.creator_access_token) {
+            document.getElementById('patreon-access-token').value = data.creator_access_token;
+        }
+
+        // 📝 Campaign ID — plain text
+        if (data.campaign_id) {
+            document.getElementById('patreon-campaign-id').value = data.campaign_id;
+        }
+
+        // 🔗 Sync Members toggle
+        document.getElementById('patreon-sync-members').checked = data.sync_members === true || data.sync_members === 1 || data.sync_members === '1';
+    }
+
     // ═══════════════════════════════════════════════════════════════
     // 💾 SAVE PROVIDER SETTINGS
     // ═══════════════════════════════════════════════════════════════
@@ -1055,6 +1289,59 @@ $accessControl->requireSuperAdmin();
 
             // 💰 Crypto discount percentage
             settings.crypto_discount = parseFloat(document.getElementById('crypto-discount').value) || 0;
+
+        } else if (provider === 'kofi') {
+            // ☕ Collect Ko-fi-specific settings
+            settings.enabled = document.getElementById('kofi-enabled').checked;
+
+            // 🔒 Only send credentials that aren't masked placeholders
+            const verificationToken = document.getElementById('kofi-verification-token').value.trim();
+            if (verificationToken && !verificationToken.startsWith('••••')) {
+                settings.verification_token = verificationToken;
+            }
+
+            // 🔗 Page URL — plain text, always send if present
+            const pageUrl = document.getElementById('kofi-page-url').value.trim();
+            if (pageUrl) {
+                settings.page_url = pageUrl;
+            }
+
+            // 🔗 Ko-fi Gold toggle
+            settings.gold_enabled = document.getElementById('kofi-gold-enabled').checked;
+
+        } else if (provider === 'patreon') {
+            // 🎨 Collect Patreon-specific settings
+            settings.enabled = document.getElementById('patreon-enabled').checked;
+
+            // 🔑 Only send credentials that aren't masked placeholders
+            const clientId = document.getElementById('patreon-client-id').value.trim();
+            if (clientId && !clientId.startsWith('••••')) {
+                settings.client_id = clientId;
+            }
+
+            const clientSecret = document.getElementById('patreon-client-secret').value.trim();
+            if (clientSecret && !clientSecret.startsWith('••••')) {
+                settings.client_secret = clientSecret;
+            }
+
+            const webhookSecret = document.getElementById('patreon-webhook-secret').value.trim();
+            if (webhookSecret && !webhookSecret.startsWith('••••')) {
+                settings.webhook_secret = webhookSecret;
+            }
+
+            const accessToken = document.getElementById('patreon-access-token').value.trim();
+            if (accessToken && !accessToken.startsWith('••••')) {
+                settings.creator_access_token = accessToken;
+            }
+
+            // 📝 Campaign ID — plain text, always send if present
+            const campaignId = document.getElementById('patreon-campaign-id').value.trim();
+            if (campaignId) {
+                settings.campaign_id = campaignId;
+            }
+
+            // 🔗 Sync Members toggle
+            settings.sync_members = document.getElementById('patreon-sync-members').checked;
         }
 
         return settings;
@@ -1314,6 +1601,8 @@ $accessControl->requireSuperAdmin();
             const providerColor = providerLower === 'stripe' ? '#635bff'
                 : providerLower === 'paypal' ? '#003087'
                 : providerLower === 'coinbase' || providerLower === 'crypto' ? '#f7931a'
+                : providerLower === 'kofi' ? '#ff5e5b'
+                : providerLower === 'patreon' ? '#f96854'
                 : '#6c757d';
 
             // ⏱️ Processing time display
@@ -1392,7 +1681,7 @@ $accessControl->requireSuperAdmin();
      *
      * @see https://developer.mozilla.org/en-US/docs/Web/API/EventTarget/addEventListener
      */
-    ['stripe', 'paypal', 'crypto'].forEach(function(provider) {
+    ['stripe', 'paypal', 'crypto', 'kofi', 'patreon'].forEach(function(provider) {
         const toggle = document.getElementById(`${provider}-enabled`);
         if (toggle) {
             toggle.addEventListener('change', function() {

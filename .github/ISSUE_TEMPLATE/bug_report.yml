@@ -1,0 +1,92 @@
+name: "\U0001F41B Bug Report"
+description: Report a bug or unexpected behaviour in SIGNula
+title: "[Bug]: "
+labels: ["type: bug", "status: needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug! Please fill out the details below.
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear description of what the bug is
+      placeholder: Describe the bug...
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: Step-by-step instructions to reproduce the issue
+      placeholder: |
+        1. Go to '...'
+        2. Click on '...'
+        3. See error
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behaviour
+      description: What you expected to happen
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behaviour
+      description: What actually happened
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which part of SIGNula is affected?
+      options:
+        - Authentication (login/register/MFA)
+        - API (RESTful endpoints)
+        - Payments (PayPal/Stripe/Coinbase/Ko-fi/Patreon)
+        - OAuth (third-party account linking)
+        - Admin Panel
+        - Partner Dashboard
+        - Email System
+        - UI/Frontend
+        - Database
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options:
+        - Critical (system down/data loss)
+        - High (major feature broken)
+        - Medium (feature partially broken)
+        - Low (minor/cosmetic issue)
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: PHP version, MySQL version, browser, OS
+      placeholder: |
+        - PHP: 8.3.x
+        - MySQL: 8.0.x
+        - Browser: Chrome 121
+        - OS: macOS 15
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots
+      description: Add screenshots if applicable
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Log Output
+      description: Any error logs or console output
+      render: shell

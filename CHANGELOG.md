@@ -16,6 +16,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.5.0-beta] - 2026-02-18
+
+### Added - Ko-fi & Patreon Payment Providers + GitHub Infrastructure
+
+**Database Migration 013** (`_database/migrations/013_kofi_patreon_providers.sql`)
+- Expanded `provider` ENUM in tblPartnerPaymentConfig: added `'kofi'`, `'patreon'`
+- Expanded `paymentMethod` ENUM in tblPayments: added `'kofi'`, `'patreon'`
+- 7 Ko-fi settings (payment.kofi.*) including encrypted verification token
+- 11 Patreon settings (payment.patreon.*) including encrypted OAuth credentials
+- 2 provider discount entries (kofi, patreon — inactive by default)
+- 2 feature toggles: `kofi_payments`, `patreon_payments`
+- 4 email templates: kofi_donation_received, kofi_subscription_started, patreon_pledge_created, patreon_pledge_cancelled
+
+**New Payment Provider Classes** (2,374 lines total)
+- **KofiProvider.php** (1,073 lines) — Webhook-only flow, verification_token auth, handles Donation/Subscription/Shop Order
+- **PatreonProvider.php** (1,301 lines) — OAuth 2.0 API v2, HMAC-MD5 webhooks, campaign tier management, member pledge tracking
+
+**New Webhook Receivers** (653 lines)
+- `web/public_html/webhooks/kofi.php` (333 lines) — Ko-fi webhook endpoint with form-encoded POST handling
+- `web/public_html/webhooks/patreon.php` (320 lines) — Patreon webhook endpoint with X-Patreon-Signature verification
+
+**Admin UI Updates**
+- Updated `providers.php` — Added Ko-fi (coral #ff5e5b) and Patreon (#f96854) configuration cards
+- Updated `provider-actions.php` — Added kofi/patreon to save, test, and webhook log handlers
+
+**Testing Documentation** (3 new guides)
+- `_docs/testing/TESTING_LOCAL_ACCOUNTS.md` — Account registration, login, MFA, passkeys, passwordless testing
+- `_docs/testing/TESTING_THIRD_PARTY_LINKING.md` — OAuth provider linking tests (Google, Microsoft, Apple, Facebook)
+- `_docs/testing/TESTING_API_INTEGRATION.md` — API setup, authentication, endpoints, webhook, code examples (PHP/JS/Python/cURL)
+
+**GitHub Repository Infrastructure**
+- Issue templates: bug report, feature request, documentation (YAML forms)
+- Pull request template with checklist
+- SECURITY.md — Vulnerability reporting policy
+- CONTRIBUTING.md — Development setup, code style, PR process
+- Custom labels: priority, type, status, component (20+ labels)
+
+**GitHub Wiki** (9 pages)
+- Home, Getting Started, Configuration Guide, API Integration Guide
+- Authentication Setup, Payment Configuration, Security Best Practices, Troubleshooting
+- Sidebar navigation
+
+---
+
 ## [2.4.0-beta] - 2026-02-13
 
 ### Added - Two-Tier Payment System Expansion
@@ -1119,7 +1163,8 @@ MAJOR.MINOR.PATCH-prerelease+build
 
 ---
 
-[Unreleased]: https://github.com/MWBMPartners/SIGNula.id/compare/v2.4.0-beta...HEAD
+[Unreleased]: https://github.com/MWBMPartners/SIGNula.id/compare/v2.5.0-beta...HEAD
+[2.5.0-beta]: https://github.com/MWBMPartners/SIGNula.id/compare/v2.4.0-beta...v2.5.0-beta
 [2.4.0-beta]: https://github.com/MWBMPartners/SIGNula.id/compare/v2.3.0-beta...v2.4.0-beta
 [2.3.0-beta]: https://github.com/MWBMPartners/SIGNula.id/compare/v2.2.3-beta...v2.3.0-beta
 [2.2.3-beta]: https://github.com/MWBMPartners/SIGNula.id/compare/v2.2.2-beta...v2.2.3-beta
