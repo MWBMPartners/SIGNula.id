@@ -179,9 +179,16 @@ require_once __DIR__ . '/../../../private_html/layout/public-header.php';
 
                                         <div class="d-flex justify-content-between align-items-center mt-3">
                                             <div class="d-flex align-items-center">
-                                                <img src="https://www.gravatar.com/avatar/<?php echo md5(strtolower(trim($post['authorEmail']))); ?>?s=40&d=mp" 
-                                                     class="rounded-circle me-2" 
-                                                     alt="<?php echo htmlspecialchars($post['authorName']); ?>">
+                                                <?php
+                                                    // 🖼️ Blog list author avatar
+                                                    $listAuthorAvatar = (class_exists('AvatarService') && !empty($post['authorID']))
+                                                        ? AvatarService::resolve((int)$post['authorID'], null, 48)
+                                                        : AvatarService::getGravatarUrl($post['authorEmail'] ?? '', 40);
+                                                ?>
+                                                <img src="<?php echo htmlspecialchars($listAuthorAvatar ?? ''); ?>"
+                                                     class="rounded-circle me-2"
+                                                     alt="<?php echo htmlspecialchars($post['authorName']); ?>"
+                                                     style="width: 40px; height: 40px; object-fit: cover;">
                                                 <div>
                                                     <small class="text-muted d-block">By <?php echo htmlspecialchars($post['authorName']); ?></small>
                                                     <small class="text-muted">

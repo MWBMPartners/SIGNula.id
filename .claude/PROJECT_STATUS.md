@@ -12,6 +12,7 @@ SIGNula is a comprehensive universal single sign-on (SSO) authentication system 
 
 **Latest Milestones:**
 
+- ✅ Phase 12 Complete (Feb 20, 2026): Avatar System — AvatarService (750 lines), 5 fallback services, upload processing, profile UI, 5 API endpoints, serve endpoint (40 tests)
 - ✅ Phase 11.1 Complete (Feb 20, 2026): Form Hardening — Local Form Protection (honeypot/timing/JS), HTML5 validation, CSRF/XSS/sanitization fixes (1 class, 22 tests)
 - ✅ Phase 11 Complete (Feb 19, 2026): Advanced Security — CAPTCHA, IP Reputation, Bot Detection, Session Fingerprinting, Alerts (6 classes, 104 tests)
 - ✅ Phase 10 Progress (Feb 19, 2026): Automated Test Suite (176 tests), PHPUnit 10.x infrastructure, DB consolidation
@@ -53,7 +54,7 @@ SIGNula is a comprehensive universal single sign-on (SSO) authentication system 
 | **Ko-fi & Patreon Integration** | ✅ Complete | 100% | Webhook receivers, admin UI, provider classes |
 | **Deployment Checklist** | ✅ Complete | 100% | UI-based readiness checker |
 | **Documentation** | ✅ Complete | 100% | Comprehensive guides + testing docs |
-| **Testing** | 🟢 In Progress | 90% | 256 automated tests (210 unit + 46 integration), 853 assertions + 4 testing guides |
+| **Testing** | 🟢 In Progress | 90% | 296 automated tests (250 unit + 46 integration), 975 assertions + 4 testing guides |
 | **GitHub Infrastructure** | ✅ Complete | 100% | Issue templates, PR templates, Wiki |
 | **Admin Dashboard** | ✅ Complete | 100% | 35+ pages complete |
 | **Public Web Interface** | ✅ Complete | 100% | Marketing pages live |
@@ -205,7 +206,7 @@ SIGNula is a comprehensive universal single sign-on (SSO) authentication system 
 
 **Status:** ✅ Production-Ready
 
-**31+ Endpoints Across 4 Controllers:**
+**36+ Endpoints Across 4 Controllers:**
 
 #### AuthController (7 endpoints)
 
@@ -217,9 +218,9 @@ SIGNula is a comprehensive universal single sign-on (SSO) authentication system 
 - POST /api/v1/auth/forgot-password
 - POST /api/v1/auth/reset-password
 
-#### UserController (9 endpoints)
+#### UserController (14 endpoints)
 
-- GET /api/v1/user/profile
+- GET /api/v1/user/profile (includes avatar_url, avatar_urls)
 - PUT /api/v1/user/profile
 - GET /api/v1/user/sessions
 - DELETE /api/v1/user/session/{id}
@@ -228,6 +229,11 @@ SIGNula is a comprehensive universal single sign-on (SSO) authentication system 
 - PUT /api/v1/user/preferences
 - POST /api/v1/user/change-password
 - POST /api/v1/user/change-email
+- POST /api/v1/user/avatar (upload)
+- DELETE /api/v1/user/avatar (remove)
+- PUT /api/v1/user/avatar/source (set OAuth source)
+- GET /api/v1/user/avatar/sources (available sources)
+- PUT /api/v1/user/avatar/fallback-priority (reorder)
 
 #### MFAController (6 endpoints)
 

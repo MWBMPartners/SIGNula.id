@@ -1,0 +1,19 @@
+# ============================================================================
+# 🖼️ SIGNula Avatar Serve Endpoint — URL Rewriting
+# ============================================================================
+# Rewrites /avatar/{uuid} and /avatar/{uuid}/{size} to index.php
+# This keeps URLs clean and hides the PHP extension from users.
+#
+# URL patterns:
+#   /avatar/550e8400-e29b-41d4-a716-446655440000       → 96px default
+#   /avatar/550e8400-e29b-41d4-a716-446655440000/256   → 256px
+#   /avatar/550e8400-e29b-41d4-a716-446655440000/48    → 48px
+# ============================================================================
+
+RewriteEngine On
+
+# 🔗 Rewrite /avatar/{uuid}/{size} to index.php
+RewriteRule ^([a-f0-9\-]{36})/([0-9]+)/?$ index.php?uuid=$1&size=$2 [L,QSA]
+
+# 🔗 Rewrite /avatar/{uuid} to index.php (default size)
+RewriteRule ^([a-f0-9\-]{36})/?$ index.php?uuid=$1 [L,QSA]

@@ -159,9 +159,41 @@ if (class_exists('Auth')) {
                                 <button class="btn btn-link dropdown-toggle d-flex align-items-center text-decoration-none"
                                         type="button" id="userDropdown" data-bs-toggle="dropdown"
                                         aria-expanded="false">
-                                    <i class="fas fa-user-circle me-2" style="font-size: 1.5rem;"></i>
+                                    <?php
+                                        // 🖼️ Resolve avatar URL with priority chain
+                                        // @see web/private_html/utils/AvatarService.php
+                                        $headerAvatarUrl = class_exists('AvatarService')
+                                            ? AvatarService::resolve((int)$user['userID'], null, 48)
+                                            : '';
+                                        $headerDisplayName = htmlspecialchars($user['displayName'] ?? $user['username'] ?? 'User');
+                                        $headerInitial = htmlspecialchars(mb_strtoupper(mb_substr($user['displayName'] ?? $user['username'] ?? 'U', 0, 1)));
+                                    ?>
+                                    <?php if (!empty($headerAvatarUrl)): ?>
+                                        <!-- 🖼️ Avatar image with initials fallback on load error -->
+                                        <img
+                                            src="<?php echo htmlspecialchars($headerAvatarUrl); ?>"
+                                            alt="<?php echo $headerDisplayName; ?>"
+                                            class="rounded-circle me-2"
+                                            style="width: 32px; height: 32px; object-fit: cover;"
+                                            loading="lazy"
+                                            onerror="this.style.display='none'; this.nextElementSibling.style.display='inline-flex';"
+                                        >
+                                        <span
+                                            class="rounded-circle me-2 d-none align-items-center justify-content-center bg-primary text-white"
+                                            style="width: 32px; height: 32px; font-size: 0.875rem; font-weight: 600;"
+                                            aria-hidden="true"
+                                        ><?php echo $headerInitial; ?></span>
+                                    <?php else: ?>
+                                        <!-- 🔤 CSS initials fallback (no avatar available) -->
+                                        <span
+                                            class="rounded-circle me-2 d-inline-flex align-items-center justify-content-center bg-primary text-white"
+                                            style="width: 32px; height: 32px; font-size: 0.875rem; font-weight: 600;"
+                                            role="img"
+                                            aria-label="Avatar for <?php echo $headerDisplayName; ?>"
+                                        ><?php echo $headerInitial; ?></span>
+                                    <?php endif; ?>
                                     <span class="d-none d-md-inline">
-                                        <?php echo htmlspecialchars($user['displayName'] ?? $user['username'] ?? 'User'); ?>
+                                        <?php echo $headerDisplayName; ?>
                                     </span>
                                 </button>
                                 <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">

@@ -69,5 +69,17 @@
     "mfa.otp.lifetime": 900,
 
     "security.form_protection.enabled": true,
-    "security.form_protection.min_submit_time": 3
+    "security.form_protection.min_submit_time": 3,
+
+    "avatar.max_file_size": 2097152,
+    "avatar.allowed_types": "[\"image/jpeg\",\"image/png\",\"image/gif\",\"image/webp\"]",
+    "avatar.max_dimensions": 2048,
+    "avatar.output_size": 256,
+    "avatar.output_format": "webp",
+    "avatar.output_quality": 85,
+    "avatar.fallback_services": "[\"gravatar\",\"ui_avatars\"]",
+    "avatar.gravatar.default": "mp",
+    "avatar.cache_external_ttl": 3600,
+    "avatar.enable_upload": "1",
+    "avatar.proxy_external": "0"
 }

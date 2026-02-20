@@ -14,6 +14,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Mobile apps (iOS, Android)
 - Advanced analytics and reporting dashboard
 
+### Added - Avatar & Profile Picture System (v2.6.0-beta)
+
+**New Utility Class**
+- `AvatarService.php` (~750 lines) — Complete avatar resolution, upload processing, and fallback service support. Priority chain: partner-specific upload → global SIGNula upload → primary OAuth avatar → fallback services (user-configurable order) → SVG initials avatar. Five external fallback services: Gravatar, Libravatar, UI Avatars, DiceBear, RoboHash. Secure file upload with finfo MIME validation, getimagesize check, GD re-encoding (strips EXIF/payloads), multi-size generation (32/48/64/96/128/256px).
+
+**New Endpoint**
+- `web/public_html/avatar/` — Avatar serve endpoint via userUUID (prevents ID enumeration), HTTP caching with ETag/Last-Modified/304 support, .htaccess URL rewriting
+
+**Database Migration**
+- `016_avatar_support.sql` — New `tblUserAvatars` table (partner-aware, supports upload/oauth/url types), 11 new avatar settings in tblSettings
+
+**UI Updates**
+- `profile.php` — Full avatar management section: upload/remove avatar, use OAuth provider pictures, drag-and-drop fallback priority (Sortable.js), live preview of each service
+- `account.php` — "Use as Avatar" button on linked OAuth accounts, navbar avatar display
+- `public-header.php` — User avatar in authenticated navbar (replaces FontAwesome icon), CSS initials fallback
+- `organization/members.php` — Member avatars via AvatarService::resolve()
+- `blog/index.php` + `blog/post.php` — Author/commenter avatars via AvatarService (replaces hardcoded Gravatar)
+
+**API Endpoints (5 new)**
+- `POST /api/v1/user/avatar` — Upload avatar (multipart/form-data)
+- `DELETE /api/v1/user/avatar` — Remove avatar
+- `PUT /api/v1/user/avatar/source` — Set avatar source (OAuth)
+- `GET /api/v1/user/avatar/sources` — Get available avatar sources
+- `PUT /api/v1/user/avatar/fallback-priority` — Update fallback order
+- `GET /api/v1/user/profile` — Now includes `avatar_url` and `avatar_urls` (small/medium/large)
+
+**Unit Tests (40 new tests)**
+- `AvatarServiceTest.php` — URL generation for all 5 services, SVG initials (extraction, unicode, deterministic colour), configuration accessors, cross-service validation
+
+**Test Fixtures**
+- Updated `_tests/Fixtures/settings.json` with all 11 avatar settings
+
 ### Added - Local Form Protection, HTML5 Validation & Security Hardening (v2.6.0-beta)
 
 **New Security Class**

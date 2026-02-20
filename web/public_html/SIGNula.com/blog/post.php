@@ -132,9 +132,16 @@ require_once __DIR__ . '/../../../private_html/layout/public-header.php';
                     <h1 class="display-4 fw-bold mb-4"><?php echo htmlspecialchars($post['title']); ?></h1>
 
                     <div class="d-flex align-items-center mb-4">
-                        <img src="https://www.gravatar.com/avatar/<?php echo md5(strtolower(trim($post['authorEmail']))); ?>?s=64&d=mp" 
-                             class="rounded-circle me-3" 
-                             alt="<?php echo htmlspecialchars($post['authorName']); ?>">
+                        <?php
+                            // 🖼️ Use AvatarService if available, fallback to Gravatar
+                            $postAuthorAvatar = (class_exists('AvatarService') && !empty($post['authorID']))
+                                ? AvatarService::resolve((int)$post['authorID'], null, 64)
+                                : AvatarService::getGravatarUrl($post['authorEmail'] ?? '', 64);
+                        ?>
+                        <img src="<?php echo htmlspecialchars($postAuthorAvatar ?? ''); ?>"
+                             class="rounded-circle me-3"
+                             alt="<?php echo htmlspecialchars($post['authorName']); ?>"
+                             style="width: 64px; height: 64px; object-fit: cover;">
                         <div>
                             <div class="fw-semibold"><?php echo htmlspecialchars($post['authorName']); ?></div>
                             <small class="text-muted">
@@ -205,9 +212,16 @@ require_once __DIR__ . '/../../../private_html/layout/public-header.php';
                     <div class="card mb-5">
                         <div class="card-body">
                             <div class="d-flex">
-                                <img src="https://www.gravatar.com/avatar/<?php echo md5(strtolower(trim($post['authorEmail']))); ?>?s=80&d=mp" 
-                                     class="rounded-circle me-3" 
-                                     alt="<?php echo htmlspecialchars($post['authorName']); ?>">
+                                <?php
+                                    // 🖼️ Author avatar in "About the Author" section
+                                    $aboutAuthorAvatar = (class_exists('AvatarService') && !empty($post['authorID']))
+                                        ? AvatarService::resolve((int)$post['authorID'], null, 96)
+                                        : AvatarService::getGravatarUrl($post['authorEmail'] ?? '', 80);
+                                ?>
+                                <img src="<?php echo htmlspecialchars($aboutAuthorAvatar ?? ''); ?>"
+                                     class="rounded-circle me-3"
+                                     alt="<?php echo htmlspecialchars($post['authorName']); ?>"
+                                     style="width: 80px; height: 80px; object-fit: cover;">
                                 <div>
                                     <h5 class="mb-2">About <?php echo htmlspecialchars($post['authorName']); ?></h5>
                                     <p class="text-muted mb-0"><?php echo htmlspecialchars($post['authorBio']); ?></p>
@@ -252,9 +266,16 @@ require_once __DIR__ . '/../../../private_html/layout/public-header.php';
                                 <div class="card mb-3">
                                     <div class="card-body">
                                         <div class="d-flex mb-3">
-                                            <img src="https://www.gravatar.com/avatar/<?php echo md5(strtolower(trim($comment['userEmail'] ?? $comment['authorName']))); ?>?s=48&d=mp" 
-                                                 class="rounded-circle me-3" 
-                                                 alt="<?php echo htmlspecialchars($comment['userName'] ?? $comment['authorName']); ?>">
+                                            <?php
+                                                // 🖼️ Comment author avatar
+                                                $commentAvatar = (class_exists('AvatarService') && !empty($comment['userID']))
+                                                    ? AvatarService::resolve((int)$comment['userID'], null, 48)
+                                                    : AvatarService::getGravatarUrl($comment['userEmail'] ?? $comment['authorName'] ?? '', 48);
+                                            ?>
+                                            <img src="<?php echo htmlspecialchars($commentAvatar ?? ''); ?>"
+                                                 class="rounded-circle me-3"
+                                                 alt="<?php echo htmlspecialchars($comment['userName'] ?? $comment['authorName']); ?>"
+                                                 style="width: 48px; height: 48px; object-fit: cover;">
                                             <div>
                                                 <div class="fw-semibold"><?php echo htmlspecialchars($comment['userName'] ?? $comment['authorName']); ?></div>
                                                 <small class="text-muted"><?php echo date('F j, Y \a\t g:i A', strtotime($comment['createdAt'])); ?></small>

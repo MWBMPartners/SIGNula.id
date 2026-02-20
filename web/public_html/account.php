@@ -158,6 +158,78 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         }
                     }
                     break;
+
+                case 'set_provider_avatar':
+                    // 🖼️ Use a linked provider's profile picture as the SIGNula avatar
+                    $avatarProvider = SecurityUtils::sanitizeString($_POST['avatar_provider'] ?? '');
+
+                    if (empty($avatarProvider) || !class_exists('AvatarService')) {
+                        $error = 'Unable to set profile picture.';
+                    } else {
+                        // 🔍 Look up the provider's profile picture from tblUserLinkedAccounts
+                        $linkedAccount = Database::fetchOne(
+                            "SELECT profilePicture, displayName
+                             FROM tblUserLinkedAccounts
+                             WHERE userID = ? AND provider = ? AND profilePicture IS NOT NULL AND profilePicture != ''",
+                            [$user['userID'], $avatarProvider],
+                            'is'
+                        );
+
+                        if ($linkedAccount === null) {
+                            $error = 'No profile picture available from this provider.';
+                        } else {
+                            // 🗑️ Clean existing upload files if present
+                            AvatarService::deleteAvatar($user['userID']);
+
+                            // 🗄️ Upsert avatar record as 'url' type (global context)
+                            $existingAvatar = Database::fetchOne(
+                                "SELECT avatarID FROM tblUserAvatars WHERE userID = ? AND partnerID IS NULL LIMIT 1",
+                                [$user['userID']],
+                                'i'
+                            );
+
+                            if ($existingAvatar !== null) {
+                                Database::query(
+                                    "UPDATE tblUserAvatars
+                                     SET avatarType = 'url', avatarPath = NULL, avatarURL = ?,
+                                         oauthAccountID = NULL, mimeType = NULL, fileSize = NULL,
+                                         width = NULL, height = NULL, isActive = TRUE
+                                     WHERE avatarID = ?",
+                                    [$linkedAccount['profilePicture'], $existingAvatar['avatarID']],
+                                    'si'
+                                );
+                            } else {
+                                Database::query(
+                                    "INSERT INTO tblUserAvatars
+                                     (userID, partnerID, avatarType, avatarURL, isActive)
+                                     VALUES (?, NULL, 'url', ?, TRUE)",
+                                    [$user['userID'], $linkedAccount['profilePicture']],
+                                    'is'
+                                );
+                            }
+
+                            // 🔄 Update tblUsers.profilePicture cache
+                            Database::query(
+                                "UPDATE tblUsers SET profilePicture = ? WHERE userID = ?",
+                                [$linkedAccount['profilePicture'], $user['userID']],
+                                'si'
+                            );
+
+                            // 🧹 Clear AvatarService resolve cache
+                            AvatarService::clearCache($user['userID']);
+
+                            ActivityLogger::log($user['userID'], 'avatar_provider_set', 'account', 'info',
+                                "Set {$avatarProvider} profile picture as SIGNula avatar",
+                                ['provider' => $avatarProvider]);
+
+                            $success = ucfirst($avatarProvider) . ' profile picture set as your SIGNula avatar!';
+
+                            // Refresh user data
+                            Auth::$currentUser = null;
+                            $user = Auth::getCurrentUser();
+                        }
+                    }
+                    break;
             }
 
         } catch (Exception $e) {
@@ -227,9 +299,26 @@ $pageTitle = 'Account Settings - SIGNula';
                 </li>
                 <li class="nav-item dropdown">
                     <a class="nav-link dropdown-toggle d-flex align-items-center" href="#" id="userDropdown" role="button" data-bs-toggle="dropdown">
-                        <div style="width: 32px; height: 32px; border-radius: 50%; background: rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center; margin-right: 8px;">
-                            <i class="fas fa-user"></i>
-                        </div>
+                        <?php
+                            // 🖼️ Show user avatar in navbar (with fallback to icon)
+                            $navAvatarUrl = class_exists('AvatarService')
+                                ? AvatarService::resolve($user['userID'], null, 32)
+                                : '';
+                        ?>
+                        <?php if (!empty($navAvatarUrl)): ?>
+                            <img src="<?php echo htmlspecialchars($navAvatarUrl); ?>"
+                                 alt=""
+                                 class="rounded-circle me-2"
+                                 style="width: 32px; height: 32px; object-fit: cover; border: 2px solid rgba(255,255,255,0.3);"
+                                 onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                            <div style="width: 32px; height: 32px; border-radius: 50%; background: rgba(255,255,255,0.2); display: none; align-items: center; justify-content: center; margin-right: 8px;">
+                                <i class="fas fa-user"></i>
+                            </div>
+                        <?php else: ?>
+                            <div style="width: 32px; height: 32px; border-radius: 50%; background: rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center; margin-right: 8px;">
+                                <i class="fas fa-user"></i>
+                            </div>
+                        <?php endif; ?>
                         <span><?php echo htmlspecialchars($user['displayName'] ?? $user['username']); ?></span>
                     </a>
                     <ul class="dropdown-menu dropdown-menu-end">
@@ -544,14 +633,26 @@ $pageTitle = 'Account Settings - SIGNula';
                                     </small>
                                 </div>
                             </div>
-                            <form method="POST" style="display: inline;">
-                                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrfToken); ?>">
-                                <input type="hidden" name="action" value="unlink_oauth">
-                                <input type="hidden" name="provider" value="<?php echo htmlspecialchars($account['provider']); ?>">
-                                <button type="submit" class="btn btn-outline-danger btn-sm" onclick="return confirm('Are you sure you want to unlink your <?php echo htmlspecialchars($providerName); ?> account?');">
-                                    <i class="fas fa-unlink"></i> Unlink
-                                </button>
-                            </form>
+                            <div class="d-flex gap-2">
+                                <?php if (!empty($account['profilePicture']) && class_exists('AvatarService')): ?>
+                                    <form method="POST" style="display: inline;">
+                                        <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrfToken); ?>">
+                                        <input type="hidden" name="action" value="set_provider_avatar">
+                                        <input type="hidden" name="avatar_provider" value="<?php echo htmlspecialchars($account['provider']); ?>">
+                                        <button type="submit" class="btn btn-outline-primary btn-sm" title="Use this account's picture as your SIGNula profile picture">
+                                            <i class="fas fa-user-circle"></i> Use as Avatar
+                                        </button>
+                                    </form>
+                                <?php endif; ?>
+                                <form method="POST" style="display: inline;">
+                                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrfToken); ?>">
+                                    <input type="hidden" name="action" value="unlink_oauth">
+                                    <input type="hidden" name="provider" value="<?php echo htmlspecialchars($account['provider']); ?>">
+                                    <button type="submit" class="btn btn-outline-danger btn-sm" onclick="return confirm('Are you sure you want to unlink your <?php echo htmlspecialchars($providerName); ?> account?');">
+                                        <i class="fas fa-unlink"></i> Unlink
+                                    </button>
+                                </form>
+                            </div>
                         </div>
                     <?php endforeach; ?>
                 </div>

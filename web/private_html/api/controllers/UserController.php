@@ -7,7 +7,7 @@
  * Handles user profile and account management endpoints.
  *
  * Endpoints:
- * - GET /api/v1/user/profile - Get user profile
+ * - GET /api/v1/user/profile - Get user profile (includes avatar_url)
  * - PUT /api/v1/user/profile - Update user profile
  * - GET /api/v1/user/sessions - Get active sessions
  * - DELETE /api/v1/user/session/{id} - Terminate session
@@ -17,6 +17,11 @@
  * - POST /api/v1/user/change-password - Change password
  * - POST /api/v1/user/change-email - Change email address
  * - DELETE /api/v1/user/account - Delete account
+ * - POST /api/v1/user/avatar - Upload avatar (multipart/form-data)
+ * - DELETE /api/v1/user/avatar - Remove avatar
+ * - PUT /api/v1/user/avatar/source - Set avatar source (OAuth)
+ * - GET /api/v1/user/avatar/sources - Get available avatar sources
+ * - PUT /api/v1/user/avatar/fallback-priority - Update fallback order
  *
  * @package    SIGNula
  * @subpackage API\Controllers
@@ -69,6 +74,16 @@ class UserController extends BaseController
             if (!$profile) {
                 $this->notFound('User profile not found');
                 return;
+            }
+
+            // 🖼️ Add avatar URLs if AvatarService is available
+            if (class_exists('AvatarService')) {
+                $profile['avatar_url'] = AvatarService::resolve($user['userID'], null, 96);
+                $profile['avatar_urls'] = [
+                    'small'  => AvatarService::resolve($user['userID'], null, 32),
+                    'medium' => AvatarService::resolve($user['userID'], null, 96),
+                    'large'  => AvatarService::resolve($user['userID'], null, 256),
+                ];
             }
 
             // 🔢 Get additional stats
@@ -543,6 +558,262 @@ class UserController extends BaseController
             $this->error('Failed to change email', Response::HTTP_INTERNAL_ERROR);
         }
     }
+
+    // ============================================================================
+    // 🖼️ AVATAR / PROFILE PICTURE ENDPOINTS
+    // ============================================================================
+
+    /**
+     * 📤 POST /api/v1/user/avatar
+     *
+     * Upload a new profile picture via multipart/form-data.
+     * Expects a 'file' field with the image.
+     *
+     * @param array $params Route parameters
+     * @return void (exits via Response)
+     */
+    public function uploadAvatar(array $params): void
+    {
+        $user = $this->requireAuth();
+
+        if (!class_exists('AvatarService')) {
+            $this->error('Avatar service unavailable', Response::HTTP_INTERNAL_ERROR);
+            return;
+        }
+
+        try {
+            if (!isset($_FILES['file']) || $_FILES['file']['error'] === UPLOAD_ERR_NO_FILE) {
+                $this->error('No image file provided. Send a multipart/form-data request with a "file" field.', Response::HTTP_BAD_REQUEST);
+                return;
+            }
+
+            $result = AvatarService::uploadAvatar($user['userID'], $_FILES['file']);
+
+            if ($result['success']) {
+                $this->success([
+                    'avatar_url' => AvatarService::resolve($user['userID'], null, 96),
+                    'avatar_urls' => [
+                        'small'  => AvatarService::resolve($user['userID'], null, 32),
+                        'medium' => AvatarService::resolve($user['userID'], null, 96),
+                        'large'  => AvatarService::resolve($user['userID'], null, 256),
+                    ],
+                ], 'Avatar uploaded successfully');
+            } else {
+                $this->error($result['error'] ?? 'Failed to upload avatar', Response::HTTP_BAD_REQUEST);
+            }
+
+        } catch (Exception $e) {
+            ErrorLogger::log($e);
+            $this->error('Failed to upload avatar', Response::HTTP_INTERNAL_ERROR);
+        }
+    }
+
+    /**
+     * 🗑️ DELETE /api/v1/user/avatar
+     *
+     * Remove the current uploaded/custom avatar, reverting to fallback chain.
+     *
+     * @param array $params Route parameters
+     * @return void (exits via Response)
+     */
+    public function deleteAvatar(array $params): void
+    {
+        $user = $this->requireAuth();
+
+        if (!class_exists('AvatarService')) {
+            $this->error('Avatar service unavailable', Response::HTTP_INTERNAL_ERROR);
+            return;
+        }
+
+        try {
+            $deleted = AvatarService::deleteAvatar($user['userID']);
+
+            if ($deleted) {
+                $this->success([
+                    'avatar_url' => AvatarService::resolve($user['userID'], null, 96),
+                ], 'Avatar removed successfully. Fallback avatar will be used.');
+            } else {
+                $this->success([
+                    'avatar_url' => AvatarService::resolve($user['userID'], null, 96),
+                ], 'No custom avatar to remove');
+            }
+
+        } catch (Exception $e) {
+            ErrorLogger::log($e);
+            $this->error('Failed to delete avatar', Response::HTTP_INTERNAL_ERROR);
+        }
+    }
+
+    /**
+     * 🔄 PUT /api/v1/user/avatar/source
+     *
+     * Set avatar source (e.g., use an OAuth provider's picture).
+     * Body: { "source": "oauth", "oauth_account_id": 123 }
+     *
+     * @param array $params Route parameters
+     * @return void (exits via Response)
+     */
+    public function setAvatarSource(array $params): void
+    {
+        $user = $this->requireAuth();
+
+        if (!class_exists('AvatarService')) {
+            $this->error('Avatar service unavailable', Response::HTTP_INTERNAL_ERROR);
+            return;
+        }
+
+        $data = $this->input();
+        $source = $data['source'] ?? '';
+
+        try {
+            if ($source === 'oauth') {
+                $oauthAccountID = (int) ($data['oauth_account_id'] ?? 0);
+                if ($oauthAccountID <= 0) {
+                    $this->error('Valid oauth_account_id is required', Response::HTTP_BAD_REQUEST);
+                    return;
+                }
+
+                $result = AvatarService::setOAuthAsAvatar($user['userID'], $oauthAccountID);
+
+                if ($result['success']) {
+                    $this->success([
+                        'avatar_url' => AvatarService::resolve($user['userID'], null, 96),
+                    ], 'Avatar set from OAuth provider');
+                } else {
+                    $this->error($result['error'] ?? 'Failed to set avatar source', Response::HTTP_BAD_REQUEST);
+                }
+            } else {
+                $this->error('Invalid source. Supported: "oauth"', Response::HTTP_BAD_REQUEST);
+            }
+
+        } catch (Exception $e) {
+            ErrorLogger::log($e);
+            $this->error('Failed to set avatar source', Response::HTTP_INTERNAL_ERROR);
+        }
+    }
+
+    /**
+     * 📋 GET /api/v1/user/avatar/sources
+     *
+     * Get available avatar sources for the current user
+     * (uploads, OAuth accounts, fallback services).
+     *
+     * @param array $params Route parameters
+     * @return void (exits via Response)
+     */
+    public function getAvatarSources(array $params): void
+    {
+        $user = $this->requireAuth();
+
+        if (!class_exists('AvatarService')) {
+            $this->error('Avatar service unavailable', Response::HTTP_INTERNAL_ERROR);
+            return;
+        }
+
+        try {
+            // 📸 Current avatar
+            $currentAvatar = AvatarService::resolve($user['userID'], null, 96);
+
+            // 🗄️ Check for uploaded avatar
+            $uploadedAvatar = Database::fetchOne(
+                "SELECT avatarID, avatarType, avatarURL, createdAt
+                 FROM tblUserAvatars
+                 WHERE userID = ? AND partnerID IS NULL AND isActive = 1",
+                [$user['userID']],
+                'i'
+            );
+
+            // 🔗 OAuth accounts with profile pictures
+            $oauthAccounts = Database::fetchAll(
+                "SELECT oauthAccountID, provider, profilePicture, displayName, isPrimary
+                 FROM tblOAuthAccounts
+                 WHERE userID = ? AND isActive = 1 AND profilePicture IS NOT NULL AND profilePicture != ''
+                 ORDER BY isPrimary DESC, provider ASC",
+                [$user['userID']],
+                'i'
+            ) ?? [];
+
+            // ⚙️ Fallback services and priority
+            $fallbackPriority = AvatarService::getUserFallbackPriority($user['userID']);
+
+            $this->success([
+                'current_avatar_url' => $currentAvatar,
+                'uploaded_avatar' => $uploadedAvatar ? [
+                    'avatar_id' => $uploadedAvatar['avatarID'],
+                    'type' => $uploadedAvatar['avatarType'],
+                    'url' => $uploadedAvatar['avatarURL'],
+                    'created_at' => $uploadedAvatar['createdAt'],
+                ] : null,
+                'oauth_accounts' => array_map(function ($account) {
+                    return [
+                        'oauth_account_id' => $account['oauthAccountID'],
+                        'provider' => $account['provider'],
+                        'profile_picture' => $account['profilePicture'],
+                        'display_name' => $account['displayName'],
+                        'is_primary' => (bool) $account['isPrimary'],
+                    ];
+                }, $oauthAccounts),
+                'fallback_priority' => $fallbackPriority,
+                'available_fallback_services' => ['gravatar', 'libravatar', 'ui_avatars', 'dicebear', 'robohash'],
+            ], 'Avatar sources retrieved successfully');
+
+        } catch (Exception $e) {
+            ErrorLogger::log($e);
+            $this->error('Failed to retrieve avatar sources', Response::HTTP_INTERNAL_ERROR);
+        }
+    }
+
+    /**
+     * ⚙️ PUT /api/v1/user/avatar/fallback-priority
+     *
+     * Update the fallback avatar service priority order.
+     * Body: { "priority": ["gravatar", "ui_avatars", "dicebear", "libravatar", "robohash"] }
+     *
+     * @param array $params Route parameters
+     * @return void (exits via Response)
+     */
+    public function updateFallbackPriority(array $params): void
+    {
+        $user = $this->requireAuth();
+
+        if (!class_exists('AvatarService')) {
+            $this->error('Avatar service unavailable', Response::HTTP_INTERNAL_ERROR);
+            return;
+        }
+
+        $data = $this->input();
+        $priority = $data['priority'] ?? null;
+
+        if (!is_array($priority)) {
+            $this->error('priority must be an array of service names', Response::HTTP_BAD_REQUEST);
+            return;
+        }
+
+        // ✅ Validate service names
+        $validServices = ['gravatar', 'libravatar', 'ui_avatars', 'dicebear', 'robohash'];
+        foreach ($priority as $service) {
+            if (!in_array($service, $validServices, true)) {
+                $this->error("Invalid service: {$service}. Valid: " . implode(', ', $validServices), Response::HTTP_BAD_REQUEST);
+                return;
+            }
+        }
+
+        try {
+            AvatarService::setUserFallbackPriority($user['userID'], $priority);
+
+            $this->success([
+                'fallback_priority' => $priority,
+            ], 'Fallback priority updated successfully');
+
+        } catch (Exception $e) {
+            ErrorLogger::log($e);
+            $this->error('Failed to update fallback priority', Response::HTTP_INTERNAL_ERROR);
+        }
+    }
+
+    // ============================================================================
+    // 🔧 PRIVATE HELPER METHODS
+    // ============================================================================
 
     /**
      * 🔍 Check if username exists (excluding current user)

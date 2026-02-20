@@ -394,8 +394,17 @@ $pageTitle = 'Member Management - ' . $organization['name'] . ' - SIGNula';
                                     <td>
                                         <div style="display: flex; align-items: center; gap: 0.75rem;">
                                             <div class="user-avatar">
-                                                <?php if ($member['profilePicture']): ?>
-                                                    <img src="<?php echo htmlspecialchars($member['profilePicture']); ?>" alt="Avatar">
+                                                <?php
+                                                    // 🖼️ Use AvatarService for full priority chain resolution
+                                                    $memberAvatarUrl = class_exists('AvatarService')
+                                                        ? AvatarService::resolve((int)$member['userID'], null, 48)
+                                                        : ($member['profilePicture'] ?? '');
+                                                ?>
+                                                <?php if (!empty($memberAvatarUrl)): ?>
+                                                    <img src="<?php echo htmlspecialchars($memberAvatarUrl); ?>"
+                                                         alt="<?php echo htmlspecialchars($member['displayName'] ?? $member['username']); ?>"
+                                                         style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;"
+                                                         onerror="this.style.display='none'; this.parentElement.textContent='<?php echo htmlspecialchars(strtoupper(substr($member['displayName'] ?? $member['username'], 0, 1))); ?>';">
                                                 <?php else: ?>
                                                     <?php echo strtoupper(substr($member['displayName'] ?? $member['username'], 0, 1)); ?>
                                                 <?php endif; ?>

@@ -227,6 +227,7 @@ $requiredDirs = [
     PRIVATE_DIR . DIRECTORY_SEPARATOR . 'keys',
     PRIVATE_DIR . DIRECTORY_SEPARATOR . 'backups',
     PRIVATE_DIR . DIRECTORY_SEPARATOR . 'templates' . DIRECTORY_SEPARATOR . 'email',
+    PRIVATE_DIR . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . 'avatars', // 🖼️ Avatar uploads
 ];
 
 foreach ($requiredDirs as $dir) {

@@ -117,6 +117,13 @@ $router->group('/api/v1/user', function($router) {
     // Account changes
     $router->post('/change-password', 'UserController@changePassword');
     $router->post('/change-email', 'UserController@changeEmail');
+
+    // 🖼️ Avatar / Profile picture management
+    $router->post('/avatar', 'UserController@uploadAvatar');
+    $router->delete('/avatar', 'UserController@deleteAvatar');
+    $router->put('/avatar/source', 'UserController@setAvatarSource');
+    $router->get('/avatar/sources', 'UserController@getAvatarSources');
+    $router->put('/avatar/fallback-priority', 'UserController@updateFallbackPriority');
 });
 
 // ============================================================================

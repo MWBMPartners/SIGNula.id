@@ -1280,8 +1280,9 @@ API Keys (Partners):
 | **Week 4** | Phase E | Request Logging | Analytics, Dashboard, Monitoring | 🟡 Partial |
 | **Week 5** | Phase F | Advanced Security | CAPTCHA, IP Reputation, Bot Detection, Session Fingerprinting, Alerts | ✅ Complete |
 | **Week 5** | Phase G | Form Hardening | Local Form Protection, HTML5 Validation, CSRF/XSS/Sanitization Fixes | ✅ Complete |
+| **Week 5** | Phase H | Avatar System | AvatarService, fallback services, upload, profile UI, API endpoints | ✅ Complete |
 
-**Total Effort:** ~52 hours (2-3 developer weeks)
+**Total Effort:** ~58 hours (3 developer weeks)
 
 #### Phase F: Advanced Security — CAPTCHA, IP Reputation, Bot Detection, Session Fingerprinting & Alerts ✅ COMPLETE
 **Completed:** February 19, 2026
@@ -1333,7 +1334,38 @@ API Keys (Partners):
 - ✅ `015_form_protection_settings.sql` — 2 new settings
 
 **Unit Tests:**
-- ✅ 22 new tests across 1 test file — all passing (total: 256 tests, 853 assertions)
+- ✅ 22 new tests across 1 test file — all passing (total: 256 tests, 853 assertions at time of Phase G)
+
+#### Phase H: Avatar & Profile Picture System ✅ COMPLETE
+**Completed:** February 20, 2026
+
+**New Utility Class (1 file, ~750 lines):**
+- ✅ `AvatarService.php` — Complete avatar resolution with 5-step priority chain (partner → global → OAuth → fallback services → SVG initials), secure file upload with GD re-encoding, 5 external fallback services (Gravatar, Libravatar, UI Avatars, DiceBear, RoboHash), user-configurable fallback priority, in-request caching
+
+**Avatar Serve Endpoint (2 files):**
+- ✅ `web/public_html/avatar/index.php` — Serves avatars by userUUID (prevents ID enumeration), HTTP caching (ETag, Last-Modified, 304)
+- ✅ `web/public_html/avatar/.htaccess` — URL rewriting for `/avatar/{uuid}/{size}`
+
+**UI Integration (6 files modified):**
+- ✅ `profile.php` — Avatar management section: upload/remove, OAuth account pictures, drag-and-drop fallback priority (Sortable.js)
+- ✅ `account.php` — "Use as Avatar" button on linked accounts, navbar avatar display
+- ✅ `public-header.php` — User avatar in authenticated navbar with CSS initials fallback
+- ✅ `organization/members.php` — Member avatars via AvatarService::resolve()
+- ✅ `blog/index.php` + `blog/post.php` — Author/commenter avatars replacing hardcoded Gravatar
+
+**API Endpoints (5 new):**
+- ✅ POST /api/v1/user/avatar — Upload avatar
+- ✅ DELETE /api/v1/user/avatar — Remove avatar
+- ✅ PUT /api/v1/user/avatar/source — Set avatar source (OAuth)
+- ✅ GET /api/v1/user/avatar/sources — Get available sources
+- ✅ PUT /api/v1/user/avatar/fallback-priority — Update fallback order
+- ✅ GET /api/v1/user/profile now includes avatar_url and avatar_urls
+
+**Database Migration:**
+- ✅ `016_avatar_support.sql` — tblUserAvatars table + 11 new settings
+
+**Unit Tests:**
+- ✅ 40 new tests across 1 test file — all passing (total: 296 tests, 975 assertions)
 
 ### 🎯 Security Enhancement Success Metrics
 
@@ -1375,7 +1407,7 @@ API Keys (Partners):
 ## 📈 Metrics & KPIs
 
 ### Code Quality
-- **Lines of Code:** ~97,000+
+- **Lines of Code:** ~98,500+
   - Phase 1-2: ~18,500 lines
   - Phase 3 API: ~4,500 lines
   - Phase 3.2 Delegate Email: ~1,800 lines
@@ -1395,9 +1427,9 @@ API Keys (Partners):
   - Payments: PaymentManager, StripeProvider, PayPalProvider, CoinbaseProvider
   - Two-Tier: InvoiceManager, CreditManager, ServiceFeeManager, BillingScheduler, PartnerPaymentService, BillingLazyCheck
   - Webhooks: WebhookManager
-- **API Endpoints:** 37+ RESTful endpoints + 12 Admin APIs + 5 Partner APIs
+- **API Endpoints:** 42+ RESTful endpoints + 12 Admin APIs + 5 Partner APIs
   - Auth: 7 endpoints
-  - User: 9 endpoints
+  - User: 14 endpoints (9 original + 5 avatar)
   - MFA: 6 endpoints
   - OAuth: 5 endpoints
   - WebAuthn: 4 endpoints (separate)
@@ -1428,7 +1460,7 @@ API Keys (Partners):
 - **Triggers:** 2 (root admin enforcement)
 - **MySQL Scheduled Events:** 4 (past_due, trial expiry, invoice overdue, billing cleanup)
 - **Indexes:** 90+
-- **Migrations:** 15 complete migrations (001-015)
+- **Migrations:** 16 complete migrations (001-016)
 - **Complete Install:** signula_complete_install_v2.2.3.sql (migrations 001-009)
 
 ### Security
