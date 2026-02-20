@@ -26,8 +26,12 @@ $success = null;
 $fieldErrors = [];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // 🛡️ Verify CSRF token
-    if (!SecurityUtils::verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+    // 🛡️ Security middleware — rate limiting + CAPTCHA verification
+    $securityCheck = SecurityMiddleware::handleFormSubmission('register');
+    if (!$securityCheck['allowed']) {
+        $error = $securityCheck['error'];
+    } elseif (!SecurityUtils::verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+        // 🛡️ Verify CSRF token
         $error = 'Invalid security token. Please try again.';
     } else {
         $email = $_POST['email'] ?? '';
@@ -95,6 +99,9 @@ $pageTitle = 'Create Account - SIGNula';
 
     <!-- 🎨 Custom CSS -->
     <link rel="stylesheet" href="/assets/css/main.css">
+
+    <!-- 🛡️ CAPTCHA Scripts (if enabled) -->
+    <?php echo CaptchaVerifier::getRequiredScripts(); ?>
 </head>
 <body>
 
@@ -139,6 +146,9 @@ $pageTitle = 'Create Account - SIGNula';
                 <!-- 🛡️ CSRF Token -->
                 <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrfToken); ?>">
 
+                <!-- 🛡️ Local Form Protection (honeypot + timing + JS challenge) -->
+                <?php echo FormProtection::renderAllFields(); ?>
+
                 <!-- 👤 Name Fields -->
                 <div class="row">
                     <div class="col-md-6">
@@ -151,6 +161,7 @@ $pageTitle = 'Create Account - SIGNula';
                                 name="first_name"
                                 placeholder="John"
                                 autocomplete="given-name"
+                                maxlength="100"
                                 value="<?php echo htmlspecialchars($_POST['first_name'] ?? ''); ?>"
                             >
                         </div>
@@ -165,6 +176,7 @@ $pageTitle = 'Create Account - SIGNula';
                                 name="last_name"
                                 placeholder="Doe"
                                 autocomplete="family-name"
+                                maxlength="100"
                                 value="<?php echo htmlspecialchars($_POST['last_name'] ?? ''); ?>"
                             >
                         </div>
@@ -186,6 +198,7 @@ $pageTitle = 'Create Account - SIGNula';
                             placeholder="your.email@example.com"
                             required
                             autocomplete="email"
+                            maxlength="255"
                             value="<?php echo htmlspecialchars($_POST['email'] ?? ''); ?>"
                         >
                     </div>
@@ -231,6 +244,7 @@ $pageTitle = 'Create Account - SIGNula';
                             placeholder="Create a strong password"
                             required
                             autocomplete="new-password"
+                            minlength="8"
                             data-validate-password
                             data-strength-meter
                         >
@@ -256,11 +270,12 @@ $pageTitle = 'Create Account - SIGNula';
                             placeholder="Re-enter your password"
                             required
                             autocomplete="new-password"
+                            minlength="8"
                             data-match="#password"
                         >
                     </div>
                     <div class="invalid-feedback">
-                        <?php echo $fieldErrors['confirm_password'] ?? ''; ?>
+                        <?php echo htmlspecialchars($fieldErrors['confirm_password'] ?? ''); ?>
                     </div>
                 </div>
 
@@ -272,6 +287,9 @@ $pageTitle = 'Create Account - SIGNula';
                         <a href="/privacy" target="_blank">Privacy Policy</a>
                     </label>
                 </div>
+
+                <!-- 🛡️ CAPTCHA Widget (if enabled) -->
+                <?php echo CaptchaVerifier::renderWidget('registerForm'); ?>
 
                 <!-- 🔘 Submit Button -->
                 <button type="submit" class="btn btn-primary btn-block btn-lg">

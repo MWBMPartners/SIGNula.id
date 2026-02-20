@@ -11,15 +11,8 @@
  * ============================================================================
  */
 
-// Start session for CSRF token
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
-
-// Generate CSRF token if not exists
-if (!isset($_SESSION['csrf_token'])) {
-    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-}
+// 🚀 Bootstrap the application (provides session, CSRF, security middleware, etc.)
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . '_config' . DIRECTORY_SEPARATOR . 'config.php';
 
 // Page configuration
 $pageTitle = 'Contact Us - SIGNula Universal Authentication System';
@@ -40,16 +33,20 @@ $formData = [
 
 // Process form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Verify CSRF token
-    if (!isset($_POST['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_token']) {
+    // 🛡️ Security middleware — rate limiting + CAPTCHA verification
+    $securityCheck = SecurityMiddleware::handleFormSubmission('contact');
+    if (!$securityCheck['allowed']) {
+        $error = $securityCheck['error'];
+    } elseif (!SecurityUtils::verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+        // 🛡️ Verify CSRF token
         $error = 'Invalid security token. Please try again.';
     } else {
         // Get and sanitize form data
-        $formData['name'] = trim($_POST['name'] ?? '');
-        $formData['email'] = trim($_POST['email'] ?? '');
-        $formData['subject'] = trim($_POST['subject'] ?? '');
-        $formData['message'] = trim($_POST['message'] ?? '');
-        $formData['type'] = $_POST['type'] ?? 'general';
+        $formData['name'] = SecurityUtils::sanitizeString($_POST['name'] ?? '');
+        $formData['email'] = SecurityUtils::sanitizeEmail($_POST['email'] ?? '') ?: '';
+        $formData['subject'] = SecurityUtils::sanitizeString($_POST['subject'] ?? '');
+        $formData['message'] = SecurityUtils::sanitizeString($_POST['message'] ?? '');
+        $formData['type'] = SecurityUtils::sanitizeString($_POST['type'] ?? 'general');
 
         // Validate form data
         $errors = [];
@@ -97,7 +94,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ];
 
             // Regenerate CSRF token
-            $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+            SecurityUtils::generateCSRFToken();
         }
     }
 }
@@ -152,7 +149,10 @@ require_once __DIR__ . '/../../private_html/layout/public-header.php';
 
                         <form method="POST" action="" id="contactForm">
                             <!-- CSRF Token -->
-                            <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">
+                            <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars(SecurityUtils::generateCSRFToken()); ?>">
+
+                            <!-- 🛡️ Local Form Protection (honeypot + timing + JS challenge) -->
+                            <?php echo FormProtection::renderAllFields(); ?>
 
                             <!-- Inquiry Type -->
                             <div class="mb-4">
@@ -203,6 +203,9 @@ require_once __DIR__ . '/../../private_html/layout/public-header.php';
                                     <span id="charCount">0</span> / 2000 characters
                                 </div>
                             </div>
+
+                            <!-- 🛡️ CAPTCHA Widget (if enabled) -->
+                            <?php echo CaptchaVerifier::renderWidget('contactForm'); ?>
 
                             <!-- Submit Button -->
                             <div class="d-grid">

@@ -41,8 +41,12 @@ if (!empty($_SESSION['success'])) {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // 🛡️ Verify CSRF token
-    if (!SecurityUtils::verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+    // 🛡️ Security middleware — rate limiting + CAPTCHA verification
+    $securityCheck = SecurityMiddleware::handleFormSubmission('login');
+    if (!$securityCheck['allowed']) {
+        $error = $securityCheck['error'];
+    } elseif (!SecurityUtils::verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+        // 🛡️ Verify CSRF token
         $error = 'Invalid security token. Please try again.';
     } else {
         $identifier = $_POST['identifier'] ?? '';
@@ -53,6 +57,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $result = Auth::login($identifier, $password, $rememberMe);
 
         if ($result['success']) {
+            // 🌐 Check for impossible travel (login from unexpected location)
+            if (class_exists('SecurityAlertManager') && SecurityAlertManager::isEnabled()) {
+                SecurityAlertManager::checkImpossibleTravel($result['userID'] ?? 0, getClientIP());
+            }
+
             if ($result['requiresMFA']) {
                 // Redirect to MFA verification page
                 redirect('/mfa/verify');
@@ -69,6 +78,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         } else {
             $error = $result['message'];
+
+            // 🚨 Check for brute force pattern
+            if (class_exists('SecurityAlertManager') && SecurityAlertManager::isEnabled()) {
+                SecurityAlertManager::checkBruteForce(getClientIP(), $result['failedAttempts'] ?? 1);
+                SecurityAlertManager::checkPasswordSpray(getClientIP());
+            }
         }
     }
 }
@@ -98,6 +113,9 @@ $pageTitle = 'Sign In - SIGNula';
 
     <!-- 🎨 Custom CSS -->
     <link rel="stylesheet" href="/assets/css/main.css">
+
+    <!-- 🛡️ CAPTCHA Scripts (if enabled) -->
+    <?php echo CaptchaVerifier::getRequiredScripts(); ?>
 </head>
 <body>
 
@@ -140,6 +158,9 @@ $pageTitle = 'Sign In - SIGNula';
                 <!-- 🛡️ CSRF Token -->
                 <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrfToken); ?>">
 
+                <!-- 🛡️ Local Form Protection (honeypot + timing + JS challenge) -->
+                <?php echo FormProtection::renderAllFields(); ?>
+
                 <!-- 📧 Email or Username -->
                 <div class="form-group">
                     <label for="identifier" class="form-label form-label-required">Email or Username</label>
@@ -156,6 +177,8 @@ $pageTitle = 'Sign In - SIGNula';
                             required
                             autofocus
                             autocomplete="username"
+                            minlength="3"
+                            maxlength="255"
                             value="<?php
                                 // 📧 Pre-fill from POST data or session (OAuth flow sets prefill_email)
                                 $prefillEmail = $_SESSION['prefill_email'] ?? '';
@@ -182,6 +205,7 @@ $pageTitle = 'Sign In - SIGNula';
                             placeholder="Enter your password"
                             required
                             autocomplete="current-password"
+                            minlength="8"
                         >
                         <button type="button" class="password-toggle input-icon-right" tabindex="-1">
                             <i class="fas fa-eye"></i>
@@ -202,6 +226,9 @@ $pageTitle = 'Sign In - SIGNula';
                         Forgot password?
                     </a>
                 </div>
+
+                <!-- 🛡️ CAPTCHA Widget (if enabled) -->
+                <?php echo CaptchaVerifier::renderWidget('loginForm'); ?>
 
                 <!-- 🔘 Submit Button -->
                 <button type="submit" class="btn btn-primary btn-block btn-lg">

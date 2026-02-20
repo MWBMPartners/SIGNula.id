@@ -25,8 +25,12 @@ $error = null;
 $success = null;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // 🛡️ Verify CSRF token
-    if (!SecurityUtils::verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+    // 🛡️ Security middleware — rate limiting + CAPTCHA verification
+    $securityCheck = SecurityMiddleware::handleFormSubmission('forgot-password');
+    if (!$securityCheck['allowed']) {
+        $error = $securityCheck['error'];
+    } elseif (!SecurityUtils::verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+        // 🛡️ Verify CSRF token
         $error = 'Invalid security token. Please try again.';
     } else {
         $email = SecurityUtils::sanitizeEmail($_POST['email'] ?? '');
@@ -34,67 +38,62 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!$email) {
             $error = 'Please enter a valid email address.';
         } else {
-            // 🚦 Check rate limiting
-            if (!SecurityUtils::checkRateLimit(getClientIP(), 'password_reset', 3, 3600)) {
-                $error = 'Too many password reset requests. Please try again later.';
-            } else {
-                try {
-                    // 🔍 Find user by email
-                    $user = Database::fetchOne(
-                        "SELECT userID, email, displayName FROM tblUsers WHERE email = ? AND deletedAt IS NULL",
-                        [$email],
-                        's'
+            try {
+                // 🔍 Find user by email
+                $user = Database::fetchOne(
+                    "SELECT userID, email, displayName FROM tblUsers WHERE email = ? AND deletedAt IS NULL",
+                    [$email],
+                    's'
+                );
+
+                // ⚠️ Always show success message (security: don't reveal if email exists)
+                $success = 'If an account exists with this email address, you will receive password reset instructions.';
+
+                if ($user) {
+                    // 🎫 Generate reset token
+                    $resetToken = SecurityUtils::generateToken();
+                    $resetCode = SecurityUtils::generateNumericCode(6);
+                    $expiryMinutes = getSetting('mfa.otp.lifetime', 900) / 60; // Default 15 minutes
+
+                    // 💾 Store reset token
+                    Database::query(
+                        "INSERT INTO tblVerificationTokens
+                        (userID, token, tokenType, email, code, ipAddress, userAgent, expiresAt)
+                        VALUES (?, ?, 'password_reset', ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL ? MINUTE))",
+                        [
+                            $user['userID'],
+                            $resetToken,
+                            $email,
+                            $resetCode,
+                            getClientIP(),
+                            getUserAgent(),
+                            $expiryMinutes
+                        ],
+                        'isssssi'
                     );
 
-                    // ⚠️ Always show success message (security: don't reveal if email exists)
-                    $success = 'If an account exists with this email address, you will receive password reset instructions.';
+                    // 📧 Send password reset email
+                    EmailService::sendPasswordResetEmail(
+                        $email,
+                        $user['displayName'] ?? 'User',
+                        $resetToken,
+                        $resetCode
+                    );
 
-                    if ($user) {
-                        // 🎫 Generate reset token
-                        $resetToken = SecurityUtils::generateToken();
-                        $resetCode = SecurityUtils::generateNumericCode(6);
-                        $expiryMinutes = getSetting('mfa.otp.lifetime', 900) / 60; // Default 15 minutes
-
-                        // 💾 Store reset token
-                        Database::query(
-                            "INSERT INTO tblVerificationTokens
-                            (userID, token, tokenType, email, code, ipAddress, userAgent, expiresAt)
-                            VALUES (?, ?, 'password_reset', ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL ? MINUTE))",
-                            [
-                                $user['userID'],
-                                $resetToken,
-                                $email,
-                                $resetCode,
-                                getClientIP(),
-                                getUserAgent(),
-                                $expiryMinutes
-                            ],
-                            'isssssi'
-                        );
-
-                        // 📧 Send password reset email
-                        EmailService::sendPasswordResetEmail(
-                            $email,
-                            $user['displayName'] ?? 'User',
-                            $resetToken,
-                            $resetCode
-                        );
-
-                        // 📝 Log activity
-                        ActivityLogger::log(
-                            $user['userID'],
-                            'password_reset_requested',
-                            'auth',
-                            'info',
-                            'Password reset requested',
-                            ['email' => $email]
-                        );
-                    }
-
-                } catch (Exception $e) {
-                    ErrorLogger::logError('Exception', $e->getMessage(), $e->getFile(), $e->getLine());
-                    $error = 'An error occurred. Please try again later.';
+                    // 📝 Log activity
+                    ActivityLogger::log(
+                        $user['userID'],
+                        'password_reset_requested',
+                        'auth',
+                        'info',
+                        'Password reset requested',
+                        ['email' => $email]
+                    );
                 }
+
+            } catch (Exception $e) {
+                ErrorLogger::logError('Exception', $e->getMessage(), $e->getFile(), $e->getLine());
+                $error = 'An error occurred. Please try again later.';
             }
         }
     }
@@ -125,6 +124,9 @@ $pageTitle = 'Forgot Password - SIGNula';
 
     <!-- 🎨 Custom CSS -->
     <link rel="stylesheet" href="/assets/css/main.css">
+
+    <!-- 🛡️ CAPTCHA Scripts (if enabled) -->
+    <?php echo CaptchaVerifier::getRequiredScripts(); ?>
 </head>
 <body>
 
@@ -170,6 +172,9 @@ $pageTitle = 'Forgot Password - SIGNula';
                 <!-- 🛡️ CSRF Token -->
                 <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrfToken); ?>">
 
+                <!-- 🛡️ Local Form Protection (honeypot + timing + JS challenge) -->
+                <?php echo FormProtection::renderAllFields(); ?>
+
                 <!-- 📧 Email -->
                 <div class="form-group">
                     <label for="email" class="form-label form-label-required">Email Address</label>
@@ -186,11 +191,15 @@ $pageTitle = 'Forgot Password - SIGNula';
                             required
                             autofocus
                             autocomplete="email"
+                            maxlength="255"
                             value="<?php echo htmlspecialchars($_POST['email'] ?? ''); ?>"
                         >
                     </div>
                     <div class="invalid-feedback"></div>
                 </div>
+
+                <!-- 🛡️ CAPTCHA Widget (if enabled) -->
+                <?php echo CaptchaVerifier::renderWidget('forgotPasswordForm'); ?>
 
                 <!-- 🔘 Submit Button -->
                 <button type="submit" class="btn btn-primary btn-block btn-lg">

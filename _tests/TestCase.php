@@ -1,10 +1,14 @@
 <?php
 /**
- * Base Test Case
- * All test classes should extend this base class
+ * ============================================================================
+ * 🧪 Base Test Case
+ * ============================================================================
+ *
+ * All test classes should extend this base class.
+ * Provides common functionality, custom assertions, and session management.
  *
  * @package SIGNula\Tests
- * @version 1.0.0
+ * @version 2.5.0-beta
  */
 
 namespace SIGNula\Tests;
@@ -13,60 +17,77 @@ use PHPUnit\Framework\TestCase as PHPUnitTestCase;
 
 /**
  * Base TestCase for all SIGNula tests
- * Provides common functionality and assertions
+ *
+ * Provides:
+ * - Session management for tests
+ * - Custom assertions (email, URL, date, JSON, etc.)
+ * - Mock file upload helpers
+ * - User authentication simulation
+ * - CSRF token generation
  */
 abstract class TestCase extends PHPUnitTestCase
 {
     /**
-     * Set up before each test
+     * 🔧 Set up before each test
+     *
+     * Initializes session, clears superglobals, and resets test settings.
      *
      * @return void
      */
     protected function setUp(): void
     {
         parent::setUp();
-        
-        // Start session if not already started
-        if (session_status() === PHP_SESSION_NONE) {
-            session_start();
+
+        // 🔑 Start session if not already started (guard against headers_sent in CLI)
+        if (session_status() === PHP_SESSION_NONE && !headers_sent()) {
+            @session_start();
         }
-        
-        // Clear session data
+
+        // 🧹 Clear session data
         $_SESSION = [];
-        
-        // Reset superglobals
+
+        // 🧹 Reset superglobals
         $_GET = [];
         $_POST = [];
         $_COOKIE = [];
         $_FILES = [];
         $_REQUEST = [];
+
+        // 🧹 Clear test settings and reload defaults
+        clearTestSettings();
+        loadDefaultTestSettings();
     }
 
     /**
-     * Clean up after each test
+     * 🧹 Clean up after each test
      *
      * @return void
      */
     protected function tearDown(): void
     {
-        parent::tearDown();
-        
-        // Clean up any remaining output buffers
-        while (ob_get_level() > 0) {
+        // 📝 Only clean output buffers that were started during the test,
+        // not PHPUnit's own buffers. PHPUnit typically maintains 1 buffer level.
+        while (ob_get_level() > 1) {
             ob_end_clean();
         }
+
+        parent::tearDown();
     }
+
+    // ========================================================================
+    // ✅ CUSTOM ASSERTIONS
+    // ========================================================================
 
     /**
      * Assert that an array has a specific key with a specific value
      *
-     * @param mixed $expected Expected value
-     * @param string $key Array key
-     * @param array $array Array to check
-     * @param string $message Optional message
+     * @param mixed  $expected Expected value
+     * @param string $key      Array key
+     * @param array  $array    Array to check
+     * @param string $message  Optional message
      * @return void
      */
-    protected function assertArrayHasKeyWithValue($expected, string $key, array $array, string $message = ''): void
+    protected function assertArrayHasKeyWithValue(mixed $expected, string $key, array $array, string $message = ''): void
     {
         $this->assertArrayHasKey($key, $array, $message);
         $this->assertEquals($expected, $array[$key], $message);
@@ -75,9 +96,9 @@ abstract class TestCase extends PHPUnitTestCase
     /**
      * Assert that a string contains multiple substrings
      *
-     * @param array $needles Array of strings to find
+     * @param array  $needles  Array of strings to find
      * @param string $haystack String to search in
-     * @param string $message Optional message
+     * @param string $message  Optional message
      * @return void
      */
     protected function assertStringContainsAll(array $needles, string $haystack, string $message = ''): void
@@ -90,11 +111,11 @@ abstract class TestCase extends PHPUnitTestCase
     /**
      * Assert that a variable is a valid email address
      *
-     * @param mixed $value Value to check
+     * @param mixed  $value   Value to check
      * @param string $message Optional message
      * @return void
      */
-    protected function assertValidEmail($value, string $message = ''): void
+    protected function assertValidEmail(mixed $value, string $message = ''): void
     {
         $this->assertIsString($value, $message);
         $this->assertTrue(
@@ -106,11 +127,11 @@ abstract class TestCase extends PHPUnitTestCase
     /**
      * Assert that a variable is a valid URL
      *
-     * @param mixed $value Value to check
+     * @param mixed  $value   Value to check
      * @param string $message Optional message
      * @return void
      */
-    protected function assertValidUrl($value, string $message = ''): void
+    protected function assertValidUrl(mixed $value, string $message = ''): void
     {
         $this->assertIsString($value, $message);
         $this->assertTrue(
@@ -122,8 +143,8 @@ abstract class TestCase extends PHPUnitTestCase
     /**
      * Assert that a date string is valid
      *
-     * @param string $date Date string
-     * @param string $format Expected format (default: Y-m-d H:i:s)
+     * @param string $date    Date string
+     * @param string $format  Expected format (default: Y-m-d H:i:s)
      * @param string $message Optional message
      * @return void
      */
@@ -141,7 +162,7 @@ abstract class TestCase extends PHPUnitTestCase
     /**
      * Assert that a value is a valid JSON string
      *
-     * @param string $json JSON string
+     * @param string $json    JSON string
      * @param string $message Optional message
      * @return void
      */
@@ -155,15 +176,19 @@ abstract class TestCase extends PHPUnitTestCase
         );
     }
 
+    // ========================================================================
+    // 🔧 HELPER METHODS
+    // ========================================================================
+
     /**
      * Create a mock file upload
      *
-     * @param string $name Form field name
+     * @param string $name     Form field name
      * @param string $filename Original filename
-     * @param string $tmpName Temporary file path
-     * @param string $type MIME type
-     * @param int $size File size in bytes
-     * @param int $error Error code (default: UPLOAD_ERR_OK)
+     * @param string $tmpName  Temporary file path
+     * @param string $type     MIME type
+     * @param int    $size     File size in bytes
+     * @param int    $error    Error code (default: UPLOAD_ERR_OK)
      * @return void
      */
     protected function mockFileUpload(
@@ -186,7 +211,7 @@ abstract class TestCase extends PHPUnitTestCase
     /**
      * Set authenticated user in session for testing
      *
-     * @param int $userID User ID
+     * @param int   $userID   User ID
      * @param array $userData Additional user data
      * @return void
      */
@@ -195,7 +220,7 @@ abstract class TestCase extends PHPUnitTestCase
         $_SESSION['user_id'] = $userID;
         $_SESSION['authenticated'] = true;
         $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-        
+
         foreach ($userData as $key => $value) {
             $_SESSION[$key] = $value;
         }
@@ -210,6 +235,7 @@ abstract class TestCase extends PHPUnitTestCase
     {
         $token = bin2hex(random_bytes(32));
         $_SESSION['csrf_token'] = $token;
+        $_SESSION['csrf_token_time'] = time();
         return $token;
     }
 }

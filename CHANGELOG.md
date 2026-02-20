@@ -14,6 +14,97 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Mobile apps (iOS, Android)
 - Advanced analytics and reporting dashboard
 
+### Added - Local Form Protection, HTML5 Validation & Security Hardening (v2.6.0-beta)
+
+**New Security Class**
+- `FormProtection.php` — Local bot protection with three always-on layers: honeypot field (CSS-hidden, aria-accessible), HMAC-signed timing validation (rejects forms submitted under configurable threshold), JavaScript challenge (graceful degradation for non-JS browsers)
+
+**Security Fixes**
+- `profile.php` — Added missing CSRF token verification on both forms (update_profile, change_email); fixed XSS vulnerability in error message output (`implode` without escaping); upgraded input sanitization from `trim()` to `SecurityUtils::sanitizeString()`
+- `register.php` — Fixed unescaped `confirm_password` error output (XSS vector)
+- `contact.php` — Upgraded input sanitization from `trim()` to `SecurityUtils::sanitizeString()` / `SecurityUtils::sanitizeEmail()`
+
+**HTML5 Form Validation**
+- `login.php` — Added `minlength="3"` `maxlength="255"` to identifier, `minlength="8"` to password
+- `register.php` — Added `maxlength="100"` to name fields, `maxlength="255"` to email, `minlength="8"` to password fields
+- `forgot-password.php` — Added `maxlength="255"` to email
+- `profile.php` — Added `minlength`, `maxlength`, `autocomplete` attributes to all form fields
+
+**SecurityMiddleware Pipeline Update**
+- Added FormProtection as Step 2 in form submission pipeline: Rate Limiting → **Form Protection** → CAPTCHA → Process
+
+**Database Migration**
+- `015_form_protection_settings.sql` — 2 new settings: `security.form_protection.enabled` (boolean, default 1), `security.form_protection.min_submit_time` (integer, default 3)
+
+**Unit Tests (22 new tests)**
+- `FormProtectionTest.php` — isEnabled toggling, render output validation, honeypot/timing/JS challenge validation, HMAC tampering, graceful degradation for non-JS browsers
+
+**Test Fixtures**
+- Updated `_tests/Fixtures/settings.json` with `security.form_protection.enabled` and `security.form_protection.min_submit_time`
+
+### Added - Security Enhancements: CAPTCHA, IP Reputation, Bot Detection, Session Fingerprinting & Alerts (v2.6.0-beta)
+
+**New Security Classes (6 files)**
+- `CaptchaVerifier.php` — CloudFlare Turnstile (primary) + Google reCAPTCHA v3 (fallback), fail-open behaviour, per-form toggling
+- `IPReputationChecker.php` — AbuseIPDB + proxycheck.io integration with database caching, circuit breaker pattern, IP blocklist management
+- `BotDetector.php` — CrawlerDetect library + Browscap + built-in regex patterns, good/bad bot classification, optional DNS verification
+- `SessionGuard.php` — SHA-256 session fingerprinting (IP subnet/exact/none + UA + headers + salt), timing-safe validation
+- `SecurityAlertManager.php` — 11 alert types, 4 severity levels, brute force/impossible travel/password spray detection, admin email notifications, Haversine distance calculation
+- `SecurityMiddleware.php` — Unified pipeline orchestrating IP blocklist → bot detection → IP reputation (page requests) and rate limiting → CAPTCHA (form submissions)
+
+**Database Migration**
+- `014_security_enhancements.sql` — 5 new tables (tblIPReputationCache, tblBlockedIPs, tblSecurityAlerts, tblSessionFingerprints, tblCircuitBreaker), ~30 new settings, 4 rate limit configs, 4 MySQL scheduled events
+
+**Third-Party Library**
+- `web/_lib/crawlerdetect/crawlerdetect_loader.php` — Loader for CrawlerDetect library (MIT, no Composer required)
+
+**Integration Changes**
+- `config.php` — Updated CSP headers (Turnstile + reCAPTCHA domains), expanded autoloader paths, SessionGuard hook in session init, SecurityMiddleware bootstrap hook
+- `login.php` — CAPTCHA widget + SecurityMiddleware form handling + brute force/impossible travel/password spray alerts
+- `register.php` — CAPTCHA widget + SecurityMiddleware form handling
+- `forgot-password.php` — Replaced manual rate limiting with SecurityMiddleware + CAPTCHA
+- `contact.php` — Refactored from manual session handling to config.php bootstrap + SecurityMiddleware + CAPTCHA
+- `public-header.php` — Added CAPTCHA scripts tag
+
+**Unit Tests (104 new tests, 197 assertions)**
+- `CaptchaVerifierTest.php` — isRequired toggling, getProvider fallback, renderWidget HTML, getRequiredScripts, verify with disabled CAPTCHA
+- `BotDetectorTest.php` — Good/bad bot detection, empty UA handling, shouldBlock logic, pattern fallback
+- `SessionGuardTest.php` — Fingerprint creation/validation, IP mode (exact/subnet/none), mismatch handling, refresh
+- `SecurityAlertManagerTest.php` — Constants, isEnabled, create/acknowledge/resolve without Database, brute force threshold
+- `IPReputationCheckerTest.php` — Private IP bypass, whitelist, isBlocked/blockIP/unblockIP without Database, reportAbuse prerequisites
+- `SecurityMiddlewareTest.php` — handleFormSubmission return structure, CAPTCHA toggling, graceful degradation
+
+**Test Fixtures**
+- Updated `_tests/Fixtures/settings.json` with all new security settings (captcha.*, security.ip_reputation.*, security.bot_detection.*, security.session_fingerprinting.*, security.alerts.*)
+
+### Added - Automated Test Suite & Database Consolidation (Phase 10)
+
+**PHPUnit 10.x Test Infrastructure**
+- Upgraded `phpunit.xml` from PHPUnit 9.5 to 10.5 schema
+- Enhanced `_tests/bootstrap.php` with SIGNULA_INIT constant, global function stubs (getSetting, getClientIP, getUserAgent, redirect, jsonResponse, sanitizeInput), test helpers
+- Updated `_tests/TestCase.php` with session guards, settings cleanup, PHPUnit 10 compatibility
+- Added `_tests/Fixtures/settings.json` with default test settings
+
+**Unit Tests (130 tests, 610+ assertions)**
+- `SecurityUtilsTest.php` (48 tests) — Encryption/decryption, Argon2id hashing, token generation, CSRF, password validation, sanitization
+- `TOTPTest.php` (25 tests) — Secret generation, RFC 6238 test vectors, code verification, provisioning URI, Base32 validation
+- `ValidatorTest.php` (40+ tests) — Required, type, length, format rules, pipe-delimited parsing, API surface
+- `PasswordValidationTest.php` (17 tests) — Data-driven tests using SecurityUtils::validatePassword(), PHPUnit 10 #[DataProvider] attributes
+
+**Integration Tests (46 tests written)**
+- `AuthLoginTest.php` (15 tests) — Login credentials, lockout, session management, registration
+- `MFATest.php` (12 tests) — TOTP enable/verify/activate, backup codes (generate, verify, single-use), disable
+- `ActivityLoggerTest.php` (6 tests) — Record creation, IP/UA capture, JSON metadata, null userID
+- `ErrorLoggerTest.php` (5 tests) — Error records, backtrace capture, sensitive field redaction
+- `RateLimiterTest.php` (8 tests) — Enabled check, rate limits, remaining count, unblock, progressive blocking
+
+**Database Consolidation**
+- New `_database/signula_complete_install_v2.5.0.sql` — Consolidated from v2.2.3 base + migrations 010-013
+- Updated `_scripts/build-complete-install.sh` — Version references and migration list (001-013)
+
+**Testing Documentation**
+- `_docs/testing/TESTING_AUTOMATED.md` — PHPUnit setup, running tests, adding new tests, coverage generation
+
 ---
 
 ## [2.5.0-beta] - 2026-02-18

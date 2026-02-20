@@ -83,6 +83,9 @@ if (class_exists('Auth')) {
     <!-- Preconnect for performance -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://cdn.jsdelivr.net">
+
+    <!-- 🛡️ CAPTCHA Scripts (if enabled and class available) -->
+    <?php if (class_exists('CaptchaVerifier')) { echo CaptchaVerifier::getRequiredScripts(); } ?>
 </head>
 <body class="public-layout">
 

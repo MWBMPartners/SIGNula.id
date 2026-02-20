@@ -2,12 +2,12 @@
 ###############################################################################
 # Build Complete Installation SQL Script
 #
-# Purpose: Generate signula_complete_install_v2.2.3.sql from base + migrations
+# Purpose: Generate signula_complete_install_v2.5.0.sql from base + migrations
 #
 # Copyright © 2025-2026 MWBM Partners Ltd (t/a MWservices). All rights reserved.
 #
-# Version: 1.1.0
-# Date: February 11, 2026
+# Version: 1.2.0
+# Date: February 19, 2026
 #
 # Usage: bash _scripts/build-complete-install.sh
 #
@@ -25,12 +25,12 @@ NC='\033[0m'
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 DB_DIR="$PROJECT_ROOT/_database"
-OUTPUT_FILE="$DB_DIR/signula_complete_install_v2.2.3.sql"
+OUTPUT_FILE="$DB_DIR/signula_complete_install_v2.5.0.sql"
 
 cd "$PROJECT_ROOT"
 
 echo -e "${BLUE}╔══════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${BLUE}║     Building Complete Installation SQL v2.2.3              ║${NC}"
+echo -e "${BLUE}║     Building Complete Installation SQL v2.5.0              ║${NC}"
 echo -e "${BLUE}╚══════════════════════════════════════════════════════════════╝${NC}"
 echo ""
 
@@ -47,10 +47,10 @@ cat > "$OUTPUT_FILE" << 'EOF'
 --
 -- 📁 SIGNula Universal Login System - Complete Installation Script
 -- ============================================================================
--- Version: 2.2.3-beta
--- Date: 2026-02-11
+-- Version: 2.5.0-beta
+-- Date: 2026-02-19
 -- Description: Complete database schema for SIGNula universal authentication
--- Includes: All features through v2.2.3-beta (all 9 migrations consolidated)
+-- Includes: All features through v2.5.0-beta (all 13 migrations consolidated)
 --
 -- Supports: MySQL 8.0+, MariaDB 10.5+
 -- Character Set: utf8mb4 (full Unicode support including emojis)
@@ -71,9 +71,12 @@ cat > "$OUTPUT_FILE" << 'EOF'
 --   ✅ RESTful API with rate limiting
 --   ✅ Partner API key management
 --   ✅ Multi-tier admin system (RBAC, feature toggles, triggers)
+--   ✅ Webhooks & payment system (Stripe, PayPal, Coinbase Commerce)
+--   ✅ Two-tier payment expansion (invoices, credits, service fees)
+--   ✅ Ko-fi & Patreon integration
 --
 -- Installation:
---   mysql -u your_username -p your_database < signula_complete_install_v2.2.3.sql
+--   mysql -u your_username -p your_database < signula_complete_install_v2.5.0.sql
 --
 -- ============================================================================
 
@@ -248,6 +251,58 @@ if [ -f "$DB_DIR/migrations/009_multi_tier_admin.sql" ]; then
     echo "" >> "$OUTPUT_FILE"
 fi
 
+# Webhooks & Payments (010)
+echo "" >> "$OUTPUT_FILE"
+echo "-- ============================================================================" >> "$OUTPUT_FILE"
+echo "-- 💰 WEBHOOKS & PAYMENT SYSTEM" >> "$OUTPUT_FILE"
+echo "-- ============================================================================" >> "$OUTPUT_FILE"
+echo "" >> "$OUTPUT_FILE"
+
+if [ -f "$DB_DIR/migrations/010_webhooks_and_payments.sql" ]; then
+    echo -e "   ${GREEN}✓${NC} 010_webhooks_and_payments.sql"
+    sed -n '/^CREATE TABLE/,/^);/p; /^INSERT INTO/,/;/p; /^ALTER TABLE/,/;/p' "$DB_DIR/migrations/010_webhooks_and_payments.sql" >> "$OUTPUT_FILE"
+    echo "" >> "$OUTPUT_FILE"
+fi
+
+# Payment Providers (011)
+echo "" >> "$OUTPUT_FILE"
+echo "-- ============================================================================" >> "$OUTPUT_FILE"
+echo "-- 💳 PAYMENT PROVIDER INTEGRATION" >> "$OUTPUT_FILE"
+echo "-- ============================================================================" >> "$OUTPUT_FILE"
+echo "" >> "$OUTPUT_FILE"
+
+if [ -f "$DB_DIR/migrations/011_payment_providers.sql" ]; then
+    echo -e "   ${GREEN}✓${NC} 011_payment_providers.sql"
+    sed -n '/^CREATE TABLE/,/^);/p; /^INSERT INTO/,/;/p; /^ALTER TABLE/,/;/p' "$DB_DIR/migrations/011_payment_providers.sql" >> "$OUTPUT_FILE"
+    echo "" >> "$OUTPUT_FILE"
+fi
+
+# Two-Tier Payment Expansion (012)
+echo "" >> "$OUTPUT_FILE"
+echo "-- ============================================================================" >> "$OUTPUT_FILE"
+echo "-- 🏦 TWO-TIER PAYMENT EXPANSION" >> "$OUTPUT_FILE"
+echo "-- ============================================================================" >> "$OUTPUT_FILE"
+echo "" >> "$OUTPUT_FILE"
+
+if [ -f "$DB_DIR/migrations/012_payment_expansion.sql" ]; then
+    echo -e "   ${GREEN}✓${NC} 012_payment_expansion.sql"
+    sed -n '/^CREATE TABLE/,/^);/p; /^INSERT INTO/,/;/p; /^ALTER TABLE/,/;/p; /^CREATE EVENT/,/;/p' "$DB_DIR/migrations/012_payment_expansion.sql" >> "$OUTPUT_FILE"
+    echo "" >> "$OUTPUT_FILE"
+fi
+
+# Ko-fi & Patreon (013)
+echo "" >> "$OUTPUT_FILE"
+echo "-- ============================================================================" >> "$OUTPUT_FILE"
+echo "-- 🎨 KO-FI & PATREON INTEGRATION" >> "$OUTPUT_FILE"
+echo "-- ============================================================================" >> "$OUTPUT_FILE"
+echo "" >> "$OUTPUT_FILE"
+
+if [ -f "$DB_DIR/migrations/013_kofi_patreon_providers.sql" ]; then
+    echo -e "   ${GREEN}✓${NC} 013_kofi_patreon_providers.sql"
+    sed -n '/^INSERT INTO/,/;/p; /^ALTER TABLE/,/;/p' "$DB_DIR/migrations/013_kofi_patreon_providers.sql" >> "$OUTPUT_FILE"
+    echo "" >> "$OUTPUT_FILE"
+fi
+
 # Add footer
 cat >> "$OUTPUT_FILE" << 'EOF'
 
@@ -260,7 +315,7 @@ SET FOREIGN_KEY_CHECKS = 1;
 
 -- Verify installation
 SELECT
-    'SIGNula v2.2.3-beta database installation complete!' AS status,
+    'SIGNula v2.5.0-beta database installation complete!' AS status,
     DATABASE() AS database_name,
     COUNT(*) AS table_count
 FROM information_schema.tables
@@ -277,12 +332,12 @@ echo ""
 
 # Get file size
 FILE_SIZE=$(ls -lh "$OUTPUT_FILE" | awk '{print $5}')
-echo -e "${GREEN}✅ Created: signula_complete_install_v2.2.3.sql${NC}"
+echo -e "${GREEN}✅ Created: signula_complete_install_v2.5.0.sql${NC}"
 echo -e "${GREEN}📦 Size: $FILE_SIZE${NC}"
 echo ""
 
 echo -e "${YELLOW}📋 Test installation:${NC}"
-echo "   mysql -u your_username -p < _database/signula_complete_install_v2.2.3.sql"
+echo "   mysql -u your_username -p < _database/signula_complete_install_v2.5.0.sql"
 echo ""
 
 exit 0

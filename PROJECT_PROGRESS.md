@@ -1,7 +1,7 @@
 # SIGNula.ID Development Progress
 
-**Last Updated:** 2026-02-18
-**Current Version:** 2.5.0-beta
+**Last Updated:** 2026-02-20
+**Current Version:** 2.6.0-beta
 **Project Status:** 🟢 Active Development
 
 ---
@@ -37,7 +37,7 @@
 | Admin Dashboard (Full) | ✅ Complete | 100% | 🟠 High |
 | **Deployment Checklist** | ✅ Complete | 100% | 🟠 High |
 | Documentation | ✅ Complete | 100% | 🟠 High |
-| Testing | 🟡 In Progress | 45% | 🔴 Critical |
+| Testing | 🟢 In Progress | 85% | 🔴 Critical |
 
 **Legend:**
 - ✅ Complete
@@ -1063,7 +1063,7 @@ Outbound webhook signature system (HMAC-SHA256), payment/subscription management
 
 ### Phase 10: Testing & Quality Assurance
 **Target Date:** TBD
-**Status:** 🟡 In Progress (45% complete)
+**Status:** 🟢 In Progress (85% complete)
 
 **Completed:**
 - ✅ Manual testing of authentication flows
@@ -1071,10 +1071,23 @@ Outbound webhook signature system (HMAC-SHA256), payment/subscription management
 - ✅ OAuth integration testing
 - ✅ Email system testing
 - ✅ API endpoint testing
+- ✅ PHPUnit 10.x test infrastructure (bootstrap, TestCase, DatabaseTestCase, fixtures)
+- ✅ **Automated Unit Tests (130 tests, 610+ assertions)**
+  - SecurityUtils: 48 tests (encryption, hashing, tokens, CSRF, password validation, sanitization)
+  - TOTP: 25 tests (secret generation, RFC 6238 vectors, code verification, provisioning URI)
+  - Validator: 40+ tests (required, type, length, format rules, API surface)
+  - PasswordValidation: 17 tests (data-driven with SecurityUtils::validatePassword)
+- ✅ **Automated Integration Tests (46 tests written)**
+  - Auth login/logout: 15 tests (credentials, lockout, session, registration)
+  - MFA: 12 tests (TOTP enable/verify, backup codes, disable)
+  - ActivityLogger: 6 tests (record creation, IP/UA capture, metadata)
+  - ErrorLogger: 5 tests (error records, backtrace, sensitive field redaction)
+  - RateLimiter: 8 tests (enabled check, limits, unblock, progressive blocking)
+- ✅ Database consolidation: `signula_complete_install_v2.5.0.sql`
+- ✅ Testing documentation: `_docs/testing/TESTING_AUTOMATED.md`
 
 **Remaining Activities:**
-- 📋 Unit testing (PHPUnit)
-- 📋 Integration testing (complete coverage)
+- 📋 Execute integration tests against test database
 - 📋 Security testing (penetration testing, OWASP Top 10)
 - 📋 Performance testing (load testing, stress testing)
 - 📋 Browser compatibility testing
@@ -1265,22 +1278,84 @@ API Keys (Partners):
 | **Week 2** | Phase B | API Key Management | Database, APIKeyManager, Partner UI, Admin UI | ✅ Complete |
 | **Week 3** | Phase C & D | Webhooks & IP Whitelist | Signatures, IP management, Testing | ✅ Complete |
 | **Week 4** | Phase E | Request Logging | Analytics, Dashboard, Monitoring | 🟡 Partial |
+| **Week 5** | Phase F | Advanced Security | CAPTCHA, IP Reputation, Bot Detection, Session Fingerprinting, Alerts | ✅ Complete |
+| **Week 5** | Phase G | Form Hardening | Local Form Protection, HTML5 Validation, CSRF/XSS/Sanitization Fixes | ✅ Complete |
 
-**Total Effort:** ~42 hours (1-2 developer weeks)
+**Total Effort:** ~52 hours (2-3 developer weeks)
+
+#### Phase F: Advanced Security — CAPTCHA, IP Reputation, Bot Detection, Session Fingerprinting & Alerts ✅ COMPLETE
+**Completed:** February 19, 2026
+
+**New Security Classes (6 files, ~2,500+ lines):**
+- ✅ `CaptchaVerifier.php` — CloudFlare Turnstile + reCAPTCHA v3 with automatic fallback, fail-open behaviour
+- ✅ `IPReputationChecker.php` — AbuseIPDB + proxycheck.io with caching, circuit breaker, IP blocklist management
+- ✅ `BotDetector.php` — CrawlerDetect library + Browscap + regex fallback, good/bad bot classification, DNS verification
+- ✅ `SessionGuard.php` — SHA-256 fingerprinting (IP + UA + headers + salt), timing-safe validation, configurable mismatch actions
+- ✅ `SecurityAlertManager.php` — 11 alert types, brute force/impossible travel/password spray detection, admin notifications
+- ✅ `SecurityMiddleware.php` — Unified pipeline: IP blocklist → bot detection → IP reputation → rate limiting → CAPTCHA
+
+**Database Migration:**
+- ✅ `014_security_enhancements.sql` — 5 tables, ~30 settings, 4 rate limit configs, 4 MySQL events
+
+**Integration:**
+- ✅ `config.php` — CSP updates (Turnstile/reCAPTCHA), autoloader expansion, SessionGuard + SecurityMiddleware hooks
+- ✅ `login.php`, `register.php`, `forgot-password.php`, `contact.php` — CAPTCHA widgets + SecurityMiddleware
+- ✅ `public-header.php` — CAPTCHA scripts
+
+**Unit Tests:**
+- ✅ 104 new tests (197 assertions) across 6 test files — all passing
+
+**Design Principles:**
+- All features independently toggleable via tblSettings
+- Free third-party APIs (AbuseIPDB 4,999/day, proxycheck.io 1,000/day, Turnstile unlimited)
+- Circuit breaker pattern for API resilience (3 failures → skip for 5 min)
+- Fail-open: no API failure blocks legitimate users
+- No Composer required (CrawlerDetect self-hosted via loader)
+
+#### Phase G: Local Form Protection, HTML5 Validation & Security Hardening ✅ COMPLETE
+**Completed:** February 20, 2026
+
+**New Security Class (1 file, ~290 lines):**
+- ✅ `FormProtection.php` — Three always-on local bot protections: honeypot field (CSS-hidden, aria-accessible), HMAC-signed timing validation (rejects sub-threshold submissions), JavaScript challenge (graceful degradation for non-JS)
+
+**SecurityMiddleware Pipeline Update:**
+- ✅ FormProtection added as Step 2: Rate Limiting → **Form Protection** → CAPTCHA → Process
+
+**Security Fixes:**
+- ✅ `profile.php` — Added missing CSRF token verification on both forms; fixed XSS in error output; upgraded sanitization
+- ✅ `register.php` — Fixed unescaped confirm_password error (XSS vector)
+- ✅ `contact.php` — Upgraded from `trim()` to `SecurityUtils::sanitizeString()` / `SecurityUtils::sanitizeEmail()`
+
+**HTML5 Form Validation:**
+- ✅ All forms updated with `minlength`, `maxlength`, `autocomplete`, `pattern` attributes
+
+**Database Migration:**
+- ✅ `015_form_protection_settings.sql` — 2 new settings
+
+**Unit Tests:**
+- ✅ 22 new tests across 1 test file — all passing (total: 256 tests, 853 assertions)
 
 ### 🎯 Security Enhancement Success Metrics
 
-**Current State (as of v2.4.0-beta):**
+**Current State (as of v2.6.0-beta):**
 - Security Score: **100%** (A+ - Full Security Hardening)
 - Rate Limiting: ✅ Implemented & enforced
 - API Key Management: ✅ Full lifecycle management
 - CSRF Protection: ✅ 100% coverage (all forms + AJAX)
-- CSP Headers: ✅ Enabled
+- CSP Headers: ✅ Enabled (updated for CAPTCHA providers)
 - HSTS Headers: ✅ Enabled
 - SRI (CDN Resources): ✅ 100% coverage
 - Webhook Signatures: ✅ HMAC-SHA256 (outbound + inbound for Stripe/PayPal/Coinbase)
 - Request Logging: ✅ API key usage tracking with response times
 - Payment Security: ✅ Provider-specific webhook verification, encrypted credentials
+- CAPTCHA Verification: ✅ Turnstile + reCAPTCHA v3 on all forms
+- IP Reputation Checking: ✅ AbuseIPDB + proxycheck.io with caching
+- Bot Detection: ✅ CrawlerDetect + Browscap + regex fallback
+- Session Fingerprinting: ✅ SHA-256 with configurable IP modes
+- Security Alerting: ✅ Brute force, impossible travel, password spray detection
+- Local Form Protection: ✅ Honeypot + timing validation + JS challenge (always-on, no external APIs)
+- HTML5 Form Validation: ✅ minlength, maxlength, autocomplete, pattern on all forms
+- Input Sanitization: ✅ SecurityUtils::sanitizeString/sanitizeEmail on all form handlers
 
 ### 📚 Security Enhancement Documentation
 
@@ -1288,12 +1363,10 @@ API Keys (Partners):
 - [_docs/SECURITY_ENHANCEMENTS_ROADMAP.md](_docs/SECURITY_ENHANCEMENTS_ROADMAP.md) - Complete implementation guide
 - [_database/migrations/007_rate_limiting.sql](_database/migrations/007_rate_limiting.sql) - Rate limiting database schema
 - [_database/migrations/008_partner_api_keys.sql](_database/migrations/008_partner_api_keys.sql) - API key management schema
+- [_database/migrations/014_security_enhancements.sql](_database/migrations/014_security_enhancements.sql) - CAPTCHA, IP reputation, bot detection, session fingerprinting, alerts
+- [_docs/setup/SECURITY_SETUP.md](_docs/setup/SECURITY_SETUP.md) - Configuration guide for all security features
 
 **To Be Created (During Implementation):**
-- private_html/security/RateLimiter.php
-- private_html/api/RateLimitMiddleware.php
-- private_html/api/APIKeyManager.php
-- private_html/api/APIKeyMiddleware.php
 - public_html/admin/partners/ (Partner management UI)
 - public_html/partner/ (Partner dashboard and API key management)
 
@@ -1302,7 +1375,7 @@ API Keys (Partners):
 ## 📈 Metrics & KPIs
 
 ### Code Quality
-- **Lines of Code:** ~93,000+
+- **Lines of Code:** ~97,000+
   - Phase 1-2: ~18,500 lines
   - Phase 3 API: ~4,500 lines
   - Phase 3.2 Delegate Email: ~1,800 lines
@@ -1355,7 +1428,7 @@ API Keys (Partners):
 - **Triggers:** 2 (root admin enforcement)
 - **MySQL Scheduled Events:** 4 (past_due, trial expiry, invoice overdue, billing cleanup)
 - **Indexes:** 90+
-- **Migrations:** 12 complete migrations (001-012)
+- **Migrations:** 15 complete migrations (001-015)
 - **Complete Install:** signula_complete_install_v2.2.3.sql (migrations 001-009)
 
 ### Security

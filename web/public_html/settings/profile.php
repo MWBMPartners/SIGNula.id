@@ -27,12 +27,17 @@ $messageType = null;
 
 // 📝 Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // 🛡️ Verify CSRF token
+    if (!SecurityUtils::verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+        $message = 'Invalid security token. Please try again.';
+        $messageType = 'danger';
+    } else {
     $action = $_POST['action'] ?? '';
 
     if ($action === 'update_profile') {
         try {
-            $displayName = trim($_POST['displayName'] ?? '');
-            $username = trim($_POST['username'] ?? '');
+            $displayName = SecurityUtils::sanitizeString($_POST['displayName'] ?? '');
+            $username = SecurityUtils::sanitizeString($_POST['username'] ?? '');
             $timezone = $_POST['timezone'] ?? '';
 
             // ✅ Validation
@@ -93,7 +98,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             if (!empty($errors)) {
-                $message = implode('<br>', $errors);
+                $message = implode('<br>', array_map('htmlspecialchars', $errors));
                 $messageType = 'danger';
             }
 
@@ -162,7 +167,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             if (!empty($errors)) {
-                $message = implode('<br>', $errors);
+                $message = implode('<br>', array_map('htmlspecialchars', $errors));
                 $messageType = 'danger';
             }
 
@@ -172,7 +177,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $messageType = 'danger';
         }
     }
+    } // end CSRF else
 }
+
+// 🎫 Generate CSRF token for forms
+$csrfToken = SecurityUtils::generateCSRFToken();
 
 // Get timezone list
 $timezones = DateTimeZone::listIdentifiers();
@@ -203,7 +212,12 @@ include SIGNULA_ROOT . '/private_html/layout/header.php';
 
                     <!-- Profile Information -->
                     <form method="POST" action="">
+                        <!-- 🛡️ CSRF Token -->
+                        <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrfToken); ?>">
                         <input type="hidden" name="action" value="update_profile">
+
+                        <!-- 🛡️ Local Form Protection -->
+                        <?php echo FormProtection::renderAllFields(); ?>
 
                         <div class="mb-4">
                             <h5 class="border-bottom pb-2">Basic Information</h5>
@@ -218,6 +232,9 @@ include SIGNULA_ROOT . '/private_html/layout/header.php';
                                         name="displayName"
                                         value="<?php echo htmlspecialchars($user['displayName'] ?? ''); ?>"
                                         required
+                                        minlength="1"
+                                        maxlength="100"
+                                        autocomplete="name"
                                     >
                                     <div class="form-text">This name will be displayed across the platform</div>
                                 </div>
@@ -231,6 +248,8 @@ include SIGNULA_ROOT . '/private_html/layout/header.php';
                                         name="username"
                                         value="<?php echo htmlspecialchars($user['username'] ?? ''); ?>"
                                         pattern="[a-zA-Z0-9_-]{3,20}"
+                                        maxlength="20"
+                                        autocomplete="username"
                                     >
                                     <div class="form-text">3-20 characters, letters, numbers, _ and - only</div>
                                 </div>
@@ -333,6 +352,8 @@ include SIGNULA_ROOT . '/private_html/layout/header.php';
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
+                    <!-- 🛡️ CSRF Token -->
+                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrfToken); ?>">
                     <input type="hidden" name="action" value="change_email">
 
                     <div class="alert alert-warning">
@@ -352,6 +373,8 @@ include SIGNULA_ROOT . '/private_html/layout/header.php';
                             id="newEmail"
                             name="newEmail"
                             required
+                            maxlength="255"
+                            autocomplete="email"
                         >
                     </div>
 
@@ -363,6 +386,8 @@ include SIGNULA_ROOT . '/private_html/layout/header.php';
                             id="password"
                             name="password"
                             required
+                            minlength="1"
+                            autocomplete="current-password"
                         >
                         <div class="form-text">Confirm your identity with your current password</div>
                     </div>

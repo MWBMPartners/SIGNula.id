@@ -263,11 +263,12 @@ if (!headers_sent()) {
     // @see https://content-security-policy.com/
     header("Content-Security-Policy: "
         . "default-src 'self'; "                                                                    // 🛡️ Default: only allow same-origin
-        . "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; " // 📜 Scripts: self + inline (Bootstrap needs it) + CDNs
+        . "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://challenges.cloudflare.com https://www.google.com/recaptcha/ https://www.gstatic.com/recaptcha/; " // 📜 Scripts: self + inline + CDNs + CAPTCHA providers
         . "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com; " // 🎨 Styles: self + inline + CDNs + Google Fonts
         . "font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com; "               // 🔤 Fonts: FontAwesome + Google Fonts
         . "img-src 'self' data: https:; "                                                           // 🖼️ Images: self + data URIs (avatars) + any HTTPS
-        . "connect-src 'self'"                                                                      // 🔗 AJAX/Fetch: same-origin only
+        . "frame-src 'self' https://challenges.cloudflare.com https://www.google.com/recaptcha/; "  // 🖼️ Frames: CAPTCHA provider widgets
+        . "connect-src 'self' https://challenges.cloudflare.com"                                    // 🔗 AJAX/Fetch: same-origin + Turnstile
     );
 
     // 🔐 HTTP Strict Transport Security — force HTTPS for all future requests
@@ -388,6 +389,12 @@ function initializeSession(): void
         session_regenerate_id(true);
         $_SESSION['last_regeneration'] = time();
     }
+
+    // 🔑 Session fingerprinting — detect session hijacking attempts
+    // @see web/private_html/security/SessionGuard.php
+    if (class_exists('SessionGuard') && SessionGuard::isEnabled()) {
+        SessionGuard::initialize();
+    }
 }
 
 // ============================================================================
@@ -402,12 +409,19 @@ spl_autoload_register(function($className) {
     // Example: SecurityUtils -> _includes/security/SecurityUtils.php
 
     $possiblePaths = [
+        // 📂 Search _includes/ subdirectories
         INCLUDES_DIR . DIRECTORY_SEPARATOR . 'auth' . DIRECTORY_SEPARATOR . $className . '.php',
         INCLUDES_DIR . DIRECTORY_SEPARATOR . 'security' . DIRECTORY_SEPARATOR . $className . '.php',
         INCLUDES_DIR . DIRECTORY_SEPARATOR . 'utils' . DIRECTORY_SEPARATOR . $className . '.php',
         INCLUDES_DIR . DIRECTORY_SEPARATOR . 'api' . DIRECTORY_SEPARATOR . $className . '.php',
         INCLUDES_DIR . DIRECTORY_SEPARATOR . 'email' . DIRECTORY_SEPARATOR . $className . '.php',
         INCLUDES_DIR . DIRECTORY_SEPARATOR . 'database' . DIRECTORY_SEPARATOR . $className . '.php',
+        // 📂 Search private_html/ subdirectories (security classes, API middleware, auth, utils)
+        ROOT_DIR . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'security' . DIRECTORY_SEPARATOR . $className . '.php',
+        ROOT_DIR . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'api' . DIRECTORY_SEPARATOR . $className . '.php',
+        ROOT_DIR . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'auth' . DIRECTORY_SEPARATOR . $className . '.php',
+        ROOT_DIR . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'utils' . DIRECTORY_SEPARATOR . $className . '.php',
+        ROOT_DIR . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'email' . DIRECTORY_SEPARATOR . $className . '.php',
     ];
 
     foreach ($possiblePaths as $file) {
@@ -428,6 +442,13 @@ try {
 
     // Initialize session management
     initializeSession();
+
+    // 🛡️ Security middleware — IP blocklist, bot detection, IP reputation checks
+    // Runs on every request. Each check is independently toggleable via tblSettings.
+    // @see web/private_html/security/SecurityMiddleware.php
+    if (class_exists('SecurityMiddleware')) {
+        SecurityMiddleware::handle('web');
+    }
 
 } catch (Exception $e) {
     error_log("System initialization failed: " . $e->getMessage());
