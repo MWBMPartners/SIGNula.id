@@ -13,7 +13,7 @@ $metaDescription = 'Get help with SIGNula. Browse our knowledge base, FAQs, or s
 $currentPage = 'support';
 
 // Include database configuration
-require_once __DIR__ . '/../../../private_html/config/database.php';
+require_once dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR . 'database.php';
 
 // Get support categories
 $categoriesQuery = "SELECT * FROM tblSupportCategories WHERE isActive = TRUE ORDER BY displayOrder";
@@ -21,7 +21,7 @@ $categoriesResult = $mysqli->query($categoriesQuery);
 $categories = $categoriesResult->fetch_all(MYSQLI_ASSOC);
 
 // Include public header
-require_once __DIR__ . '/../../../private_html/layout/public-header.php';
+require_once dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'layout' . DIRECTORY_SEPARATOR . 'public-header.php';
 ?>
 
 <section class="section-padding bg-light">
@@ -279,4 +279,4 @@ require_once __DIR__ . '/../../../private_html/layout/public-header.php';
     </div>
 </section>
 
-<?php require_once __DIR__ . '/../../../private_html/layout/public-footer.php'; ?>
+<?php require_once dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'layout' . DIRECTORY_SEPARATOR . 'public-footer.php'; ?>

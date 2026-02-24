@@ -16,7 +16,7 @@
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . '_config' . DIRECTORY_SEPARATOR . 'config.php';
 
 // 📚 Load required classes
-require_once SIGNULA_ROOT . '/private_html/auth/PasswordlessLoginHandler.php';
+require_once SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'auth' . DIRECTORY_SEPARATOR . 'PasswordlessLoginHandler.php';
 
 // 🔄 If already logged in, redirect to dashboard
 if (isLoggedIn()) {
@@ -74,7 +74,7 @@ if (empty($token)) {
 }
 
 // 🎨 Include header
-include SIGNULA_ROOT . '/private_html/layout/header.php';
+include SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'layout' . DIRECTORY_SEPARATOR . 'header.php';
 ?>
 
 <div class="container mt-5">
@@ -156,5 +156,5 @@ include SIGNULA_ROOT . '/private_html/layout/header.php';
 
 <?php
 // 🎨 Include footer
-include SIGNULA_ROOT . '/private_html/layout/footer.php';
+include SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'layout' . DIRECTORY_SEPARATOR . 'footer.php';
 ?>

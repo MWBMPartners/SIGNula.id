@@ -253,16 +253,24 @@ class SMTPEmailProvider extends EmailProvider
             $this->sendCommand('RCPT TO:<' . $emailData['to'] . '>', '250');
 
             // 📋 Send RCPT TO for CC recipients
+            // 🔐 Validate email addresses and strip CRLF to prevent SMTP injection
             if (!empty($emailData['cc']) && is_array($emailData['cc'])) {
                 foreach ($emailData['cc'] as $cc) {
-                    $this->sendCommand('RCPT TO:<' . $cc . '>', '250');
+                    $cc = str_replace(["\r", "\n", "\0"], '', trim((string)$cc));
+                    if (filter_var($cc, FILTER_VALIDATE_EMAIL)) {
+                        $this->sendCommand('RCPT TO:<' . $cc . '>', '250');
+                    }
                 }
             }
 
             // 📋 Send RCPT TO for BCC recipients
+            // 🔐 Same validation as CC — prevent SMTP command injection
             if (!empty($emailData['bcc']) && is_array($emailData['bcc'])) {
                 foreach ($emailData['bcc'] as $bcc) {
-                    $this->sendCommand('RCPT TO:<' . $bcc . '>', '250');
+                    $bcc = str_replace(["\r", "\n", "\0"], '', trim((string)$bcc));
+                    if (filter_var($bcc, FILTER_VALIDATE_EMAIL)) {
+                        $this->sendCommand('RCPT TO:<' . $bcc . '>', '250');
+                    }
                 }
             }
 
@@ -356,13 +364,48 @@ class SMTPEmailProvider extends EmailProvider
         // 📮 MIME Version
         $headers[] = 'MIME-Version: 1.0';
 
-        // 🎨 Content type
-        $boundary = '----=_Part_' . md5(uniqid('', true));
+        // 📧 Add extra headers (List-Unsubscribe, X-Mailer, AMP indicators, etc.)
+        // 🔐 Sanitise header names to prevent CRLF injection (CWE-93)
+        // @see https://owasp.org/www-community/attacks/Email_Injection
+        if (!empty($emailData['extraHeaders']) && is_array($emailData['extraHeaders'])) {
+            // ✅ Allowlist of safe header name prefixes
+            $safeHeaderPrefixes = ['X-', 'List-', 'Feedback-', 'Reply-To', 'Precedence', 'Importance'];
 
-        if (!empty($emailData['bodyHTML']) && !empty($emailData['bodyText'])) {
-            // 📧 Multipart alternative (HTML + Text)
+            foreach ($emailData['extraHeaders'] as $headerName => $headerValue) {
+                // 🔐 Strip CR, LF, and NULL bytes from header name
+                $headerName = str_replace(["\r", "\n", "\0"], '', (string)$headerName);
+                $headerValue = str_replace(["\r", "\n", "\0"], '', (string)$headerValue);
+
+                // ✅ Only allow headers matching safe prefixes
+                $allowed = false;
+                foreach ($safeHeaderPrefixes as $prefix) {
+                    if (stripos($headerName, $prefix) === 0) {
+                        $allowed = true;
+                        break;
+                    }
+                }
+
+                if ($allowed && $headerName !== '') {
+                    $headers[] = $headerName . ': ' . $this->encodeHeaderValue($headerValue);
+                }
+            }
+        }
+
+        // ⚡ Determine if AMP part is present
+        $hasAMP = !empty($emailData['bodyAMP']);
+        $hasHTML = !empty($emailData['bodyHTML']);
+        $hasText = !empty($emailData['bodyText']);
+
+        // 🎨 Content type
+        // 🔐 Use cryptographically secure random bytes for MIME boundary
+        // @see https://www.php.net/manual/en/function.random-bytes.php
+        $boundary = '----=_Part_' . bin2hex(random_bytes(16));
+
+        if (($hasHTML || $hasAMP) && $hasText) {
+            // 📧 Multipart alternative (Text + AMP + HTML)
+            // @see https://amp.dev/documentation/guides-and-tutorials/learn/email-spec/amp-email-format/
             $headers[] = 'Content-Type: multipart/alternative; boundary="' . $boundary . '"';
-        } elseif (!empty($emailData['bodyHTML'])) {
+        } elseif ($hasHTML) {
             // 🎨 HTML only
             $headers[] = 'Content-Type: text/html; charset=UTF-8';
             $headers[] = 'Content-Transfer-Encoding: quoted-printable';
@@ -375,21 +418,36 @@ class SMTPEmailProvider extends EmailProvider
         // 🔗 Join headers
         $message = implode("\r\n", $headers) . "\r\n\r\n";
 
-        // 📝 Body
-        if (!empty($emailData['bodyHTML']) && !empty($emailData['bodyText'])) {
-            // 📧 Multipart message
+        // 📝 Body assembly
+        if (($hasHTML || $hasAMP) && $hasText) {
+            // 📧 Multipart message with proper MIME ordering:
+            // text/plain → text/x-amp-html → text/html
+            // Email clients choose the last supported type (RFC 2046 §5.1.4)
+
+            // 📝 Part 1: Plain text (universal fallback)
             $message .= '--' . $boundary . "\r\n";
             $message .= "Content-Type: text/plain; charset=UTF-8\r\n";
             $message .= "Content-Transfer-Encoding: quoted-printable\r\n\r\n";
             $message .= quoted_printable_encode($emailData['bodyText']) . "\r\n\r\n";
 
-            $message .= '--' . $boundary . "\r\n";
-            $message .= "Content-Type: text/html; charset=UTF-8\r\n";
-            $message .= "Content-Transfer-Encoding: quoted-printable\r\n\r\n";
-            $message .= quoted_printable_encode($emailData['bodyHTML']) . "\r\n\r\n";
+            // ⚡ Part 2: AMP HTML (for Gmail, Yahoo, Mail.ru, AOL)
+            if ($hasAMP) {
+                $message .= '--' . $boundary . "\r\n";
+                $message .= "Content-Type: text/x-amp-html; charset=UTF-8\r\n";
+                $message .= "Content-Transfer-Encoding: quoted-printable\r\n\r\n";
+                $message .= quoted_printable_encode($emailData['bodyAMP']) . "\r\n\r\n";
+            }
+
+            // 🎨 Part 3: HTML (standard rich email, preferred fallback)
+            if ($hasHTML) {
+                $message .= '--' . $boundary . "\r\n";
+                $message .= "Content-Type: text/html; charset=UTF-8\r\n";
+                $message .= "Content-Transfer-Encoding: quoted-printable\r\n\r\n";
+                $message .= quoted_printable_encode($emailData['bodyHTML']) . "\r\n\r\n";
+            }
 
             $message .= '--' . $boundary . '--';
-        } elseif (!empty($emailData['bodyHTML'])) {
+        } elseif ($hasHTML) {
             // 🎨 HTML only
             $message .= quoted_printable_encode($emailData['bodyHTML']);
         } else {

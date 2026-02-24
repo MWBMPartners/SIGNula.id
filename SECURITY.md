@@ -6,9 +6,10 @@ The following versions of SIGNula are currently supported with security updates:
 
 | Version       | Supported          | Notes                          |
 | ------------- | ------------------ | ------------------------------ |
-| 2.4.x-beta    | :white_check_mark: | Current development release    |
-| 2.3.x-beta    | :white_check_mark: | Previous release, patch only   |
-| < 2.3.0       | :x:                | No longer supported            |
+| 2.6.x-beta    | :white_check_mark: | Current development release    |
+| 2.5.x-beta    | :white_check_mark: | Previous release, patch only   |
+| 2.4.x-beta    | :white_check_mark: | Legacy, critical patches only  |
+| < 2.4.0       | :x:                | No longer supported            |
 
 ## Reporting a Vulnerability
 
@@ -84,9 +85,16 @@ The following are in scope for security reports:
 - OAuth provider integrations
 - Admin panel and partner dashboard
 - Database security (encryption, prepared statements, access control)
-- Email system and template rendering
+- Email system and template rendering (HTML, AMP for Email)
 - Webhook signature verification
 - Rate limiting and brute-force protection
+- Mass credential reset system (password invalidation, salt rotation)
+- Avatar management system (upload, OAuth, fallback services)
+- Form protection (honeypot, HMAC timing, JS challenge)
+- CAPTCHA integration (CloudFlare Turnstile, reCAPTCHA v3)
+- IP reputation checking (AbuseIPDB, proxycheck.io)
+- Bot detection (CrawlerDetect, regex fallback)
+- Session fingerprinting and integrity validation
 
 ### Out of Scope
 

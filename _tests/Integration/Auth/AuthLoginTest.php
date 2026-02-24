@@ -15,7 +15,7 @@
  * - Logout and session cleanup
  *
  * @package    SIGNula\Tests\Integration\Auth
- * @version    2.5.0-beta
+ * @version    2.6.0-beta
  * @see        web/private_html/auth/Auth.php
  */
 

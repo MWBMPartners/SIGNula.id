@@ -1,6 +1,6 @@
 # SIGNula.ID - Universal Login System
 
-![Version](https://img.shields.io/badge/version-2.5.0--beta-blue)
+![Version](https://img.shields.io/badge/version-2.6.0--beta-blue)
 ![PHP](https://img.shields.io/badge/PHP-8.3%2B-777BB4?logo=php)
 ![MySQL](https://img.shields.io/badge/MySQL-8.0%2B-4479A1?logo=mysql)
 ![License](https://img.shields.io/badge/license-Proprietary-red)
@@ -10,9 +10,9 @@
 
 **SIGNula** is a comprehensive, universal single sign-on (SSO) authentication system designed to provide seamless user authentication across multiple web and mobile applications. Built with security, scalability, and user experience as top priorities, SIGNula offers a modern authentication solution for today's interconnected digital ecosystem.
 
-**Current Status:** Core Platform Complete ✅ | Security 100% ✅ | Webhooks ✅ | Payments 100% ✅ | Two-Tier Payments ✅ | Ko-fi & Patreon ✅
+**Current Status:** Core Platform Complete ✅ | Security 100% ✅ | Webhooks ✅ | Payments 100% ✅ | Two-Tier Payments ✅ | Ko-fi & Patreon ✅ | Avatar System ✅ | Credential Reset ✅
 
-**Latest Version:** 2.5.0-beta (February 18, 2026)
+**Latest Version:** 2.6.0-beta (February 24, 2026)
 
 **Completed Phases:**
 
@@ -28,12 +28,17 @@
 - ✅ Phase 6: Support Ticket System (100%)
 - ✅ Phase 7: Admin Dashboard - Email (100%)
 - ✅ Phase 9: Complete Admin Dashboard — 35+ pages (100%)
+- ✅ Phase 10: Security Hardening — 7-Layer Protection (100%)
+- ✅ Phase 11: Avatar Management System (100%)
+- ✅ Phase 12: Mass Credential Reset & Email Enhancement (100%)
+- ✅ Phase 13: Security Audit & Issue Tracking (100%)
 
 **In Progress:**
 
-- 🟡 Testing & QA (45%)
-- 🟡 Deploy migrations 007-012 to production
+- 🟡 Testing & QA (73%) — 342 unit tests, 1105 assertions
+- 🟡 Deploy migrations 007-017 to production
 - 🟡 Configure live payment credentials
+- 🟡 DIRECTORY_SEPARATOR compliance across all PHP files
 
 ### ✨ Key Features
 
@@ -112,7 +117,7 @@
   - Partner earnings dashboard and payout management
   - 6 super admin pages + 6 partner admin pages for payment management
 
-- **🛡️ Enterprise-Grade Security** ✅
+- **🛡️ Enterprise-Grade Security** ✅ (7-Layer Protection)
   - **Rate Limiting System**
     - Token bucket algorithm with progressive blocking
     - Multi-tier support (IP, User, API Key)
@@ -123,12 +128,33 @@
     - Test/Live environment separation
     - IP whitelisting with CIDR support
     - Self-service management for partners
+  - **7-Layer Security Pipeline** (v2.6.0)
+    - Layer 1: Form Protection (honeypot, HMAC timing, JS challenge)
+    - Layer 2: CAPTCHA (CloudFlare Turnstile, reCAPTCHA v3, fail-open)
+    - Layer 3: IP Reputation (AbuseIPDB, proxycheck.io, circuit breaker)
+    - Layer 4: Bot Detection (CrawlerDetect library + regex fallback)
+    - Layer 5: Session Fingerprinting (SHA-256 IP/UA/header binding)
+    - Layer 6: Security Alerts (brute force, impossible travel, password spray)
+    - Layer 7: SecurityMiddleware pipeline orchestrator
+  - **Mass Credential Reset** (v2.6.0)
+    - 3 reset types: mass password reset, salt rotation, full credential reset
+    - 3 scopes: all users, filtered, specific users
+    - AJAX batch processing with real-time progress
+    - SHA-256 hashed token storage
+    - Compliance reporting dashboard
   - AES-256-CBC encryption for sensitive data
   - Argon2id password hashing
-  - CSRF protection
+  - CSRF protection with `FormProtection` class
   - Brute force protection
   - Comprehensive activity and audit logging
   - **Security Score: 100%**
+
+- **🖼️ Avatar Management System** ✅ (v2.6.0)
+  - Priority chain: partner upload > global upload > OAuth > fallback services > SVG initials
+  - 5 fallback services: Gravatar, Libravatar, UI Avatars, DiceBear, RoboHash
+  - User-configurable priority via preferences
+  - UUID-based serve endpoint (prevents user ID enumeration)
+  - Intelligent caching with automatic invalidation
 
 - **🏢 Multi-Tier Admin System** ✅
   - **Three Admin Levels:** Super Admin, Root Admin, Team Members

@@ -15,10 +15,10 @@
  * @version    1.0.0
  */
 
-require_once dirname(__DIR__, 3) . '/_config/config.php';
-require_once dirname(__DIR__, 3) . '/_backend/Database.php';
-require_once dirname(__DIR__, 3) . '/_backend/SessionManager.php';
-require_once dirname(__DIR__, 3) . '/_backend/AccessControl.php';
+require_once dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . '_config' . DIRECTORY_SEPARATOR . 'config.php';
+require_once dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . '_backend' . DIRECTORY_SEPARATOR . 'Database.php';
+require_once dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . '_backend' . DIRECTORY_SEPARATOR . 'SessionManager.php';
+require_once dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . '_backend' . DIRECTORY_SEPARATOR . 'AccessControl.php';
 
 // 📋 Set JSON response header
 header('Content-Type: application/json');
@@ -42,6 +42,15 @@ $accessControl->requireSuperAdmin();
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $action = $_GET['action'] ?? '';
 } else {
+    // 🔐 Validate Content-Type for POST requests to prevent CSRF via form submissions
+    // @see https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html
+    $contentType = $_SERVER['CONTENT_TYPE'] ?? $_SERVER['HTTP_CONTENT_TYPE'] ?? '';
+    if (stripos($contentType, 'application/json') === false) {
+        http_response_code(415);
+        echo json_encode(['success' => false, 'error' => 'Content-Type must be application/json']);
+        exit;
+    }
+
     $input = json_decode(file_get_contents('php://input'), true);
     $action = $input['action'] ?? '';
 }
@@ -90,12 +99,43 @@ try {
             handleGetStats($db);
             break;
 
+        // 🔐 Mass Credential Reset Operations
+        case 'initiate_mass_reset':
+            handleInitiateMassReset($input, $db, $accessControl, $sessionManager);
+            break;
+
+        case 'process_reset_batch':
+            handleProcessResetBatch($input, $db);
+            break;
+
+        case 'get_reset_status':
+            handleGetResetStatus($db);
+            break;
+
+        case 'list_reset_operations':
+            handleListResetOperations($db);
+            break;
+
+        case 'cancel_reset':
+            handleCancelReset($input, $db, $accessControl, $sessionManager);
+            break;
+
+        case 'get_compliance_report':
+            handleGetComplianceReport($db);
+            break;
+
+        case 'get_salt_history':
+            handleGetSaltHistory($db);
+            break;
+
         default:
             throw new Exception('Invalid action');
     }
 } catch (Exception $e) {
+    // 🔐 Never expose raw exception details in API responses (CWE-209)
+    ErrorLogger::logError('API_ERROR', $e->getMessage(), $e->getFile(), $e->getLine());
     http_response_code(400);
-    echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+    echo json_encode(['success' => false, 'message' => 'An error occurred processing your request.']);
 }
 
 /**
@@ -635,4 +675,217 @@ function handleGetStats($db) {
             'superAdmins' => (int)$superAdmins
         ]
     ]);
+}
+
+// ============================================================================
+// 🔐 MASS CREDENTIAL RESET HANDLERS
+// ============================================================================
+
+/**
+ * 🚨 Initiate Mass Credential Reset
+ *
+ * Triggers a mass password invalidation and notification operation.
+ * This is a critical security action used in breach response scenarios.
+ *
+ * Required input fields:
+ * - resetType: mass_password_reset|salt_rotation|full_credential_reset
+ * - reason: Admin-provided reason for the reset
+ * - scope: all_users|filtered|specific_users
+ * - scopeFilter: (optional) Filter criteria for 'filtered' scope
+ *
+ * @see CredentialResetService::initiateMassReset()
+ */
+function handleInitiateMassReset($input, $db, $accessControl, $sessionManager) {
+    // 📋 Load CredentialResetService
+    require_once dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . 'private_html'
+        . DIRECTORY_SEPARATOR . 'admin' . DIRECTORY_SEPARATOR . 'CredentialResetService.php';
+
+    // ✅ Validate required fields
+    $resetType = $input['resetType'] ?? '';
+    $reason = trim($input['reason'] ?? '');
+    $scope = $input['scope'] ?? 'all_users';
+    $scopeFilter = $input['scopeFilter'] ?? [];
+
+    if (empty($resetType)) {
+        throw new Exception('Reset type is required');
+    }
+
+    if (empty($reason)) {
+        throw new Exception('A reason is required for credential reset operations');
+    }
+
+    // 🔒 Require confirmation if configured
+    $requireConfirmation = getSetting('security.credential_reset.require_confirmation', true);
+    if ($requireConfirmation && empty($input['confirmed'])) {
+        // 📊 Return preview of affected users without executing
+        echo json_encode([
+            'success' => true,
+            'requiresConfirmation' => true,
+            'message' => 'Please confirm this operation',
+            'preview' => [
+                'resetType' => $resetType,
+                'scope' => $scope,
+                'reason' => $reason,
+            ],
+        ]);
+        return;
+    }
+
+    // 🚨 Execute mass credential reset
+    $adminUserID = (int)$sessionManager->getUserID();
+    $result = CredentialResetService::initiateMassReset(
+        $adminUserID,
+        $resetType,
+        $reason,
+        $scope,
+        $scopeFilter
+    );
+
+    // 📝 Log to admin audit trail
+    $accessControl->logAdminAction('initiate_mass_credential_reset', 'system', null, [
+        'resetType' => $resetType,
+        'scope' => $scope,
+        'reason' => $reason,
+        'totalUsers' => $result['totalUsers'] ?? 0,
+        'resetID' => $result['resetID'] ?? null,
+    ]);
+
+    echo json_encode($result);
+}
+
+/**
+ * 🔄 Process Next Batch of Credential Reset
+ *
+ * Processes the next batch of users for an active reset operation.
+ * Called repeatedly by the admin UI via polling/AJAX.
+ *
+ * Required input: resetID (int)
+ */
+function handleProcessResetBatch($input, $db) {
+    // 📋 Load CredentialResetService
+    require_once dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . 'private_html'
+        . DIRECTORY_SEPARATOR . 'admin' . DIRECTORY_SEPARATOR . 'CredentialResetService.php';
+
+    $resetID = (int)($input['resetID'] ?? 0);
+
+    if ($resetID <= 0) {
+        throw new Exception('Invalid reset ID');
+    }
+
+    $result = CredentialResetService::processNextBatch($resetID);
+    echo json_encode($result);
+}
+
+/**
+ * 📊 Get Reset Operation Status
+ *
+ * Returns current status and progress of a credential reset operation.
+ *
+ * GET parameter: resetID (int)
+ */
+function handleGetResetStatus($db) {
+    // 📋 Load CredentialResetService
+    require_once dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . 'private_html'
+        . DIRECTORY_SEPARATOR . 'admin' . DIRECTORY_SEPARATOR . 'CredentialResetService.php';
+
+    $resetID = (int)($_GET['resetID'] ?? 0);
+
+    if ($resetID <= 0) {
+        throw new Exception('Invalid reset ID');
+    }
+
+    $status = CredentialResetService::getResetStatus($resetID);
+
+    if (!$status) {
+        throw new Exception('Reset operation not found');
+    }
+
+    echo json_encode(['success' => true, 'reset' => $status]);
+}
+
+/**
+ * 📋 List All Reset Operations
+ *
+ * Returns paginated list of all credential reset operations.
+ *
+ * GET parameters: page (int), perPage (int)
+ */
+function handleListResetOperations($db) {
+    // 📋 Load CredentialResetService
+    require_once dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . 'private_html'
+        . DIRECTORY_SEPARATOR . 'admin' . DIRECTORY_SEPARATOR . 'CredentialResetService.php';
+
+    $page = max(1, (int)($_GET['page'] ?? 1));
+    $perPage = min(50, max(1, (int)($_GET['perPage'] ?? 20)));
+
+    $result = CredentialResetService::listResetOperations($page, $perPage);
+    echo json_encode(['success' => true, ...$result]);
+}
+
+/**
+ * 🚫 Cancel Reset Operation
+ *
+ * Cancels a pending or in-progress credential reset operation.
+ * Users already processed will not be reverted.
+ *
+ * Required input: resetID (int)
+ */
+function handleCancelReset($input, $db, $accessControl, $sessionManager) {
+    // 📋 Load CredentialResetService
+    require_once dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . 'private_html'
+        . DIRECTORY_SEPARATOR . 'admin' . DIRECTORY_SEPARATOR . 'CredentialResetService.php';
+
+    $resetID = (int)($input['resetID'] ?? 0);
+
+    if ($resetID <= 0) {
+        throw new Exception('Invalid reset ID');
+    }
+
+    $adminUserID = (int)$sessionManager->getUserID();
+    $result = CredentialResetService::cancelReset($resetID, $adminUserID);
+
+    // 📝 Log to admin audit trail
+    $accessControl->logAdminAction('cancel_mass_credential_reset', 'system', null, [
+        'resetID' => $resetID,
+    ]);
+
+    echo json_encode($result);
+}
+
+/**
+ * 📊 Get Compliance Report
+ *
+ * Returns how many users have completed their password change after a mass reset.
+ *
+ * GET parameter: resetID (int)
+ */
+function handleGetComplianceReport($db) {
+    // 📋 Load CredentialResetService
+    require_once dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . 'private_html'
+        . DIRECTORY_SEPARATOR . 'admin' . DIRECTORY_SEPARATOR . 'CredentialResetService.php';
+
+    $resetID = (int)($_GET['resetID'] ?? 0);
+
+    if ($resetID <= 0) {
+        throw new Exception('Invalid reset ID');
+    }
+
+    $report = CredentialResetService::getComplianceReport($resetID);
+    echo json_encode(['success' => true, 'report' => $report]);
+}
+
+/**
+ * 📜 Get Salt Rotation History
+ *
+ * Returns the history of all global salt rotations.
+ */
+function handleGetSaltHistory($db) {
+    // 📋 Load CredentialResetService
+    require_once dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . 'private_html'
+        . DIRECTORY_SEPARATOR . 'admin' . DIRECTORY_SEPARATOR . 'CredentialResetService.php';
+
+    $limit = min(50, max(1, (int)($_GET['limit'] ?? 20)));
+    $history = CredentialResetService::getSaltRotationHistory($limit);
+
+    echo json_encode(['success' => true, 'history' => $history]);
 }

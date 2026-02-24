@@ -44,22 +44,22 @@
 // 🔧 Load core configuration (defines SIGNULA_INIT constant, DB credentials, etc.)
 // dirname(__DIR__, 3) resolves to /web/ from /web/public_html/partners/admin/
 // @see https://www.php.net/manual/en/function.dirname.php
-require_once dirname(__DIR__, 3) . '/_config/config.php';
+require_once dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . '_config' . DIRECTORY_SEPARATOR . 'config.php';
 
 // 🗄️ Database singleton — provides MySQLi prepared statement interface
 // @see https://www.php.net/manual/en/book.mysqli.php
-require_once dirname(__DIR__, 3) . '/_backend/Database.php';
+require_once dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . '_backend' . DIRECTORY_SEPARATOR . 'Database.php';
 
 // 🔐 Session management — handles login state, session tokens, regeneration
 // @see https://www.php.net/manual/en/book.session.php
-require_once dirname(__DIR__, 3) . '/_backend/SessionManager.php';
+require_once dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . '_backend' . DIRECTORY_SEPARATOR . 'SessionManager.php';
 
 // 🛡️ Access control — role-based permission checks for partner admin actions
-require_once dirname(__DIR__, 3) . '/_backend/AccessControl.php';
+require_once dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . '_backend' . DIRECTORY_SEPARATOR . 'AccessControl.php';
 
 // 💰 Partner payment service — subscription tier CRUD operations
 // @see /web/private_html/payments/PartnerPaymentService.php
-require_once dirname(__DIR__, 3) . '/private_html/payments/PartnerPaymentService.php';
+require_once dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'payments' . DIRECTORY_SEPARATOR . 'PartnerPaymentService.php';
 
 // ============================================================================
 // 🚀 INITIALISATION

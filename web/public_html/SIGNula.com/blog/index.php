@@ -13,7 +13,7 @@ $metaDescription = 'Latest news, updates, and insights from the SIGNula team.';
 $currentPage = 'blog';
 
 // Include database configuration
-require_once __DIR__ . '/../../../private_html/config/database.php';
+require_once dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR . 'database.php';
 
 // Pagination settings
 $postsPerPage = 10;
@@ -85,7 +85,7 @@ $categoriesResult = $mysqli->query($categoriesQuery);
 $categories = $categoriesResult->fetch_all(MYSQLI_ASSOC);
 
 // Include public header
-require_once __DIR__ . '/../../../private_html/layout/public-header.php';
+require_once dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'layout' . DIRECTORY_SEPARATOR . 'public-header.php';
 ?>
 
 <section class="section-padding bg-light">
@@ -270,4 +270,4 @@ require_once __DIR__ . '/../../../private_html/layout/public-header.php';
     </div>
 </section>
 
-<?php require_once __DIR__ . '/../../../private_html/layout/public-footer.php'; ?>
+<?php require_once dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'layout' . DIRECTORY_SEPARATOR . 'public-footer.php'; ?>

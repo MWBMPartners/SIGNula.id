@@ -15,7 +15,7 @@
  * - require_symbols: true
  *
  * @package    SIGNula\Tests\Unit\Auth
- * @version    2.5.0-beta
+ * @version    2.6.0-beta
  * @see        web/private_html/security/SecurityUtils.php
  */
 

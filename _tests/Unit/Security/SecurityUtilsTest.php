@@ -15,7 +15,7 @@
  * These tests do NOT require a database connection.
  *
  * @package    SIGNula\Tests\Unit\Security
- * @version    2.5.0-beta
+ * @version    2.6.0-beta
  * @see        web/private_html/security/SecurityUtils.php
  */
 

@@ -24,7 +24,7 @@
  * - SIGNULA_INIT constant defined (handled by bootstrap.php)
  *
  * @package    SIGNula\Tests\Integration\Security
- * @version    2.5.0-beta
+ * @version    2.6.0-beta
  * @see        web/private_html/security/MFA.php
  * @see        web/private_html/security/TOTP.php
  * @see        web/private_html/security/SecurityUtils.php

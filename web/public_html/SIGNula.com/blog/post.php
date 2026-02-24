@@ -8,7 +8,7 @@
  */
 
 // Include database configuration
-require_once __DIR__ . '/../../../private_html/config/database.php';
+require_once dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR . 'database.php';
 
 // Get post slug from URL
 $slug = $_GET['slug'] ?? '';
@@ -114,7 +114,7 @@ $metaDescription = $post['metaDescription'] ?? substr(strip_tags($post['content'
 $currentPage = 'blog';
 
 // Include public header
-require_once __DIR__ . '/../../../private_html/layout/public-header.php';
+require_once dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'layout' . DIRECTORY_SEPARATOR . 'public-header.php';
 ?>
 
 <article class="section-padding">
@@ -335,4 +335,4 @@ require_once __DIR__ . '/../../../private_html/layout/public-header.php';
     </div>
 </article>
 
-<?php require_once __DIR__ . '/../../../private_html/layout/public-footer.php'; ?>
+<?php require_once dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'layout' . DIRECTORY_SEPARATOR . 'public-footer.php'; ?>

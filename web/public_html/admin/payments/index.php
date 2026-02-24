@@ -17,10 +17,10 @@
  * @since      2.3.0-beta
  */
 
-require_once dirname(__DIR__, 3) . '/_config/config.php';
-require_once dirname(__DIR__, 3) . '/_backend/Database.php';
-require_once dirname(__DIR__, 3) . '/_backend/SessionManager.php';
-require_once dirname(__DIR__, 3) . '/_backend/AccessControl.php';
+require_once dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . '_config' . DIRECTORY_SEPARATOR . 'config.php';
+require_once dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . '_backend' . DIRECTORY_SEPARATOR . 'Database.php';
+require_once dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . '_backend' . DIRECTORY_SEPARATOR . 'SessionManager.php';
+require_once dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . '_backend' . DIRECTORY_SEPARATOR . 'AccessControl.php';
 
 // 🔌 Initialise core services
 $db = Database::getInstance();

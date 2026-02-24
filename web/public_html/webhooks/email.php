@@ -28,7 +28,7 @@
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . '_config' . DIRECTORY_SEPARATOR . 'config.php';
 
 // 📚 Load webhook handler
-require_once SIGNULA_ROOT . '/private_html/email/EmailWebhookHandler.php';
+require_once SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'email' . DIRECTORY_SEPARATOR . 'EmailWebhookHandler.php';
 
 // 📝 Log incoming webhook
 error_log("Webhook received: " . $_SERVER['REQUEST_URI']);

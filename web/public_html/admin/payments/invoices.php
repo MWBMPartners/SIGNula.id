@@ -39,25 +39,25 @@
  * dirname(__DIR__, 3) navigates: payments -> admin -> public_html -> web root
  * @see https://www.php.net/manual/en/function.dirname.php
  */
-require_once dirname(__DIR__, 3) . '/_config/config.php';
+require_once dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . '_config' . DIRECTORY_SEPARATOR . 'config.php';
 
 /**
  * 🗄️ Database singleton — MySQLi prepared-statement wrapper
  * @see _backend/Database.php
  */
-require_once dirname(__DIR__, 3) . '/_backend/Database.php';
+require_once dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . '_backend' . DIRECTORY_SEPARATOR . 'Database.php';
 
 /**
  * 🔐 Session management — login state, CSRF tokens, user info
  * @see _backend/SessionManager.php
  */
-require_once dirname(__DIR__, 3) . '/_backend/SessionManager.php';
+require_once dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . '_backend' . DIRECTORY_SEPARATOR . 'SessionManager.php';
 
 /**
  * 🛡️ Access control — role-based guards (requireSuperAdmin, etc.)
  * @see _backend/AccessControl.php
  */
-require_once dirname(__DIR__, 3) . '/_backend/AccessControl.php';
+require_once dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . '_backend' . DIRECTORY_SEPARATOR . 'AccessControl.php';
 
 // ============================================================================
 // 🔌 INITIALISE CORE SERVICES

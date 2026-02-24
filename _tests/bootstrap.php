@@ -14,7 +14,7 @@
  * - Provides helper functions for fixtures, mocking, and database operations
  *
  * @package SIGNula\Tests
- * @version 2.5.0-beta
+ * @version 2.6.0-beta
  * @see     https://docs.phpunit.de/en/10.5/configuration.html
  */
 

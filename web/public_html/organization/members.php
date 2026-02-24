@@ -287,7 +287,7 @@ $pageTitle = 'Member Management - ' . $organization['name'] . ' - SIGNula';
 </button>
 
 <!-- 🗂️ Sidebar Navigation -->
-<?php include __DIR__ . '/../private_html/organization-nav.php'; ?>
+<?php include dirname(__DIR__) . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'organization-nav.php'; ?>
 
 <!-- 📄 Main Content -->
 <main class="dashboard-main">

@@ -28,11 +28,11 @@ if (!Auth::isAuthenticated() || !Auth::isAdmin()) {
 }
 
 // 📚 Load email classes
-require_once SIGNULA_ROOT . '/private_html/email/EmailService.php';
-require_once SIGNULA_ROOT . '/private_html/email/EmailQueueProcessor.php';
-require_once SIGNULA_ROOT . '/private_html/email/providers/MicrosoftGraphEmailProvider.php';
-require_once SIGNULA_ROOT . '/private_html/email/providers/GmailAPIEmailProvider.php';
-require_once SIGNULA_ROOT . '/private_html/email/providers/SMTPEmailProvider.php';
+require_once SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'email' . DIRECTORY_SEPARATOR . 'EmailService.php';
+require_once SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'email' . DIRECTORY_SEPARATOR . 'EmailQueueProcessor.php';
+require_once SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'email' . DIRECTORY_SEPARATOR . 'providers' . DIRECTORY_SEPARATOR . 'MicrosoftGraphEmailProvider.php';
+require_once SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'email' . DIRECTORY_SEPARATOR . 'providers' . DIRECTORY_SEPARATOR . 'GmailAPIEmailProvider.php';
+require_once SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'email' . DIRECTORY_SEPARATOR . 'providers' . DIRECTORY_SEPARATOR . 'SMTPEmailProvider.php';
 
 $pageTitle = 'Email Configuration';
 $currentTab = $_GET['tab'] ?? 'overview';

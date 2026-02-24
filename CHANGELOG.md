@@ -14,6 +14,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Mobile apps (iOS, Android)
 - Advanced analytics and reporting dashboard
 
+### Added - Mass Credential Reset System & Email Enhancement (v2.6.0-beta)
+
+**New Admin Service Class**
+- `CredentialResetService.php` (~600 lines) — Mass credential reset operations for security breach response. Three reset types: mass password reset, salt rotation, full credential reset. Three scope modes: all users, filtered by status/tier, specific users. Batch processing with configurable batch size. Global and per-user salt rotation with encrypted audit trail. Session invalidation for affected users. Token generation via SecurityUtils for password reset links. Compliance reporting and non-compliant user tracking.
+
+**New Email Utility Class**
+- `EmailTemplateBuilder.php` (~500 lines) — Modern HTML email builder with AMP for Email support. Responsive HTML email layouts with dark mode (`prefers-color-scheme`), MSO conditional comments for Outlook, preheader text support. AMP4Email document generation with component loading. MIME multipart assembly (text/plain → text/x-amp-html → text/html per RFC 2046 §5.1.4). Intelligent HTML-to-plain-text conversion. Content helpers: buttons, alert boxes, info tables. Email headers: X-Mailer, AMP indicator, List-Unsubscribe (RFC 2369/8058).
+
+**New Admin UI**
+- `web/public_html/admin/security/credential-reset.php` — 3-step wizard for mass credential resets: select type → configure scope/reason → progress tracking. AJAX-based batch processing with real-time progress bar. Confirmation dialog requiring typed "CONFIRM RESET". Operation history table with compliance report viewing.
+
+**Database Migration**
+- `017_credential_reset_system.sql` — 3 new tables: `tblCredentialResets` (operation tracking), `tblCredentialResetUsers` (per-user status), `tblSaltRotationHistory` (salt audit trail). 15 new settings (6 credential reset + 9 email enhancement). 3 responsive HTML email templates: security_breach_alert, mass_password_reset, credential_reset_complete (all with dark mode support).
+
+**EmailService Enhancements (2 new methods)**
+- `sendRichEmail()` — Send HTML email with optional AMP body and auto-generated plain text fallback
+- `sendSecurityAlertEmail()` — High-priority security notification email for breach alerts
+
+**SMTP Provider Enhancement**
+- `SMTPEmailProvider.php` — Enhanced `buildEmailMessage()` to support AMP email parts (text/x-amp-html MIME type) and extra headers. MIME ordering per RFC 2046 §5.1.4.
+
+**Admin API Handlers (7 new actions)**
+- `initiate_mass_reset` — Start a mass credential reset operation (with confirmation flow)
+- `process_reset_batch` — Process next batch of users in an operation
+- `get_reset_status` — Get operation progress with compliance stats
+- `list_reset_operations` — Paginated list of all reset operations
+- `cancel_reset` — Cancel an in-progress operation
+- `get_compliance_report` — Detailed compliance reporting
+- `get_salt_history` — Salt rotation audit trail
+
+**Unit Tests (40 new tests)**
+- `CredentialResetServiceTest.php` (10 tests) — Constants validation, parameter validation (invalid type/scope/reason), valid types/scopes pass validation, settings existence
+- `EmailTemplateBuilderTest.php` (30 tests) — HTML-to-text conversion (9 tests), HTML layout wrapping (8 tests), AMP email generation (4 tests), multipart assembly (3 tests), content helpers (7 tests), email headers (4 tests), style constants (1 test)
+
+**Test Fixtures**
+- Updated `_tests/Fixtures/settings.json` with 14 new settings (6 credential reset + 8 email enhancement)
+
 ### Added - Avatar & Profile Picture System (v2.6.0-beta)
 
 **New Utility Class**

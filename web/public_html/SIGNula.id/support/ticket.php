@@ -9,8 +9,8 @@
 
 // Start session and check authentication
 session_start();
-require_once __DIR__ . '/../../../private_html/config/database.php';
-require_once __DIR__ . '/../../../private_html/auth/check-auth.php';
+require_once dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR . 'database.php';
+require_once dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'auth' . DIRECTORY_SEPARATOR . 'check-auth.php';
 
 // Page configuration
 $pageTitle = 'Submit Support Ticket - SIGNula';

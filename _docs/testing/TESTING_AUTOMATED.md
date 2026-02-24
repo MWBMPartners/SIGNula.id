@@ -1,6 +1,6 @@
 # Automated Testing Guide
 
-**Version:** 2.5.0-beta
+**Version:** 2.6.0-beta
 **Framework:** PHPUnit 10.5
 **PHP Requirement:** 8.3+
 

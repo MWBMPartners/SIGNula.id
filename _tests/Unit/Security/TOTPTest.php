@@ -15,7 +15,7 @@
  * All cryptographic operations are pure functions.
  *
  * @package    SIGNula\Tests\Unit\Security
- * @version    2.5.0-beta
+ * @version    2.6.0-beta
  * @see        web/private_html/security/TOTP.php
  * @see        https://www.rfc-editor.org/rfc/rfc6238 (TOTP specification)
  * @see        https://www.rfc-editor.org/rfc/rfc4226 (HOTP specification)

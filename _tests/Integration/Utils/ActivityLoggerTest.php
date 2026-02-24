@@ -17,7 +17,7 @@
  *   - private_html/utils/ActivityLogger.php → ActivityLogger class
  *
  * @package    SIGNula\Tests\Integration\Utils
- * @version    2.5.0-beta
+ * @version    2.6.0-beta
  * @see        web/private_html/utils/ActivityLogger.php
  * @see        web/_config/database.php
  */

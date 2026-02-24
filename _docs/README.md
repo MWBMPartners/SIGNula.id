@@ -1,6 +1,6 @@
 # 📚 SIGNula Documentation Index
 
-**Version:** 2.5.0-beta
+**Version:** 2.6.0-beta
 **Last Updated:** February 18, 2026
 
 ---
@@ -218,7 +218,7 @@
 ---
 
 **Last Updated:** February 18, 2026
-**Documentation Version:** 2.5.0-beta
+**Documentation Version:** 2.6.0-beta
 **Maintained by:** SIGNula Development Team
 
 ---

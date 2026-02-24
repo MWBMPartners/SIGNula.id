@@ -24,7 +24,7 @@ if (isLoggedIn()) {
 $pageTitle = 'PassKey Login';
 
 // 🎨 Include header
-include SIGNULA_ROOT . '/private_html/layout/header.php';
+include SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'layout' . DIRECTORY_SEPARATOR . 'header.php';
 ?>
 
 <div class="container mt-5">
@@ -323,5 +323,5 @@ document.getElementById('email')?.addEventListener('keypress', function(e) {
 
 <?php
 // 🎨 Include footer
-include SIGNULA_ROOT . '/private_html/layout/footer.php';
+include SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'layout' . DIRECTORY_SEPARATOR . 'footer.php';
 ?>

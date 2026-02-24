@@ -35,7 +35,7 @@
 
 // 🔧 Initialize application
 define('SIGNULA_INIT', true);
-require_once __DIR__ . '/../../../_config/config.php';
+require_once dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . '_config' . DIRECTORY_SEPARATOR . 'config.php';
 
 // 📡 Load API classes
 require_once INCLUDES_DIR . '/api/Response.php';

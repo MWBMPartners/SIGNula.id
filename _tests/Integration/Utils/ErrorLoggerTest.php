@@ -21,7 +21,7 @@
  *   - private_html/auth/Auth.php              → Auth (ErrorLogger calls Auth::getCurrentUserID)
  *
  * @package    SIGNula\Tests\Integration\Utils
- * @version    2.5.0-beta
+ * @version    2.6.0-beta
  * @see        web/private_html/utils/ErrorLogger.php
  * @see        web/_config/database.php
  * @see        web/private_html/auth/Auth.php

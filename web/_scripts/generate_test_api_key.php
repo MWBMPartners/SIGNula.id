@@ -16,8 +16,8 @@
 
 // Initialize SIGNula
 define('SIGNULA_INIT', true);
-require_once __DIR__ . '/../_config/config.php';
-require_once PRIVATE_DIR . '/api/APIKeyManager.php';
+require_once dirname(__DIR__, 1) . DIRECTORY_SEPARATOR . '_config' . DIRECTORY_SEPARATOR . 'config.php';
+require_once PRIVATE_DIR . DIRECTORY_SEPARATOR . 'api' . DIRECTORY_SEPARATOR . 'APIKeyManager.php';
 
 // ============================================================================
 // 📋 COMMAND LINE ARGUMENTS

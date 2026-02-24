@@ -15,7 +15,7 @@
  * Does NOT test 'unique' and 'exists' rules (require database).
  *
  * @package    SIGNula\Tests\Unit\API
- * @version    2.5.0-beta
+ * @version    2.6.0-beta
  * @see        web/private_html/api/Validator.php
  */
 

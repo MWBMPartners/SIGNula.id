@@ -28,10 +28,10 @@ if (!Auth::isAuthenticated() || !Auth::isAdmin()) {
 }
 
 // 📚 Load email classes
-require_once SIGNULA_ROOT . '/private_html/email/EmailService.php';
-require_once SIGNULA_ROOT . '/private_html/email/EmailQueueProcessor.php';
-require_once SIGNULA_ROOT . '/private_html/email/EmailTemplateManager.php';
-require_once SIGNULA_ROOT . '/private_html/email/EmailTracker.php';
+require_once SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'email' . DIRECTORY_SEPARATOR . 'EmailService.php';
+require_once SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'email' . DIRECTORY_SEPARATOR . 'EmailQueueProcessor.php';
+require_once SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'email' . DIRECTORY_SEPARATOR . 'EmailTemplateManager.php';
+require_once SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'email' . DIRECTORY_SEPARATOR . 'EmailTracker.php';
 
 $pageTitle = 'Email Dashboard';
 

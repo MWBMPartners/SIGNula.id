@@ -1,6 +1,6 @@
 # SIGNula.ID Development Progress
 
-**Last Updated:** 2026-02-20
+**Last Updated:** 2026-02-24
 **Current Version:** 2.6.0-beta
 **Project Status:** 🟢 Active Development
 
@@ -10,12 +10,12 @@
 
 | Component | Status | Progress | Priority |
 |-----------|--------|----------|----------|
-| Database Schema (46 tables) | ✅ Complete | 100% | 🔴 Critical |
+| Database Schema (49 tables) | ✅ Complete | 100% | 🔴 Critical |
 | Core Configuration | ✅ Complete | 100% | 🔴 Critical |
 | Authentication System | ✅ Complete | 100% | 🔴 Critical |
 | Security Utilities | ✅ Complete | 100% | 🔴 Critical |
 | Logging System | ✅ Complete | 100% | 🔴 Critical |
-| Email Service | ✅ Complete | 100% | 🔴 Critical |
+| Email Service (HTML + AMP) | ✅ Complete | 100% | 🔴 Critical |
 | MFA Implementation | ✅ Complete | 100% | 🔴 Critical |
 | OAuth Integration (Sign-in flows fixed v2.2.3) | ✅ Complete | 100% | 🟠 High |
 | **WebAuthn/PassKeys** | ✅ Complete | 100% | 🔴 Critical |
@@ -35,6 +35,7 @@
 | **Two-Tier Payment Expansion** | ✅ Complete | 100% | 🔴 Critical |
 | **Ko-fi & Patreon Integration** | ✅ Complete | 100% | 🟡 Medium |
 | Admin Dashboard (Full) | ✅ Complete | 100% | 🟠 High |
+| **Mass Credential Reset** | ✅ Complete | 100% | 🔴 Critical |
 | **Deployment Checklist** | ✅ Complete | 100% | 🟠 High |
 | Documentation | ✅ Complete | 100% | 🟠 High |
 | Testing | 🟢 In Progress | 85% | 🔴 Critical |
@@ -1367,6 +1368,31 @@ API Keys (Partners):
 **Unit Tests:**
 - ✅ 40 new tests across 1 test file — all passing (total: 296 tests, 975 assertions)
 
+#### Phase I: Mass Credential Reset System & Email Enhancement ✅ COMPLETE
+**Completed:** February 24, 2026
+
+**New Admin Service Class (1 file, ~600 lines):**
+- ✅ `CredentialResetService.php` — Mass credential reset operations for security breach response. Three reset types (mass_password_reset, salt_rotation, full_credential_reset), three scopes (all_users, filtered, specific_users), batch processing, global/per-user salt rotation with encrypted audit trail, session invalidation, token generation, compliance reporting
+
+**New Email Utility Class (1 file, ~500 lines):**
+- ✅ `EmailTemplateBuilder.php` — Modern HTML email builder with AMP for Email support. Responsive layouts with dark mode, MSO Outlook compatibility, preheader text. MIME multipart assembly (text/plain → text/x-amp-html → text/html per RFC 2046 §5.1.4). Content helpers (buttons, alert boxes, info tables), List-Unsubscribe headers (RFC 2369/8058)
+
+**New Admin UI (1 page):**
+- ✅ `web/public_html/admin/security/credential-reset.php` — 3-step wizard for mass resets (select type → configure → progress tracking), AJAX batch processing with real-time progress, typed confirmation dialog, operation history with compliance reports
+
+**Email System Enhancements (2 files modified):**
+- ✅ `EmailService.php` — 2 new methods: `sendRichEmail()` (HTML + AMP + auto plain text), `sendSecurityAlertEmail()` (high-priority breach notifications)
+- ✅ `SMTPEmailProvider.php` — AMP email MIME part support (text/x-amp-html), extra headers passthrough
+
+**Admin API (7 new actions in user-actions.php):**
+- ✅ initiate_mass_reset, process_reset_batch, get_reset_status, list_reset_operations, cancel_reset, get_compliance_report, get_salt_history
+
+**Database Migration:**
+- ✅ `017_credential_reset_system.sql` — 3 new tables (tblCredentialResets, tblCredentialResetUsers, tblSaltRotationHistory), 15 new settings, 3 responsive HTML email templates with dark mode
+
+**Unit Tests:**
+- ✅ 40 new tests across 2 test files — all passing (total: 342 tests, 1105 assertions)
+
 ### 🎯 Security Enhancement Success Metrics
 
 **Current State (as of v2.6.0-beta):**
@@ -1388,6 +1414,8 @@ API Keys (Partners):
 - Local Form Protection: ✅ Honeypot + timing validation + JS challenge (always-on, no external APIs)
 - HTML5 Form Validation: ✅ minlength, maxlength, autocomplete, pattern on all forms
 - Input Sanitization: ✅ SecurityUtils::sanitizeString/sanitizeEmail on all form handlers
+- Mass Credential Reset: ✅ Admin-triggered batch password invalidation, salt rotation, session invalidation
+- HTML/AMP Email: ✅ Responsive HTML emails with dark mode, AMP for Email support, RFC-compliant MIME
 
 ### 📚 Security Enhancement Documentation
 
@@ -1407,7 +1435,7 @@ API Keys (Partners):
 ## 📈 Metrics & KPIs
 
 ### Code Quality
-- **Lines of Code:** ~98,500+
+- **Lines of Code:** ~100,100+
   - Phase 1-2: ~18,500 lines
   - Phase 3 API: ~4,500 lines
   - Phase 3.2 Delegate Email: ~1,800 lines
@@ -1418,7 +1446,8 @@ API Keys (Partners):
   - Phase 3.7 Payment Providers: ~10,986 lines
   - Phase 3.8 Two-Tier Payment Expansion: ~41,969 lines
   - Phase 9 Admin Dashboard: ~4,000+ lines
-- **Backend Handlers:** 35+ major classes
+  - Mass Credential Reset + Email Enhancement (v2.6.0): ~1,600+ lines (CredentialResetService, EmailTemplateBuilder, admin UI, API handlers)
+- **Backend Handlers:** 37+ major classes
   - Core: 10 handlers
   - API: 4 controllers + 4 framework components
   - OAuth: 2 managers (OAuthTokenManager, OAuthFlowHandler)
@@ -1426,6 +1455,8 @@ API Keys (Partners):
   - Admin: AccessControl
   - Payments: PaymentManager, StripeProvider, PayPalProvider, CoinbaseProvider
   - Two-Tier: InvoiceManager, CreditManager, ServiceFeeManager, BillingScheduler, PartnerPaymentService, BillingLazyCheck
+  - Admin Security: CredentialResetService
+  - Email: EmailTemplateBuilder
   - Webhooks: WebhookManager
 - **API Endpoints:** 42+ RESTful endpoints + 12 Admin APIs + 5 Partner APIs
   - Auth: 7 endpoints
@@ -1437,13 +1468,13 @@ API Keys (Partners):
   - Admin: user-actions, settings-actions, feature-actions, payment-actions, provider-actions + 6 payment admin APIs
   - Partner: team-actions, partner-feature-actions, webhook-actions + 5 payment partner APIs
 - **User Pages:** 25+ pages (auth, settings, management, email accounts, pricing, checkout)
-- **Admin Pages:** 35+ pages (admin dashboard, partner admin, features, team mgmt, users, settings, oauth, logs, payments)
+- **Admin Pages:** 36+ pages (admin dashboard, partner admin, features, team mgmt, users, settings, oauth, logs, payments, credential reset)
 - **Test Scripts:** 2 verification scripts, 300+ test cases documented
 - **Documentation Coverage:** 98%
 - **API Documentation:** Complete (26KB MD + 17KB HTML)
 
 ### Database
-- **Tables:** 46 (core: 14, email: 6, OAuth: 2, security: 4, organizations: 4, multi-tier: 5, webhooks/payments: 8, two-tier payments: 11)
+- **Tables:** 49 (core: 14, email: 6, OAuth: 2, security: 4, organizations: 4, multi-tier: 5, webhooks/payments: 8, two-tier payments: 11, credential reset: 3)
   - Core: tblUsers, tblUserPreferences, tblSettings, tblMigrations
   - Auth: tblSessions, tblVerificationTokens, tblPasswordResetTokens, tblPasswordlessTokens
   - Auth Advanced: tblWebAuthnCredentials, tblWebAuthnChallenges, tblUserMFA
@@ -1460,7 +1491,7 @@ API Keys (Partners):
 - **Triggers:** 2 (root admin enforcement)
 - **MySQL Scheduled Events:** 4 (past_due, trial expiry, invoice overdue, billing cleanup)
 - **Indexes:** 90+
-- **Migrations:** 16 complete migrations (001-016)
+- **Migrations:** 17 complete migrations (001-017)
 - **Complete Install:** signula_complete_install_v2.2.3.sql (migrations 001-009)
 
 ### Security
@@ -1587,6 +1618,19 @@ API Keys (Partners):
 
 ## 📈 Recent Updates
 
+### February 24, 2026
+
+- ✅ **Phase I Complete:** Mass Credential Reset System & Email Enhancement (v2.6.0-beta)
+  - `CredentialResetService.php` (~600 lines) — 3 reset types, 3 scope modes, batch processing, salt rotation, compliance reporting
+  - `EmailTemplateBuilder.php` (~500 lines) — HTML email builder with AMP for Email, dark mode, MSO compatibility
+  - Admin UI wizard at `/admin/security/credential-reset.php` with AJAX batch processing and progress tracking
+  - 7 new admin API actions in `user-actions.php` (initiate, process, status, list, cancel, compliance, salt history)
+  - Enhanced `EmailService.php` with `sendRichEmail()` and `sendSecurityAlertEmail()` methods
+  - Enhanced `SMTPEmailProvider.php` with AMP MIME part support (text/x-amp-html)
+  - Migration `017_credential_reset_system.sql` — 3 new tables, 15 new settings, 3 HTML email templates
+  - 40 new unit tests (10 CredentialResetService + 30 EmailTemplateBuilder) — all 342 tests passing, 1105 assertions
+- ✅ **Documentation Updates:** CHANGELOG.md, PROJECT_PROGRESS.md, PROJECT_STATUS.md, SECURITY_SETUP.md, MEMORY.md all updated
+
 ### February 13, 2026
 
 - ✅ **Phase 3.8 Complete:** Two-Tier Payment System Expansion (v2.4.0-beta)
@@ -1710,7 +1754,7 @@ API Keys (Partners):
 ---
 
 **Last Updated:** February 18, 2026
-**Current Version:** 2.5.0-beta
+**Current Version:** 2.6.0-beta
 
 ---
 

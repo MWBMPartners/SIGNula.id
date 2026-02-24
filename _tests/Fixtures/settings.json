@@ -18,7 +18,7 @@
     "site.url": "http://localhost",
     "site.name": "SIGNula Test",
     "app.name": "SIGNula",
-    "app.version": "2.5.0-beta",
+    "app.version": "2.6.0-beta",
     "email_verification.required": true,
     "email_verification.token_lifetime_days": 7,
     "email_verification.allow_login_unverified": true,
@@ -81,5 +81,22 @@
     "avatar.gravatar.default": "mp",
     "avatar.cache_external_ttl": 3600,
     "avatar.enable_upload": "1",
-    "avatar.proxy_external": "0"
+    "avatar.proxy_external": "0",
+
+    "security.credential_reset.batch_size": 100,
+    "security.credential_reset.email_priority": 1,
+    "security.credential_reset.token_expiry_hours": 72,
+    "security.credential_reset.require_confirmation": true,
+    "security.credential_reset.invalidate_sessions": true,
+    "security.global_salt": "",
+
+    "email.html.enabled": "1",
+    "email.amp.enabled": "0",
+    "email.amp.sender_verification_url": "",
+    "email.default_template_wrapper": "modern",
+    "email.preheader.enabled": true,
+    "email.unsubscribe.header_enabled": true,
+    "email.dkim.enabled": "0",
+    "email.dkim.selector": "",
+    "email.dkim.private_key": ""
 }

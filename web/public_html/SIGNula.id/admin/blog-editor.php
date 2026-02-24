@@ -9,8 +9,8 @@
 
 // Start session and check authentication
 session_start();
-require_once __DIR__ . '/../../../private_html/config/database.php';
-require_once __DIR__ . '/../../../private_html/auth/check-admin.php';
+require_once dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR . 'database.php';
+require_once dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'auth' . DIRECTORY_SEPARATOR . 'check-admin.php';
 
 // Page configuration
 $pageTitle = 'Blog Editor - SIGNula Admin';

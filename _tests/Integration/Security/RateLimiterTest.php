@@ -29,7 +29,7 @@
  * need any seed data and will never be skipped.
  *
  * @package    SIGNula\Tests\Integration\Security
- * @version    2.5.0-beta
+ * @version    2.6.0-beta
  * @see        web/private_html/security/RateLimiter.php
  */
 

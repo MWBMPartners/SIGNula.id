@@ -32,7 +32,7 @@ class RateLimitMiddleware {
         $this->db = $db;
 
         // Initialize rate limiter
-        require_once __DIR__ . '/../../private_html/security/RateLimiter.php';
+        require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'security' . DIRECTORY_SEPARATOR . 'RateLimiter.php';
         $this->rateLimiter = new RateLimiter($this->db);
     }
 

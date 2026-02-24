@@ -19,7 +19,7 @@ require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . '_config' . DIRECTORY_S
 requireLogin();
 
 // 📚 Load required classes
-require_once SIGNULA_ROOT . '/private_html/auth/WebAuthnHandler.php';
+require_once SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'auth' . DIRECTORY_SEPARATOR . 'WebAuthnHandler.php';
 
 $pageTitle = 'Manage PassKeys';
 $user = getCurrentUser();
@@ -65,14 +65,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 // 🎨 Include header
-include SIGNULA_ROOT . '/private_html/layout/header.php';
+include SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'layout' . DIRECTORY_SEPARATOR . 'header.php';
 ?>
 
 <div class="container mt-5">
     <div class="row">
         <!-- Sidebar -->
         <div class="col-md-3 mb-4">
-            <?php include SIGNULA_ROOT . '/private_html/layout/settings-sidebar.php'; ?>
+            <?php include SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'layout' . DIRECTORY_SEPARATOR . 'settings-sidebar.php'; ?>
         </div>
 
         <!-- Main Content -->
@@ -288,5 +288,5 @@ include SIGNULA_ROOT . '/private_html/layout/header.php';
 
 <?php
 // 🎨 Include footer
-include SIGNULA_ROOT . '/private_html/layout/footer.php';
+include SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'layout' . DIRECTORY_SEPARATOR . 'footer.php';
 ?>

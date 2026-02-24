@@ -8,7 +8,7 @@
  * Provides common functionality, custom assertions, and session management.
  *
  * @package SIGNula\Tests
- * @version 2.5.0-beta
+ * @version 2.6.0-beta
  */
 
 namespace SIGNula\Tests;

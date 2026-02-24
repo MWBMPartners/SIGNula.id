@@ -59,9 +59,10 @@ class EmailService
             }
 
             // 🔄 Replace variables in template
-            $subject = self::replaceVariables($template['subject'], $variables);
-            $bodyHTML = self::replaceVariables($template['bodyHTML'], $variables);
-            $bodyText = self::replaceVariables($template['bodyText'], $variables);
+            // 🔐 HTML bodies use escaped variables to prevent XSS; subject and text bodies use raw values
+            $subject = self::replaceVariables($template['subject'], $variables, false);
+            $bodyHTML = self::replaceVariables($template['bodyHTML'], $variables, true);
+            $bodyText = self::replaceVariables($template['bodyText'], $variables, false);
 
             // 📬 Queue email for sending
             return self::queueEmail(
@@ -255,17 +256,146 @@ class EmailService
     /**
      * 🔄 Replace Variables in Template
      *
-     * @param string $template Template string
-     * @param array $variables Variables to replace
-     * @return string Processed template
+     * Replaces {{variable}} placeholders in template strings with provided values.
+     * When $isHTML is true, values are escaped with htmlspecialchars() to prevent XSS.
+     * Plain text templates should use $isHTML = false (the default).
+     *
+     * @param string $template Template string with {{variable}} placeholders
+     * @param array  $variables Associative array of variable name => value
+     * @param bool   $isHTML    Whether the template is HTML (enables XSS escaping)
+     * @return string Processed template with variables replaced
+     *
+     * @see https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Scripting_Prevention_Cheat_Sheet.html
      */
-    private static function replaceVariables(string $template, array $variables): string
+    private static function replaceVariables(string $template, array $variables, bool $isHTML = false): string
     {
         foreach ($variables as $key => $value) {
-            $template = str_replace("{{{$key}}}", $value, $template);
+            // 🔐 Escape user-supplied values in HTML context to prevent XSS
+            $safeValue = $isHTML
+                ? htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8')
+                : (string)$value;
+            $template = str_replace("{{{$key}}}", $safeValue, $template);
         }
 
         return $template;
+    }
+
+    // ========================================================================
+    // 📧 ENHANCED EMAIL METHODS (HTML/AMP)
+    // ========================================================================
+
+    /**
+     * 📧 Send Rich HTML Email with Optional AMP
+     *
+     * Sends an email with properly structured HTML body, optional AMP version,
+     * and auto-generated plain text fallback. Uses EmailTemplateBuilder for
+     * consistent styling and cross-client compatibility.
+     *
+     * MIME structure when AMP is enabled:
+     * ```
+     * multipart/alternative
+     *   ├── text/plain         (auto-generated from HTML)
+     *   ├── text/x-amp-html    (interactive version for supported clients)
+     *   └── text/html          (standard HTML version)
+     * ```
+     *
+     * @param string      $recipientEmail Recipient email address
+     * @param string      $subject        Email subject line
+     * @param string      $htmlBody       HTML body content (full document or inner content)
+     * @param string|null $plainText      Plain text body (auto-generated from HTML if null)
+     * @param string|null $ampBody        AMP HTML body (optional, for interactive emails)
+     * @param int|null    $userID         User ID (optional)
+     * @param int         $priority       Email priority (1=highest, 10=lowest)
+     * @param array       $extraHeaders   Additional email headers
+     * @return bool True if email was successfully queued
+     *
+     * @see EmailTemplateBuilder::buildMultipartEmail()
+     * @see https://amp.dev/documentation/guides-and-tutorials/learn/email-spec/amp-email-format/
+     */
+    public static function sendRichEmail(
+        string $recipientEmail,
+        string $subject,
+        string $htmlBody,
+        ?string $plainText = null,
+        ?string $ampBody = null,
+        ?int $userID = null,
+        int $priority = 5,
+        array $extraHeaders = []
+    ): bool {
+        try {
+            // 📚 Load EmailTemplateBuilder
+            require_once __DIR__ . DIRECTORY_SEPARATOR . 'EmailTemplateBuilder.php';
+
+            // 📝 Auto-generate plain text from HTML if not provided
+            if ($plainText === null) {
+                $plainText = EmailTemplateBuilder::htmlToPlainText($htmlBody);
+            }
+
+            // 📧 Queue email with all parts including AMP body and extra headers
+            // 🔐 Previously $ampBody and $extraHeaders were silently discarded — now stored in metadata
+            $metadata = [];
+            if ($ampBody !== null) {
+                $metadata['ampBody'] = $ampBody;
+            }
+            if (!empty($extraHeaders)) {
+                $metadata['extraHeaders'] = $extraHeaders;
+            }
+
+            return self::queueEmail(
+                $recipientEmail,
+                $subject,
+                $htmlBody,
+                $plainText,
+                null,   // fromEmail (use default)
+                null,   // fromName (use default)
+                !empty($extraHeaders['Reply-To']) ? $extraHeaders['Reply-To'] : null,   // replyTo from headers
+                $userID,
+                null,   // templateID
+                $priority,
+                null,   // scheduledFor
+                [],     // cc
+                [],     // bcc
+                !empty($metadata) ? [json_encode($metadata)] : [],     // store metadata in attachments JSON
+                null    // sendAsEmail
+            );
+
+        } catch (Exception $e) {
+            ErrorLogger::logError('Exception', $e->getMessage(), $e->getFile(), $e->getLine());
+            return false;
+        }
+    }
+
+    /**
+     * 🔐 Send Security Alert Email
+     *
+     * Sends a high-priority security notification email with proper HTML formatting.
+     * Uses the security_breach_alert or mass_password_reset template.
+     *
+     * @param string $recipientEmail Recipient email
+     * @param string $displayName    User's display name
+     * @param string $templateKey    Template key (security_breach_alert|mass_password_reset)
+     * @param array  $variables      Template variables
+     * @return bool True if email was successfully queued
+     */
+    public static function sendSecurityAlertEmail(
+        string $recipientEmail,
+        string $displayName,
+        string $templateKey,
+        array $variables = []
+    ): bool {
+        // 🔐 Security emails always use highest priority
+        $variables['displayName'] = $displayName;
+        $variables['email'] = $recipientEmail;
+        $variables['appName'] = $variables['appName'] ?? getSetting('app.name', 'SIGNula');
+        $variables['currentYear'] = $variables['currentYear'] ?? date('Y');
+
+        return self::sendTemplateEmail(
+            $recipientEmail,
+            $templateKey,
+            $variables,
+            null,  // userID looked up from email
+            1      // Highest priority
+        );
     }
 
     /**

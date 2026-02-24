@@ -8,9 +8,9 @@
  * @version    1.0.0
  */
 
-require_once dirname(__DIR__, 2) . '/_config/config.php';
-require_once dirname(__DIR__, 2) . '/_backend/Database.php';
-require_once dirname(__DIR__, 2) . '/_backend/SessionManager.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . '_config' . DIRECTORY_SEPARATOR . 'config.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . '_backend' . DIRECTORY_SEPARATOR . 'Database.php';
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . '_backend' . DIRECTORY_SEPARATOR . 'SessionManager.php';
 
 $db = Database::getInstance();
 $sessionManager = new SessionManager($db);

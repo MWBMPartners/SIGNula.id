@@ -51,25 +51,25 @@
 
 // ⚙️ Load the main SIGNula configuration (defines SIGNULA_INIT, constants, autoloader)
 // @see https://www.php.net/manual/en/function.dirname.php
-require_once dirname(__DIR__, 3) . '/_config/config.php';
+require_once dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . '_config' . DIRECTORY_SEPARATOR . 'config.php';
 
 // 🗄️ Database singleton for MySQLi prepared statement queries
 // @see https://www.php.net/manual/en/book.mysqli.php
-require_once dirname(__DIR__, 3) . '/_backend/Database.php';
+require_once dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . '_backend' . DIRECTORY_SEPARATOR . 'Database.php';
 
 // 🔐 Session management for authentication state tracking
-require_once dirname(__DIR__, 3) . '/_backend/SessionManager.php';
+require_once dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . '_backend' . DIRECTORY_SEPARATOR . 'SessionManager.php';
 
 // 🛡️ Role-based access control for partner permission checks
-require_once dirname(__DIR__, 3) . '/_backend/AccessControl.php';
+require_once dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . '_backend' . DIRECTORY_SEPARATOR . 'AccessControl.php';
 
 // 💰 Partner payment service for earnings summary data
 // @see /web/private_html/payments/PartnerPaymentService.php
-require_once dirname(__DIR__, 3) . '/private_html/payments/PartnerPaymentService.php';
+require_once dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'payments' . DIRECTORY_SEPARATOR . 'PartnerPaymentService.php';
 
 // 💸 Service fee manager for fee transactions, remittances, and earnings reports
 // @see /web/private_html/payments/ServiceFeeManager.php
-require_once dirname(__DIR__, 3) . '/private_html/payments/ServiceFeeManager.php';
+require_once dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'payments' . DIRECTORY_SEPARATOR . 'ServiceFeeManager.php';
 
 // ============================================================================
 // 📡 SET JSON RESPONSE HEADERS

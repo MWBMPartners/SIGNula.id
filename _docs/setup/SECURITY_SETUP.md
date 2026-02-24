@@ -1,14 +1,14 @@
 # Security Features Setup Guide
 
 **Version:** 2.6.0-beta
-**Date:** February 19, 2026
+**Date:** February 24, 2026
 **Applies to:** SIGNula v2.6.0-beta and later
 
 ---
 
 ## 📋 Overview
 
-SIGNula v2.6.0-beta introduces six independently toggleable security layers:
+SIGNula v2.6.0-beta introduces seven independently toggleable security layers:
 
 | Feature | Default | External APIs | Files |
 |---------|---------|---------------|-------|
@@ -18,6 +18,7 @@ SIGNula v2.6.0-beta introduces six independently toggleable security layers:
 | Session Fingerprinting | Enabled | None (local) | `SessionGuard.php` |
 | Security Alerting | Enabled | ip-api.com (geo only) | `SecurityAlertManager.php` |
 | Local Form Protection | Enabled | None (local) | `FormProtection.php` |
+| Mass Credential Reset | Admin-triggered | None (local) | `CredentialResetService.php` |
 
 All features are orchestrated by `SecurityMiddleware.php` and configured via `tblSettings` in the database.
 
@@ -33,27 +34,33 @@ All features are orchestrated by `SecurityMiddleware.php` and configured via `tb
 
 ### Database Migration
 
-Run migrations `014_security_enhancements.sql` and `015_form_protection_settings.sql` before configuring any features:
+Run the following migrations before configuring security features:
 
 ```bash
 mysql -u your_username -p signula < _database/migrations/014_security_enhancements.sql
 mysql -u your_username -p signula < _database/migrations/015_form_protection_settings.sql
+mysql -u your_username -p signula < _database/migrations/017_credential_reset_system.sql
 ```
 
 **Verify migration succeeded:**
 
 ```sql
--- Check new tables
+-- Check new tables (migrations 014, 015)
 SHOW TABLES LIKE 'tblIPReputation%';
 SHOW TABLES LIKE 'tblBlocked%';
 SHOW TABLES LIKE 'tblSecurity%';
 SHOW TABLES LIKE 'tblSession%';
 SHOW TABLES LIKE 'tblCircuit%';
 
--- Check new settings (~30 rows)
+-- Check credential reset tables (migration 017)
+SHOW TABLES LIKE 'tblCredentialReset%';
+SHOW TABLES LIKE 'tblSaltRotation%';
+
+-- Check new settings (~45 rows)
 SELECT settingKey, settingValue FROM tblSettings
 WHERE settingKey LIKE 'captcha.%'
    OR settingKey LIKE 'security.%'
+   OR settingKey LIKE 'email.%'
 ORDER BY settingKey;
 ```
 
@@ -525,6 +532,167 @@ Local form protection is entirely self-contained:
 
 ---
 
+## 🔐 Feature 7: Mass Credential Reset
+
+### How It Works
+
+Mass Credential Reset allows administrators to trigger bulk security operations across the entire user base or targeted subsets. This is critical for incident response scenarios (security breaches, salt compromise, compliance mandates).
+
+Three reset types are supported:
+
+| Reset Type | Constant | Effect |
+|------------|----------|--------|
+| **Mass Password Reset** | `TYPE_MASS_PASSWORD_RESET` | Invalidates all affected user passwords, sends reset emails, optionally terminates active sessions |
+| **Salt Rotation** | `TYPE_SALT_ROTATION` | Rotates the global encryption salt and re-hashes affected credentials. Creates audit trail in `tblSaltRotationHistory` |
+| **Full Credential Reset** | `TYPE_FULL_CREDENTIAL_RESET` | Combines password reset + salt rotation + MFA invalidation. Use for confirmed security breaches |
+
+Three scope modes control which users are affected:
+
+| Scope | Constant | Description |
+|-------|----------|-------------|
+| **All Users** | `SCOPE_ALL_USERS` | Every active user account |
+| **Filtered** | `SCOPE_FILTERED` | Users matching filter criteria (e.g., last login before date, specific role) |
+| **Specific Users** | `SCOPE_SPECIFIC` | Manually selected user IDs |
+
+### Prerequisites
+
+Run migration `017_credential_reset_system.sql`:
+
+```bash
+mysql -u your_username -p signula < _database/migrations/017_credential_reset_system.sql
+```
+
+This creates:
+- `tblCredentialResets` — Master table tracking each reset operation
+- `tblCredentialResetUsers` — Per-user status for each operation (pending/processing/completed/failed/skipped)
+- `tblSaltRotationHistory` — Encrypted audit trail for salt rotation events
+- 15 new settings in `tblSettings` (6 credential reset + 9 email enhancement)
+- 3 HTML email templates with dark mode support
+
+### Configuration
+
+```sql
+-- Batch size: number of users processed per AJAX polling cycle
+UPDATE tblSettings SET settingValue = '100'
+WHERE settingKey = 'security.credential_reset.batch_size';
+
+-- Email priority (1 = highest, 10 = lowest)
+UPDATE tblSettings SET settingValue = '1'
+WHERE settingKey = 'security.credential_reset.email_priority';
+
+-- Token expiry: hours before password reset links expire
+UPDATE tblSettings SET settingValue = '72'
+WHERE settingKey = 'security.credential_reset.token_expiry_hours';
+
+-- Require typed confirmation ("CONFIRM RESET") before initiating
+UPDATE tblSettings SET settingValue = '1'
+WHERE settingKey = 'security.credential_reset.require_confirmation';
+
+-- Invalidate all active sessions when resetting credentials
+UPDATE tblSettings SET settingValue = '1'
+WHERE settingKey = 'security.credential_reset.invalidate_sessions';
+```
+
+### Admin UI
+
+Access the admin interface at:
+
+```
+/admin/security/credential-reset/
+```
+
+**Requirements:** Super Admin access (enforced by `requireSuperAdmin()`)
+
+The UI provides a 3-step wizard:
+
+1. **Select Reset Type** — Choose from the 3 reset types with colour-coded descriptions
+2. **Configure Scope & Reason** — Select scope (all/filtered/specific), enter mandatory reason for audit trail
+3. **Progress Tracking** — Real-time progress bar with AJAX batch processing (500ms polling intervals)
+
+Additional UI features:
+- **Typed confirmation dialog** — Must type "CONFIRM RESET" to proceed (prevents accidental execution)
+- **Operation history table** — View all past reset operations with status, affected count, and timestamps
+- **Compliance reports** — View non-compliant users and generate compliance summaries
+
+### API Endpoints
+
+All credential reset API calls go through `/admin/api/user-actions/` with the following action values:
+
+| Action | Method | Description |
+|--------|--------|-------------|
+| `initiate_mass_reset` | POST | Start a new credential reset operation |
+| `process_reset_batch` | POST | Process the next batch of users |
+| `get_reset_status` | GET | Get current status/progress of a reset |
+| `list_reset_operations` | GET | List all past reset operations |
+| `cancel_reset` | POST | Cancel an in-progress reset |
+| `get_compliance_report` | GET | Generate compliance summary |
+| `get_salt_history` | GET | View salt rotation audit trail |
+
+### Email Notifications
+
+Three HTML email templates are included (stored in `tblEmailTemplates`):
+
+| Template | Sent When | Contains |
+|----------|-----------|----------|
+| `security_breach_alert` | Full credential reset initiated | Urgency notice, reset link, security tips |
+| `mass_password_reset` | Password reset initiated | Reset link, expiry time, reason |
+| `credential_reset_complete` | User completes their reset | Confirmation, security recommendations |
+
+All templates feature:
+- Responsive HTML layout with dark mode (`prefers-color-scheme: dark`)
+- AMP for Email support (Gmail, Yahoo, Mail.ru, AOL) via `text/x-amp-html` MIME part
+- Automatic plain-text fallback generation
+- Customisable via `EmailTemplateBuilder` utility class
+
+### Settings Reference
+
+| Setting Key | Type | Default | Description |
+|-------------|------|---------|-------------|
+| `security.credential_reset.batch_size` | integer | `100` | Users processed per batch cycle |
+| `security.credential_reset.email_priority` | integer | `1` | Email send priority (1-10) |
+| `security.credential_reset.token_expiry_hours` | integer | `72` | Reset token lifetime (hours) |
+| `security.credential_reset.require_confirmation` | boolean | `1` | Require typed confirmation |
+| `security.credential_reset.invalidate_sessions` | boolean | `1` | Kill active sessions on reset |
+| `security.global_salt` | encrypted | (auto) | Global encryption salt |
+| `email.html.enabled` | boolean | `1` | Enable HTML email sending |
+| `email.amp.enabled` | boolean | `0` | Enable AMP for Email support |
+| `email.dkim.enabled` | boolean | `0` | Enable DKIM signing |
+| `email.dkim.selector` | string | (empty) | DKIM DNS selector |
+| `email.dkim.private_key` | encrypted | (empty) | DKIM private key |
+
+### Programmatic Usage
+
+```php
+// Initiate a mass password reset for all users
+$resetId = CredentialResetService::initiateMassReset(
+    adminUserID: $adminId,
+    resetType: CredentialResetService::TYPE_MASS_PASSWORD_RESET,
+    reason: 'Quarterly security rotation',
+    scope: CredentialResetService::SCOPE_ALL_USERS
+);
+
+// Process the next batch
+$result = CredentialResetService::processNextBatch($resetId);
+// Returns: ['processed' => 100, 'remaining' => 450, 'status' => 'processing']
+
+// Check status
+$status = CredentialResetService::getResetStatus($resetId);
+
+// Cancel an in-progress reset
+CredentialResetService::cancelReset($resetId, $adminId);
+
+// Get compliance report
+$report = CredentialResetService::getComplianceReport($resetId);
+
+// View non-compliant users (haven't completed their reset)
+$users = CredentialResetService::getNonCompliantUsers($resetId, limit: 50);
+
+// Salt rotation history
+$history = CredentialResetService::getSaltRotationHistory(limit: 20);
+```
+
+---
+
 ## 🔄 SecurityMiddleware Pipeline
 
 All features are orchestrated by `SecurityMiddleware`, which runs automatically via `config.php`.
@@ -572,6 +740,14 @@ Returns `['allowed' => bool, 'error' => ?string, 'captcha_required' => bool]`.
 | `tblSecurityAlerts` | Alert tracking + resolution | Manual |
 | `tblSessionFingerprints` | Fingerprint audit trail | Every 6 hours (90+ days old) |
 | `tblCircuitBreaker` | External API failure tracking | Every 5 min (reset) |
+
+### New Tables (Migration 017)
+
+| Table | Purpose | Auto-cleanup |
+|-------|---------|-------------|
+| `tblCredentialResets` | Master record for each reset operation | Manual |
+| `tblCredentialResetUsers` | Per-user status tracking within each operation | Manual |
+| `tblSaltRotationHistory` | Encrypted audit trail for salt rotations | Manual |
 
 ### MySQL Scheduled Events
 
@@ -677,6 +853,13 @@ That's it — three API keys and you have comprehensive security coverage. Local
 3. Check `security.alerts.notify_threshold` — alerts below this severity don't trigger email
 4. Verify PHP `mail()` function works on your server
 
+### Credential reset stuck in "processing"
+
+1. Check `tblCredentialResets` for the operation status — it may have been interrupted
+2. Verify batch size is reasonable (`security.credential_reset.batch_size`) — too large may timeout
+3. Check PHP error logs for database or email sending failures
+4. Use the admin UI to cancel the stuck operation, then re-initiate
+
 ### Circuit breaker tripped
 
 If an external API is consistently failing, the circuit breaker prevents hammering it:
@@ -703,8 +886,12 @@ WHERE service_name = 'abuseipdb';
 | `SecurityAlertManager.php` | `web/private_html/security/` | Alert creation, tracking, notification |
 | `SecurityMiddleware.php` | `web/private_html/security/` | Orchestration pipeline |
 | `FormProtection.php` | `web/private_html/security/` | Honeypot, timing, JS challenge |
+| `CredentialResetService.php` | `web/private_html/admin/` | Mass credential reset operations |
+| `EmailTemplateBuilder.php` | `web/private_html/email/` | HTML/AMP email template builder |
+| `credential-reset.php` | `web/public_html/admin/security/` | Admin UI for credential resets |
 | `014_security_enhancements.sql` | `_database/migrations/` | Database tables + settings |
 | `015_form_protection_settings.sql` | `_database/migrations/` | Form protection settings |
+| `017_credential_reset_system.sql` | `_database/migrations/` | Credential reset tables + email settings |
 | `crawlerdetect_loader.php` | `web/_lib/crawlerdetect/` | Library loader |
 
 ---

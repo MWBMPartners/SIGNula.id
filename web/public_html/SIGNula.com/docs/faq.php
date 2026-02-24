@@ -3,13 +3,13 @@ $pageTitle = 'FAQ - SIGNula Documentation';
 $metaDescription = 'Frequently asked questions about SIGNula authentication system.';
 $currentPage = 'docs';
 $currentDoc = 'faq';
-require_once __DIR__ . '/../../../private_html/layout/public-header.php';
+require_once dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'layout' . DIRECTORY_SEPARATOR . 'public-header.php';
 ?>
 <section class="section-padding">
     <div class="container">
         <div class="row">
             <div class="col-lg-3">
-                <?php require_once __DIR__ . '/../../../private_html/layout/docs-sidebar.php'; ?>
+                <?php require_once dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'layout' . DIRECTORY_SEPARATOR . 'docs-sidebar.php'; ?>
             </div>
             <div class="col-lg-9">
                 <h1 class="display-5 fw-bold mb-4">Frequently Asked Questions</h1>
@@ -79,4 +79,4 @@ require_once __DIR__ . '/../../../private_html/layout/public-header.php';
         </div>
     </div>
 </section>
-<?php require_once __DIR__ . '/../../../private_html/layout/public-footer.php'; ?>
+<?php require_once dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'layout' . DIRECTORY_SEPARATOR . 'public-footer.php'; ?>

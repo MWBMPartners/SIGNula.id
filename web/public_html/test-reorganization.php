@@ -16,7 +16,7 @@ echo str_repeat("=", 50) . "\n\n";
 
 // Test 1: Load configuration
 echo "Test 1: Loading configuration...\n";
-$configPath = __DIR__ . '/../../_config/config.php';
+$configPath = dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . '_config' . DIRECTORY_SEPARATOR . 'config.php';
 if (file_exists($configPath)) {
     require_once $configPath;
     echo "  ✅ Configuration loaded\n";

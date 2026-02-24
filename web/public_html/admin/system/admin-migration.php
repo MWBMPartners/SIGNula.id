@@ -7,9 +7,9 @@
  * Copyright © 2025-2026 MWBM Partners Ltd (t/a MWservices). All rights reserved.
  */
 
-require_once dirname(__DIR__, 3) . '/_config/config.php';
-require_once dirname(__DIR__, 3) . '/_backend/Database.php';
-require_once dirname(__DIR__, 3) . '/_backend/SessionManager.php';
+require_once dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . '_config' . DIRECTORY_SEPARATOR . 'config.php';
+require_once dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . '_backend' . DIRECTORY_SEPARATOR . 'Database.php';
+require_once dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . '_backend' . DIRECTORY_SEPARATOR . 'SessionManager.php';
 
 $db = Database::getInstance();
 $sessionManager = new SessionManager($db);

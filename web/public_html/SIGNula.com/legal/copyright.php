@@ -18,7 +18,7 @@ $currentPage = '';
 $ogImage = '/assets/images/og-legal.png';
 
 // Include header component
-require_once __DIR__ . '/../../../private_html/layout/public-header.php';
+require_once dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'layout' . DIRECTORY_SEPARATOR . 'public-header.php';
 
 $currentYear = date('Y');
 ?>
@@ -264,5 +264,5 @@ $currentYear = date('Y');
 
 <?php
 // Include footer component
-require_once __DIR__ . '/../../../private_html/layout/public-footer.php';
+require_once dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'layout' . DIRECTORY_SEPARATOR . 'public-footer.php';
 ?>

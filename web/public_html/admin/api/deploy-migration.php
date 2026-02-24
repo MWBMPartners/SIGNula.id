@@ -20,10 +20,10 @@ if (!defined('INCLUDED_FROM_ADMIN')) {
     die(json_encode(['success' => false, 'error' => 'Direct access forbidden']));
 }
 
-require_once dirname(__DIR__, 3) . '/_config/config.php';
-require_once dirname(__DIR__, 3) . '/_backend/Database.php';
-require_once dirname(__DIR__, 3) . '/_backend/SessionManager.php';
-require_once dirname(__DIR__, 3) . '/_backend/ActivityLogger.php';
+require_once dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . '_config' . DIRECTORY_SEPARATOR . 'config.php';
+require_once dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . '_backend' . DIRECTORY_SEPARATOR . 'Database.php';
+require_once dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . '_backend' . DIRECTORY_SEPARATOR . 'SessionManager.php';
+require_once dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . '_backend' . DIRECTORY_SEPARATOR . 'ActivityLogger.php';
 
 // Initialize components
 $db = Database::getInstance();
@@ -128,7 +128,7 @@ function executeMigration($migrationFile) {
     global $db;
 
     // Read migration file
-    $migrationPath = dirname(__DIR__, 4) . '/_database/migrations/' . $migrationFile;
+    $migrationPath = dirname(__DIR__, 4) . DIRECTORY_SEPARATOR . '_database' . DIRECTORY_SEPARATOR . 'migrations' . DIRECTORY_SEPARATOR . $migrationFile;
 
     if (!file_exists($migrationPath)) {
         return ['success' => false, 'error' => 'Migration file not found'];
@@ -276,7 +276,7 @@ try {
 
         case 'list':
             // Get list of available migrations
-            $migrationDir = dirname(__DIR__, 4) . '/_database/migrations/';
+            $migrationDir = dirname(__DIR__, 4) . DIRECTORY_SEPARATOR . '_database' . DIRECTORY_SEPARATOR . 'migrations' . DIRECTORY_SEPARATOR;
             $migrations = [];
 
             if (is_dir($migrationDir)) {

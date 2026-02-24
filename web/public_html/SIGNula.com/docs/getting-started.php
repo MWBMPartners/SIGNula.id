@@ -3,13 +3,13 @@ $pageTitle = 'Getting Started - SIGNula Documentation';
 $metaDescription = 'Quick start guide for integrating SIGNula universal authentication into your application.';
 $currentPage = 'docs';
 $currentDoc = 'getting-started';
-require_once __DIR__ . '/../../../private_html/layout/public-header.php';
+require_once dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'layout' . DIRECTORY_SEPARATOR . 'public-header.php';
 ?>
 <section class="section-padding">
     <div class="container">
         <div class="row">
             <div class="col-lg-3">
-                <?php require_once __DIR__ . '/../../../private_html/layout/docs-sidebar.php'; ?>
+                <?php require_once dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'layout' . DIRECTORY_SEPARATOR . 'docs-sidebar.php'; ?>
             </div>
             <div class="col-lg-9">
                 <h1 class="display-5 fw-bold mb-4">Getting Started</h1>
@@ -47,4 +47,4 @@ Fill in your details and verify your email</code></pre>
         </div>
     </div>
 </section>
-<?php require_once __DIR__ . '/../../../private_html/layout/public-footer.php'; ?>
+<?php require_once dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'layout' . DIRECTORY_SEPARATOR . 'public-footer.php'; ?>

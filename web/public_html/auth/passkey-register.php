@@ -22,7 +22,7 @@ $pageTitle = 'Add PassKey';
 $user = getCurrentUser();
 
 // 🎨 Include header
-include SIGNULA_ROOT . '/private_html/layout/header.php';
+include SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'layout' . DIRECTORY_SEPARATOR . 'header.php';
 ?>
 
 <div class="container mt-5">
@@ -311,5 +311,5 @@ function arrayBufferToBase64(buffer) {
 
 <?php
 // 🎨 Include footer
-include SIGNULA_ROOT . '/private_html/layout/footer.php';
+include SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'layout' . DIRECTORY_SEPARATOR . 'footer.php';
 ?>
