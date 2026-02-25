@@ -44,6 +44,27 @@ Options -Indexes
 # ============================================================================
 
 <FilesMatch "\.(md|log|ini|conf)$">
-    Order allow,deny
-    Deny from all
+    <IfVersion < 2.4>
+        Order allow,deny
+        Deny from all
+    </IfVersion>
+    <IfVersion >= 2.4>
+        Require all denied
+    </IfVersion>
+</FilesMatch>
+
+# ============================================================================
+# 🚫 Block access to hidden/dot files (.gitkeep, .gitignore, .env, etc.)
+# ============================================================================
+# Exceptions: .well-known (required for ACME/SSL certificate validation)
+# ============================================================================
+
+<FilesMatch "^\.(?!well-known)">
+    <IfVersion < 2.4>
+        Order allow,deny
+        Deny from all
+    </IfVersion>
+    <IfVersion >= 2.4>
+        Require all denied
+    </IfVersion>
 </FilesMatch>

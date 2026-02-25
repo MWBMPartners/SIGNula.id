@@ -17,3 +17,25 @@ RewriteRule ^([a-f0-9\-]{36})/([0-9]+)/?$ index.php?uuid=$1&size=$2 [L,QSA]
 
 # 🔗 Rewrite /avatar/{uuid} to index.php (default size)
 RewriteRule ^([a-f0-9\-]{36})/?$ index.php?uuid=$1 [L,QSA]
+
+# ============================================================================
+# 📝 Disable directory listing
+# ============================================================================
+
+Options -Indexes
+
+# ============================================================================
+# 🚫 Block access to hidden/dot files (.gitkeep, .gitignore, .env, etc.)
+# ============================================================================
+# Exceptions: .well-known (required for ACME/SSL certificate validation)
+# ============================================================================
+
+<FilesMatch "^\.(?!well-known)">
+    <IfVersion < 2.4>
+        Order allow,deny
+        Deny from all
+    </IfVersion>
+    <IfVersion >= 2.4>
+        Require all denied
+    </IfVersion>
+</FilesMatch>
