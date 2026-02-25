@@ -473,15 +473,65 @@ public_html/uploads/*
 *.swo
 *~
 
-# 🖥️ OS Files
+# 🖥️ OS Files — macOS
 .DS_Store
 .DS_Store?
 ._*
 .Spotlight-V100
 .Trashes
+.AppleDouble
+.LSOverride
+Icon?
+
+# 🖥️ OS Files — Windows
 ehthumbs.db
+ehthumbs_vista.db
 Thumbs.db
 Desktop.ini
+$RECYCLE.BIN/
+
+# 🐧 OS Files — Linux (General)
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# 🐧 OS Files — Linux (X11/Wayland session files)
+.Xauthority
+.xsession-errors
+.xsession-errors.old
+
+# 🍓 Debian / Raspberry Pi OS
+*.deb
+*.ddeb
+*.udeb
+*.dpkg-old
+*.dpkg-new
+*.dpkg-dist
+*.dpkg-bak
+*.dpkg-tmp
+
+# 🖥️ VS Code — Linux Remote Development
+.vscode-server/
+.vscode-server-insiders/
+
+# 🖥️ VS Code — Workspace & Local History (Linux paths)
+.history/
+*.code-workspace
+.vscode/settings.local.json
+
+# 🖥️ IDE Files — Common Linux Editors (fallback editing)
+*.swn
+*.bak
+*.orig
+*_BACKUP_*
+*_BASE_*
+*_LOCAL_*
+*_REMOTE_*
+.netrwhist
+.nano/
+.nano_history
 
 # 📦 Dependency directories
 vendor/
