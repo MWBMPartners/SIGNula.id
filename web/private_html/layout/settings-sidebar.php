@@ -53,6 +53,14 @@ $currentPage = basename($_SERVER['PHP_SELF'], '.php');
                 <span class="me-2">📱</span> Two-Factor Auth
             </a>
 
+            <!-- Recovery Keys -->
+            <a
+                href="/settings/recovery-keys"
+                class="nav-link <?php echo $currentPage === 'recovery-keys' ? 'active' : ''; ?>"
+            >
+                <span class="me-2">🔑</span> Recovery Keys
+            </a>
+
             <!-- Connected Accounts -->
             <a
                 href="/settings/connected-accounts"
