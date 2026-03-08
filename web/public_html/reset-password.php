@@ -30,10 +30,11 @@ $tokenData = null;
 $token = $_GET['token'] ?? '';
 
 if (!empty($token)) {
-    // 🔍 Validate token
+    // 🔍 Validate token — also check attempt count against maxAttempts
+    // @see tblVerificationTokens.attempts / maxAttempts columns
     try {
         $tokenData = Database::fetchOne(
-            "SELECT vt.*, u.email, u.displayName
+            "SELECT vt.*, u.email, u.displayName, u.passwordHash
              FROM tblVerificationTokens vt
              JOIN tblUsers u ON vt.userID = u.userID
              WHERE vt.token = ?
@@ -46,7 +47,37 @@ if (!empty($token)) {
         );
 
         if ($tokenData) {
-            $tokenValid = true;
+            // 🔒 Check if token has exceeded maximum attempts
+            // @see https://cheatsheetseries.owasp.org/cheatsheets/Forgot_Password_Cheat_Sheet.html
+            if ($tokenData['attempts'] >= $tokenData['maxAttempts']) {
+                // 🚫 Token exhausted — mark as used to prevent further attempts
+                Database::query(
+                    "UPDATE tblVerificationTokens SET isUsed = TRUE, usedAt = NOW() WHERE tokenID = ?",
+                    [$tokenData['tokenID']],
+                    'i'
+                );
+
+                if (class_exists('ActivityLogger')) {
+                    ActivityLogger::log(
+                        $tokenData['userID'],
+                        'password_reset_token_exhausted',
+                        'auth',
+                        'warning',
+                        'Password reset token exceeded max attempts (' . $tokenData['maxAttempts'] . ')'
+                    );
+                }
+
+                $error = 'This reset link has been used too many times. Please request a new one.';
+            } else {
+                $tokenValid = true;
+
+                // 📊 Increment attempt counter
+                Database::query(
+                    "UPDATE tblVerificationTokens SET attempts = attempts + 1 WHERE tokenID = ?",
+                    [$tokenData['tokenID']],
+                    'i'
+                );
+            }
         } else {
             $error = 'Invalid or expired password reset link. Please request a new one.';
         }
@@ -72,67 +103,95 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $tokenValid) {
             $error = 'Passwords do not match.';
         } else {
             // 🔒 Validate password strength
+            // @see web/private_html/security/SecurityUtils.php — validatePassword()
             $validation = SecurityUtils::validatePassword($password);
 
             if (!$validation['valid']) {
                 $error = implode(' ', $validation['errors']);
             } else {
-                try {
-                    // 🔄 Begin transaction
-                    Database::beginTransaction();
+                // 🔍 Check password history for reuse prevention
+                // @see web/private_html/auth/Auth.php — checkPasswordHistory()
+                $historyCheck = Auth::checkPasswordHistory($tokenData['userID'], $password);
+                if (!$historyCheck['allowed']) {
+                    $error = $historyCheck['message'];
+                } elseif (password_verify($password, $tokenData['passwordHash'])) {
+                    // 🚫 Also check against current password
+                    $error = 'New password must be different from your current password.';
+                } else {
+                    try {
+                        // 🔄 Begin transaction
+                        Database::beginTransaction();
 
-                    // 🔐 Hash new password
-                    $passwordHash = SecurityUtils::hashPassword($password);
+                        // 📝 Record current password in history BEFORE replacing it
+                        Auth::recordPasswordHistory(
+                            $tokenData['userID'],
+                            $tokenData['passwordHash'],
+                            'user',
+                            'reset'
+                        );
 
-                    // 💾 Update user password
-                    Database::query(
-                        "UPDATE tblUsers
-                         SET passwordHash = ?, failedLoginAttempts = 0, lastFailedLogin = NULL
-                         WHERE userID = ?",
-                        [$passwordHash, $tokenData['userID']],
-                        'si'
-                    );
+                        // 🔐 Hash new password (Argon2id)
+                        $passwordHash = SecurityUtils::hashPassword($password);
 
-                    // 🎫 Mark token as used
-                    Database::query(
-                        "UPDATE tblVerificationTokens
-                         SET isUsed = TRUE, usedAt = NOW()
-                         WHERE tokenID = ?",
-                        [$tokenData['tokenID']],
-                        'i'
-                    );
+                        // 💾 Update user password
+                        Database::query(
+                            "UPDATE tblUsers
+                             SET passwordHash = ?, failedLoginAttempts = 0, lastFailedLogin = NULL
+                             WHERE userID = ?",
+                            [$passwordHash, $tokenData['userID']],
+                            'si'
+                        );
 
-                    // 🗑️ Invalidate all existing sessions (force re-login)
-                    Database::query(
-                        "UPDATE tblUserSessions
-                         SET isActive = FALSE
-                         WHERE userID = ?",
-                        [$tokenData['userID']],
-                        'i'
-                    );
+                        // 🎫 Mark token as used
+                        Database::query(
+                            "UPDATE tblVerificationTokens
+                             SET isUsed = TRUE, usedAt = NOW()
+                             WHERE tokenID = ?",
+                            [$tokenData['tokenID']],
+                            'i'
+                        );
 
-                    // 📝 Log activity
-                    ActivityLogger::log(
-                        $tokenData['userID'],
-                        'password_reset_completed',
-                        'auth',
-                        'info',
-                        'Password was reset successfully'
-                    );
+                        // 🗑️ Invalidate all existing sessions (force re-login)
+                        Database::query(
+                            "UPDATE tblUserSessions
+                             SET isActive = FALSE
+                             WHERE userID = ?",
+                            [$tokenData['userID']],
+                            'i'
+                        );
 
-                    // ✅ Commit transaction
-                    Database::commit();
+                        // 📝 Log activity
+                        ActivityLogger::log(
+                            $tokenData['userID'],
+                            'password_reset_completed',
+                            'auth',
+                            'info',
+                            'Password was reset successfully'
+                        );
 
-                    $success = true;
+                        // ✅ Commit transaction
+                        Database::commit();
 
-                } catch (Exception $e) {
-                    // ↩️ Rollback on error
-                    if (Database::isConnected()) {
-                        Database::rollback();
+                        // 📧 Send security notification email
+                        // @see web/private_html/auth/Auth.php — sendPasswordChangedNotification()
+                        Auth::sendPasswordChangedNotification(
+                            $tokenData['userID'],
+                            $tokenData['email'],
+                            $tokenData['displayName'] ?? '',
+                            'Password reset link'
+                        );
+
+                        $success = true;
+
+                    } catch (Exception $e) {
+                        // ↩️ Rollback on error
+                        if (Database::isConnected()) {
+                            Database::rollback();
+                        }
+
+                        ErrorLogger::logError('Exception', $e->getMessage(), $e->getFile(), $e->getLine());
+                        $error = 'An error occurred while resetting your password. Please try again.';
                     }
-
-                    ErrorLogger::logError('Exception', $e->getMessage(), $e->getFile(), $e->getLine());
-                    $error = 'An error occurred while resetting your password. Please try again.';
                 }
             }
         }

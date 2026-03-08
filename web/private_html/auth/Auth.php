@@ -853,6 +853,286 @@ class Auth
 
         return $deviceInfo;
     }
+
+    // ========================================================================
+    // 🔐 PASSWORD MANAGEMENT
+    // ========================================================================
+
+    /**
+     * 🔄 Change Password (Authenticated User)
+     *
+     * Validates current password, checks password history, updates password,
+     * records in history, and sends security notification email.
+     *
+     * @param int    $userID          The user's ID
+     * @param string $currentPassword The user's current password (plaintext for verification)
+     * @param string $newPassword     The new password (plaintext, will be hashed)
+     * @return array ['success' => bool, 'message' => string]
+     *
+     * @see https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html#implement-proper-password-strength-controls
+     */
+    public static function changePassword(
+        int $userID,
+        string $currentPassword,
+        string $newPassword
+    ): array {
+        try {
+            // 🔍 Fetch user's current password hash
+            $user = Database::fetchOne(
+                "SELECT userID, email, displayName, passwordHash FROM tblUsers WHERE userID = ? AND deletedAt IS NULL",
+                [$userID],
+                'i'
+            );
+
+            if (!$user) {
+                return ['success' => false, 'message' => 'User not found.'];
+            }
+
+            // ✅ Verify current password
+            if (!password_verify($currentPassword, $user['passwordHash'])) {
+                // 📝 Log failed attempt
+                if (class_exists('ActivityLogger')) {
+                    ActivityLogger::log(
+                        userID: $userID,
+                        activityType: 'password_change_failed',
+                        activityResult: 'failure',
+                        activityDetails: 'Incorrect current password provided during password change'
+                    );
+                }
+                return ['success' => false, 'message' => 'Current password is incorrect.'];
+            }
+
+            // 🔒 Validate new password strength
+            $validation = SecurityUtils::validatePassword($newPassword);
+            if (!$validation['valid']) {
+                return ['success' => false, 'message' => implode(' ', $validation['errors'])];
+            }
+
+            // 🚫 Check new password isn't the same as current
+            if (password_verify($newPassword, $user['passwordHash'])) {
+                return ['success' => false, 'message' => 'New password must be different from your current password.'];
+            }
+
+            // 🔍 Check password history for reuse
+            $historyCheck = self::checkPasswordHistory($userID, $newPassword);
+            if (!$historyCheck['allowed']) {
+                return ['success' => false, 'message' => $historyCheck['message']];
+            }
+
+            // 🔄 Begin transaction
+            Database::beginTransaction();
+
+            // 📝 Record current password in history BEFORE changing it
+            self::recordPasswordHistory($userID, $user['passwordHash'], 'user', 'change');
+
+            // 🔐 Hash and update new password
+            $newHash = SecurityUtils::hashPassword($newPassword);
+            Database::query(
+                "UPDATE tblUsers SET passwordHash = ?, updatedAt = NOW() WHERE userID = ?",
+                [$newHash, $userID],
+                'si'
+            );
+
+            // ✅ Commit transaction
+            Database::commit();
+
+            // 📝 Log success
+            if (class_exists('ActivityLogger')) {
+                ActivityLogger::log(
+                    userID: $userID,
+                    activityType: 'password_changed',
+                    activityResult: 'success',
+                    activityDetails: 'Password changed successfully via settings page'
+                );
+            }
+
+            // 📧 Send security notification email
+            self::sendPasswordChangedNotification($userID, $user['email'], $user['displayName'] ?? '', 'Settings page');
+
+            return ['success' => true, 'message' => 'Password changed successfully!'];
+
+        } catch (Exception $e) {
+            if (Database::isConnected()) {
+                Database::rollback();
+            }
+
+            if (class_exists('ErrorLogger')) {
+                ErrorLogger::logError('Exception', $e->getMessage(), $e->getFile(), $e->getLine());
+            }
+
+            return ['success' => false, 'message' => 'An error occurred while changing your password. Please try again.'];
+        }
+    }
+
+    /**
+     * 🔍 Check Password History for Reuse
+     *
+     * Verifies that the new password hasn't been used recently by comparing
+     * against the last N stored hashes (N is configurable via
+     * security.password.history_count setting).
+     *
+     * @param int    $userID      The user's ID
+     * @param string $newPassword The candidate new password (plaintext)
+     * @return array ['allowed' => bool, 'message' => string]
+     *
+     * @see https://pages.nist.gov/800-63-3/sp800-63b.html — NIST password guidelines
+     */
+    public static function checkPasswordHistory(int $userID, string $newPassword): array
+    {
+        // 📊 Get the configured history count
+        $historyCount = (int) getSetting('security.password.history_count', 5);
+
+        // 🔓 If history check is disabled (0), allow all passwords
+        if ($historyCount <= 0) {
+            return ['allowed' => true, 'message' => ''];
+        }
+
+        try {
+            // 🔍 Fetch the last N password hashes for this user
+            $previousHashes = Database::fetchAll(
+                "SELECT passwordHash FROM tblPasswordHistory
+                 WHERE userID = ?
+                 ORDER BY createdAt DESC
+                 LIMIT ?",
+                [$userID, $historyCount],
+                'ii'
+            );
+
+            if (empty($previousHashes)) {
+                return ['allowed' => true, 'message' => ''];
+            }
+
+            // 🔐 Check the new password against each historical hash
+            // password_verify() handles different algorithms/costs automatically
+            // @see https://www.php.net/manual/en/function.password-verify.php
+            foreach ($previousHashes as $entry) {
+                if (password_verify($newPassword, $entry['passwordHash'])) {
+                    return [
+                        'allowed' => false,
+                        'message' => 'You cannot reuse one of your last ' . $historyCount . ' passwords. Please choose a different password.'
+                    ];
+                }
+            }
+
+            return ['allowed' => true, 'message' => ''];
+
+        } catch (Exception $e) {
+            // 📝 Log error but don't block the password change
+            if (class_exists('ErrorLogger')) {
+                ErrorLogger::logError('Exception', 'Password history check failed: ' . $e->getMessage(), $e->getFile(), $e->getLine());
+            }
+            return ['allowed' => true, 'message' => ''];
+        }
+    }
+
+    /**
+     * 💾 Record Password in History
+     *
+     * Stores the current password hash in tblPasswordHistory before it is
+     * replaced. Also cleans up old entries beyond the configured limit.
+     *
+     * @param int    $userID       The user's ID
+     * @param string $passwordHash The password hash being replaced (NOT the new one)
+     * @param string $changedBy    Who initiated: 'user', 'admin', 'system'
+     * @param string $changedVia   How: 'change', 'reset', 'admin_reset', 'mass_reset'
+     * @return void
+     */
+    public static function recordPasswordHistory(
+        int $userID,
+        string $passwordHash,
+        string $changedBy = 'user',
+        string $changedVia = 'change'
+    ): void {
+        try {
+            // 💾 Insert the current (soon-to-be-old) password hash
+            Database::query(
+                "INSERT INTO tblPasswordHistory (userID, passwordHash, changedBy, changedVia, ipAddress, userAgent)
+                 VALUES (?, ?, ?, ?, ?, ?)",
+                [$userID, $passwordHash, $changedBy, $changedVia, getClientIP(), getUserAgent()],
+                'isssss'
+            );
+
+            // 🧹 Clean up old entries beyond the configured limit
+            $historyCount = (int) getSetting('security.password.history_count', 5);
+            if ($historyCount > 0) {
+                // Keep only the most recent N entries
+                Database::query(
+                    "DELETE FROM tblPasswordHistory
+                     WHERE userID = ? AND historyID NOT IN (
+                         SELECT historyID FROM (
+                             SELECT historyID FROM tblPasswordHistory
+                             WHERE userID = ?
+                             ORDER BY createdAt DESC
+                             LIMIT ?
+                         ) AS recent
+                     )",
+                    [$userID, $userID, $historyCount],
+                    'iii'
+                );
+            }
+        } catch (Exception $e) {
+            // 📝 Log but don't fail — history is a security enhancement, not critical path
+            if (class_exists('ErrorLogger')) {
+                ErrorLogger::logError('Exception', 'Failed to record password history: ' . $e->getMessage(), $e->getFile(), $e->getLine());
+            }
+        }
+    }
+
+    /**
+     * 📧 Send Password Changed Notification Email
+     *
+     * Sends a security alert email to the user after their password is
+     * changed or reset, including the method, IP, and device info.
+     *
+     * @param int    $userID       The user's ID
+     * @param string $email        The user's email address
+     * @param string $displayName  The user's display name
+     * @param string $changeMethod How the password was changed (e.g. 'Settings page', 'Password reset link')
+     * @return void
+     *
+     * @see web/private_html/email/EmailService.php — sendTemplateEmail()
+     */
+    public static function sendPasswordChangedNotification(
+        int $userID,
+        string $email,
+        string $displayName,
+        string $changeMethod
+    ): void {
+        // 🔍 Check if notifications are enabled
+        $notifyOnChange = getSetting('security.password.notify_on_change', 'true');
+        $notifyOnReset  = getSetting('security.password.notify_on_reset', 'true');
+
+        // 📧 Determine if we should send based on the method
+        $shouldNotify = ($changeMethod === 'Password reset link')
+            ? ($notifyOnReset === 'true' || $notifyOnReset === '1')
+            : ($notifyOnChange === 'true' || $notifyOnChange === '1');
+
+        if (!$shouldNotify) {
+            return;
+        }
+
+        try {
+            $baseURL = getSetting('url.base', 'https://SIGNula.id');
+
+            $variables = [
+                'displayName'  => $displayName ?: 'User',
+                'changedAt'    => date('j M Y, g:i A T'),
+                'changeMethod' => $changeMethod,
+                'ipAddress'    => getClientIP(),
+                'userAgent'    => getUserAgent(),
+                'resetUrl'     => $baseURL . '/forgot-password',
+            ];
+
+            if (class_exists('EmailService')) {
+                EmailService::sendTemplateEmail($email, 'password_changed_notification', $variables);
+            }
+        } catch (Exception $e) {
+            // 📝 Log but don't fail — notification is informational
+            if (class_exists('ErrorLogger')) {
+                ErrorLogger::logError('Exception', 'Failed to send password changed notification: ' . $e->getMessage(), $e->getFile(), $e->getLine());
+            }
+        }
+    }
 }
 
 // ✅ Auth class loaded successfully

@@ -26,78 +26,40 @@ $message = null;
 $messageType = null;
 
 // 📝 Handle password change
+// Uses Auth::changePassword() which handles password history, strength validation,
+// Argon2id hashing, and security notification emails.
+// @see web/private_html/auth/Auth.php — Auth::changePassword()
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'change_password') {
-    try {
+    // 🛡️ Verify CSRF token
+    // @see https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html
+    if (!SecurityUtils::verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+        $message = 'Invalid security token. Please try again.';
+        $messageType = 'danger';
+    } else {
         $currentPassword = $_POST['currentPassword'] ?? '';
         $newPassword = $_POST['newPassword'] ?? '';
         $confirmPassword = $_POST['confirmPassword'] ?? '';
 
-        $errors = [];
-
-        // ✅ Validate current password
-        if (empty($currentPassword)) {
-            $errors[] = 'Current password is required';
-        } elseif (!password_verify($currentPassword, $user['passwordHash'])) {
-            $errors[] = 'Current password is incorrect';
-
-            // 📝 Log failed attempt
-            ActivityLogger::log(
-                userID: $userID,
-                activityType: 'password_change',
-                activityResult: 'failed',
-                activityDetails: 'Incorrect current password provided'
-            );
-        }
-
-        // ✅ Validate new password
-        if (empty($newPassword)) {
-            $errors[] = 'New password is required';
-        } elseif (strlen($newPassword) < 8) {
-            $errors[] = 'New password must be at least 8 characters';
-        } elseif ($newPassword === $currentPassword) {
-            $errors[] = 'New password must be different from current password';
-        }
-
-        // ✅ Validate confirmation
+        // ✅ Validate confirmation match before calling Auth (quick client-side check)
         if ($newPassword !== $confirmPassword) {
-            $errors[] = 'Password confirmation does not match';
-        }
-
-        if (empty($errors)) {
-            // 🔐 Hash new password
-            $newPasswordHash = password_hash($newPassword, PASSWORD_DEFAULT);
-
-            // 📝 Update password
-            $query = "UPDATE tblUsers SET passwordHash = ?, updatedAt = NOW() WHERE userID = ?";
-            $result = Database::query($query, [$newPasswordHash, $userID], 'si');
-
-            if ($result) {
-                // 📝 Log success
-                ActivityLogger::log(
-                    userID: $userID,
-                    activityType: 'password_change',
-                    activityResult: 'success',
-                    activityDetails: 'Password changed successfully'
-                );
-
-                $message = 'Password changed successfully!';
-                $messageType = 'success';
-            } else {
-                $errors[] = 'Failed to update password';
-            }
-        }
-
-        if (!empty($errors)) {
-            $message = implode('<br>', $errors);
+            $message = 'Password confirmation does not match.';
             $messageType = 'danger';
+        } elseif (empty($currentPassword) || empty($newPassword)) {
+            $message = 'All password fields are required.';
+            $messageType = 'danger';
+        } else {
+            // 🔄 Delegate to Auth::changePassword() for full validation
+            // Handles: current password check, strength validation, history check,
+            // Argon2id hashing, activity logging, and notification email
+            $result = Auth::changePassword($userID, $currentPassword, $newPassword);
+            $message = htmlspecialchars($result['message']);
+            $messageType = $result['success'] ? 'success' : 'danger';
         }
-
-    } catch (Exception $e) {
-        error_log("Password change error: " . $e->getMessage());
-        $message = 'An error occurred while changing your password';
-        $messageType = 'danger';
     }
 }
+
+// 🎫 Generate CSRF token for the password change form
+$csrfToken = SecurityUtils::generateCSRFToken();
 
 // 📊 Get security statistics
 $securityStats = [
@@ -197,6 +159,8 @@ include SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATO
 
                     <form method="POST" action="">
                         <input type="hidden" name="action" value="change_password">
+                        <!-- 🛡️ CSRF Token -->
+                        <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrfToken); ?>">
 
                         <div class="mb-3">
                             <label for="currentPassword" class="form-label">Current Password *</label>
@@ -238,13 +202,14 @@ include SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATO
                         </div>
 
                         <div class="alert alert-info small">
-                            <strong>💡 Password Tips:</strong>
+                            <strong>💡 Password Requirements:</strong>
                             <ul class="mb-0 mt-2">
-                                <li>Use at least 8 characters (longer is better)</li>
-                                <li>Mix uppercase and lowercase letters</li>
-                                <li>Include numbers and special characters</li>
-                                <li>Avoid common words or personal information</li>
-                                <li>Don't reuse passwords from other sites</li>
+                                <li>At least 12 characters long</li>
+                                <li>At least one uppercase letter</li>
+                                <li>At least one lowercase letter</li>
+                                <li>At least one number</li>
+                                <li>At least one special character</li>
+                                <li>Cannot reuse your last <?php echo htmlspecialchars(getSetting('security.password.history_count', '5')); ?> passwords</li>
                             </ul>
                         </div>
 
