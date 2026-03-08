@@ -48,10 +48,11 @@ require_once PRIVATE_DIR . '/api/RateLimitMiddleware.php';
 require_once PRIVATE_DIR . '/api/APIKeyMiddleware.php';
 
 // 📦 Load controllers
-require_once INCLUDES_DIR . '/api/controllers/AuthController.php';
-require_once INCLUDES_DIR . '/api/controllers/UserController.php';
-require_once INCLUDES_DIR . '/api/controllers/MFAController.php';
-require_once INCLUDES_DIR . '/api/controllers/OAuthController.php';
+require_once INCLUDES_DIR . DIRECTORY_SEPARATOR . 'api' . DIRECTORY_SEPARATOR . 'controllers' . DIRECTORY_SEPARATOR . 'AuthController.php';
+require_once INCLUDES_DIR . DIRECTORY_SEPARATOR . 'api' . DIRECTORY_SEPARATOR . 'controllers' . DIRECTORY_SEPARATOR . 'UserController.php';
+require_once INCLUDES_DIR . DIRECTORY_SEPARATOR . 'api' . DIRECTORY_SEPARATOR . 'controllers' . DIRECTORY_SEPARATOR . 'MFAController.php';
+require_once INCLUDES_DIR . DIRECTORY_SEPARATOR . 'api' . DIRECTORY_SEPARATOR . 'controllers' . DIRECTORY_SEPARATOR . 'OAuthController.php';
+require_once PRIVATE_DIR . DIRECTORY_SEPARATOR . 'api' . DIRECTORY_SEPARATOR . 'controllers' . DIRECTORY_SEPARATOR . 'UsageController.php';
 
 // 🛣️ Create router instance
 $router = new Router();
@@ -155,6 +156,28 @@ $router->group('/api/v1/oauth', function($router) {
     $router->post('/link', 'OAuthController@linkAccount');
     $router->delete('/unlink/{provider}', 'OAuthController@unlinkAccount');
     $router->post('/set-primary', 'OAuthController@setPrimary');
+});
+
+// ============================================================================
+// 📊 USAGE BILLING ROUTES
+// ============================================================================
+
+$router->group('/api/v1/usage', function($router) {
+    // 📊 Usage recording (requires API key — for partner usage submission)
+    $router->post('/record', 'UsageController@recordUsage');
+    $router->post('/batch', 'UsageController@recordBatchUsage');
+
+    // 📊 Usage data retrieval (requires user authentication)
+    $router->get('/current', 'UsageController@getCurrentUsage');
+    $router->get('/history', 'UsageController@getUsageHistory');
+    $router->get('/projected-cost', 'UsageController@getProjectedCost');
+    $router->get('/billing-summaries', 'UsageController@getBillingSummaries');
+
+    // 📋 Usage metrics (public — no auth required)
+    $router->get('/metrics', 'UsageController@getMetrics');
+
+    // 🔀 Billing mode management (requires user authentication)
+    $router->put('/billing-mode', 'UsageController@changeBillingMode');
 });
 
 // ============================================================================

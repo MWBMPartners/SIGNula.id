@@ -104,6 +104,7 @@ class InvoiceManager
         'credit_topup',
         'service_fee',
         'remittance',
+        'usage', // 📊 Usage-based billing invoice (added in v2.7.0-beta)
     ];
 
     /**
@@ -2072,6 +2073,168 @@ class InvoiceManager
      * $stats = InvoiceManager::getInvoiceStats(90, 5);
      * ```
      */
+    // ========================================================================
+    // 📊 USAGE BILLING INVOICE SUPPORT
+    // ========================================================================
+    // Methods for creating and rendering invoices from usage billing summaries.
+    // These extend the existing invoice system with itemised usage breakdowns.
+    //
+    // @since 2.7.0-beta
+    // ========================================================================
+
+    /**
+     * 📊 Create Usage Invoice from Billing Summary
+     *
+     * Convenience method that takes a usage billing summary and creates
+     * an invoice with properly formatted usage line items. Handles the
+     * conversion from billing summary format to invoice line item format,
+     * including the tier cap discount line (for hybrid billing).
+     *
+     * @param int   $summaryID The tblUsageBillingSummary.summaryID
+     * @param array $options   Additional invoice options (autoIssue, notes, etc.)
+     *
+     * @return array {
+     *     @type bool   $success       Whether the invoice was created
+     *     @type int    $invoiceID     The created invoice ID
+     *     @type string $invoiceNumber The generated invoice number
+     *     @type string $message       Result description
+     * }
+     *
+     * @see self::createInvoice()         Core invoice creation method
+     * @see UsageBillingService::getSummary()  Retrieves the billing summary
+     * @since 2.7.0-beta
+     */
+    public static function createUsageInvoice(int $summaryID, array $options = []): array
+    {
+        try {
+            // 📋 Retrieve the billing summary
+            $summary = Database::fetchOne(
+                "SELECT ubs.*, s.billingCycle, t.tierName
+                 FROM tblUsageBillingSummary ubs
+                 JOIN tblSubscriptions s ON ubs.subscriptionID = s.subscriptionID
+                 JOIN tblSubscriptionTiers t ON s.tierID = t.tierID
+                 WHERE ubs.summaryID = ?",
+                [$summaryID],
+                'i'
+            );
+
+            if (!$summary) {
+                return [
+                    'success'       => false,
+                    'invoiceID'     => 0,
+                    'invoiceNumber' => '',
+                    'message'       => 'Usage billing summary not found: ' . $summaryID,
+                ];
+            }
+
+            // 📋 Parse the JSON line items from the billing summary
+            $usageLineItems = json_decode($summary['lineItems'] ?? '[]', true);
+            $invoiceLineItems = [];
+
+            // 🔄 Convert usage line items to invoice line item format
+            foreach ($usageLineItems as $item) {
+                $metricName = $item['metricName'] ?? 'Usage';
+                $unitLabel = $item['unitLabel'] ?? 'units';
+                $billableQty = (float) ($item['billableQuantity'] ?? 0);
+                $rate = (float) ($item['rate'] ?? 0);
+                $subtotal = (float) ($item['subtotal'] ?? 0);
+
+                // 📝 Build descriptive line item
+                $description = $metricName;
+                if ($billableQty > 0) {
+                    $description .= ' — ' . number_format($billableQty, 2) . ' ' . $unitLabel;
+                    $freeAllowance = (float) ($item['freeAllowance'] ?? 0);
+                    if ($freeAllowance > 0) {
+                        $totalUsage = (float) ($item['totalUsage'] ?? $billableQty);
+                        $description .= ' (after ' . number_format($freeAllowance, 0) . ' free)';
+                    }
+                }
+
+                // Only add items with non-zero cost or quantity
+                if ($billableQty > 0 || $subtotal > 0) {
+                    $invoiceLineItems[] = [
+                        'description' => $description,
+                        'quantity'    => 1,
+                        'unitPrice'   => $subtotal,
+                        'amount'      => $subtotal,
+                    ];
+                }
+            }
+
+            // 📊 Add zero-usage items as informational lines (£0.00)
+            foreach ($usageLineItems as $item) {
+                $billableQty = (float) ($item['billableQuantity'] ?? 0);
+                if ($billableQty <= 0 && ((float) ($item['totalUsage'] ?? 0)) > 0) {
+                    $invoiceLineItems[] = [
+                        'description' => ($item['metricName'] ?? 'Usage')
+                            . ' — ' . number_format((float) ($item['totalUsage'] ?? 0), 2) . ' '
+                            . ($item['unitLabel'] ?? 'units')
+                            . ' (within free allowance)',
+                        'quantity'    => 1,
+                        'unitPrice'   => 0.00,
+                        'amount'      => 0.00,
+                    ];
+                }
+            }
+
+            // 🔒 If tier cap was applied (hybrid mode), add a discount line
+            if (!empty($summary['capApplied']) && $summary['capApplied'] == 1) {
+                $savings = (float) ($summary['savingsAmount'] ?? 0);
+                if ($savings > 0) {
+                    $invoiceLineItems[] = [
+                        'description' => 'Tier cap discount — ' . htmlspecialchars($summary['tierName'] ?? 'Subscription')
+                            . ' monthly cap (' . $summary['currency'] . ' '
+                            . number_format((float) $summary['tierFixedPrice'], 2) . ')',
+                        'quantity'    => 1,
+                        'unitPrice'   => -$savings,
+                        'amount'      => -$savings,
+                    ];
+                }
+            }
+
+            // 📝 Build invoice notes
+            $periodLabel = $summary['billingPeriodStart'] . ' to ' . $summary['billingPeriodEnd'];
+            $modeLabel = match ($summary['billingMode'] ?? 'hybrid') {
+                'usage'  => 'Pay-as-you-go',
+                'hybrid' => 'Hybrid (usage with tier cap)',
+                default  => 'Usage-based',
+            };
+
+            $invoiceNotes = 'Usage billing for period ' . $periodLabel
+                . ' — Mode: ' . $modeLabel;
+
+            if (!empty($summary['capApplied']) && $summary['capApplied'] == 1) {
+                $invoiceNotes .= ' — Tier cap applied (saved '
+                    . $summary['currency'] . ' ' . number_format((float) $summary['savingsAmount'], 2) . ')';
+            }
+
+            // 🧾 Create the invoice using the standard createInvoice method
+            $invoiceOptions = array_merge([
+                'autoIssue'      => true,
+                'currency'       => $summary['currency'] ?? self::DEFAULT_CURRENCY,
+                'partnerID'      => $summary['partnerID'],
+                'subscriptionID' => (int) $summary['subscriptionID'],
+                'notes'          => $invoiceNotes,
+            ], $options);
+
+            return self::createInvoice(
+                (int) $summary['userID'],
+                'usage',
+                $invoiceLineItems,
+                $invoiceOptions
+            );
+
+        } catch (\Exception $e) {
+            ErrorLogger::log($e);
+            return [
+                'success'       => false,
+                'invoiceID'     => 0,
+                'invoiceNumber' => '',
+                'message'       => 'Failed to create usage invoice: ' . $e->getMessage(),
+            ];
+        }
+    }
+
     public static function getInvoiceStats(int $days = 30, ?int $partnerID = null): array
     {
         // ─────────────────────────────────────────────────────────────────

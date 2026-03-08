@@ -193,6 +193,9 @@ class BillingScheduler
                         'suspend_account'     => self::processSuspension($targetType, $targetID),
                         'expire_trial'        => self::processTrialExpiry($targetID),
                         'process_remittance'  => self::processRemittance($targetID),
+                        'calculate_usage'     => self::processUsageCalculation($targetID),
+                        'charge_usage'        => self::processUsageCharge($targetID),
+                        'archive_usage'       => self::processUsageArchival(),
                         default               => ['success' => false, 'message' => 'Unknown task type: ' . $taskType],
                     };
 
@@ -1732,6 +1735,9 @@ class BillingScheduler
                         'suspend_account'     => self::processSuspension($targetType, $targetID),
                         'expire_trial'        => self::processTrialExpiry($targetID),
                         'process_remittance'  => self::processRemittance($targetID),
+                        'calculate_usage'     => self::processUsageCalculation($targetID),
+                        'charge_usage'        => self::processUsageCharge($targetID),
+                        'archive_usage'       => self::processUsageArchival(),
                         default               => ['success' => false, 'message' => 'Unknown task type: ' . $taskType],
                     };
 
@@ -2263,6 +2269,424 @@ class BillingScheduler
                 'Failed to persist setting "' . $key . '": ' . $e->getMessage(),
                 ['key' => $key, 'value' => $value]
             );
+        }
+    }
+
+    // ========================================================================
+    // 📊 USAGE BILLING TASK HANDLERS
+    // ========================================================================
+    // These methods handle the three new task types introduced in Migration 018
+    // for usage-based and hybrid billing support.
+    //
+    // Task flow:
+    //   1. calculate_usage — Aggregate usage records into billing summaries
+    //   2. charge_usage    — Generate invoices and process payments for summaries
+    //   3. archive_usage   — Clean up old processed usage records
+    //
+    // @see UsageBillingService for cost calculation and cap logic
+    // @see UsageTracker for usage data retrieval and record management
+    // @since 2.7.0-beta
+    // ========================================================================
+
+    /**
+     * 📊 Process Usage Calculation Task
+     *
+     * Calculates usage costs for a subscription's completed billing period.
+     * Creates a billing summary in tblUsageBillingSummary with the cap logic
+     * applied (for hybrid mode subscriptions).
+     *
+     * @param int $subscriptionID The subscription to calculate usage for
+     *
+     * @return array {
+     *     @type bool   $success Whether the calculation completed
+     *     @type string $message Result description
+     *     @type int    $summaryID The generated summary ID (if successful)
+     * }
+     *
+     * @see UsageBillingService::generateBillingSummary()
+     * @since 2.7.0-beta
+     */
+    public static function processUsageCalculation(int $subscriptionID): array
+    {
+        try {
+            // 🔍 Check if usage billing is enabled globally
+            $usageEnabled = getSetting('billing.usage.enabled', 'false');
+            if ($usageEnabled !== 'true' && $usageEnabled !== '1') {
+                return [
+                    'success' => true,
+                    'message' => 'Usage billing is disabled globally — skipping calculation',
+                ];
+            }
+
+            // 📋 Get subscription details to determine billing period
+            $subscription = Database::fetchOne(
+                "SELECT s.*, t.monthlyPrice, t.tierName
+                 FROM tblSubscriptions s
+                 JOIN tblSubscriptionTiers t ON s.tierID = t.tierID
+                 WHERE s.subscriptionID = ?",
+                [$subscriptionID],
+                'i'
+            );
+
+            if (!$subscription) {
+                return [
+                    'success' => false,
+                    'message' => 'Subscription not found: ' . $subscriptionID,
+                ];
+            }
+
+            // 🔀 Only process usage/hybrid billing modes
+            $billingMode = $subscription['billingMode'] ?? 'fixed';
+            if ($billingMode === 'fixed') {
+                return [
+                    'success' => true,
+                    'message' => 'Subscription uses fixed billing — no usage calculation needed',
+                ];
+            }
+
+            // 📅 Determine the billing period that just ended
+            // The period end is the day before the next billing date
+            $nextBillingDate = $subscription['nextBillingDate'] ?? date('Y-m-d');
+            $periodEnd = date('Y-m-d', strtotime($nextBillingDate . ' -1 day'));
+
+            // Calculate period start based on billing cycle
+            $billingCycle = $subscription['billingCycle'] ?? 'monthly';
+            $periodStart = match ($billingCycle) {
+                'monthly'   => date('Y-m-d', strtotime($periodEnd . ' -1 month +1 day')),
+                'quarterly' => date('Y-m-d', strtotime($periodEnd . ' -3 months +1 day')),
+                'yearly'    => date('Y-m-d', strtotime($periodEnd . ' -1 year +1 day')),
+                default     => date('Y-m-d', strtotime($periodEnd . ' -1 month +1 day')),
+            };
+
+            // 📊 Generate billing summary via UsageBillingService
+            $result = UsageBillingService::generateBillingSummary(
+                $subscriptionID,
+                $periodStart,
+                $periodEnd
+            );
+
+            if ($result['success']) {
+                // 📝 Log successful calculation
+                ActivityLogger::log(
+                    (int) $subscription['userID'],
+                    'usage_calculated',
+                    'billing',
+                    'info',
+                    'Usage billing calculated for subscription ' . $subscriptionID
+                        . ' — period ' . $periodStart . ' to ' . $periodEnd
+                        . ', total: ' . ($result['summary']['cappedAmount'] ?? '0.00'),
+                    [
+                        'subscriptionID' => $subscriptionID,
+                        'periodStart'    => $periodStart,
+                        'periodEnd'      => $periodEnd,
+                        'summaryID'      => $result['summaryID'] ?? 0,
+                        'billingMode'    => $billingMode,
+                        'capApplied'     => $result['summary']['capApplied'] ?? false,
+                    ]
+                );
+
+                // 📋 Schedule a charge_usage task to process the payment
+                self::createTask(
+                    'charge_usage',
+                    'subscription',
+                    $subscriptionID,
+                    date('Y-m-d H:i:s'), // 🕐 Process immediately
+                    ['summaryID' => $result['summaryID'] ?? 0]
+                );
+            }
+
+            return $result;
+
+        } catch (\Exception $e) {
+            ErrorLogger::log($e);
+            return [
+                'success' => false,
+                'message' => 'Usage calculation failed: ' . $e->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * 💳 Process Usage Charge Task
+     *
+     * Takes a completed usage billing summary and generates an invoice,
+     * then processes the payment through the configured payment provider.
+     *
+     * @param int $subscriptionID The subscription to charge usage for
+     *
+     * @return array {
+     *     @type bool   $success Whether the charge completed
+     *     @type string $message Result description
+     * }
+     *
+     * @see InvoiceManager::createUsageInvoice()
+     * @see PaymentManager::processUsagePayment()
+     * @since 2.7.0-beta
+     */
+    public static function processUsageCharge(int $subscriptionID): array
+    {
+        try {
+            // 🔍 Find the most recent pending billing summary for this subscription
+            $summary = Database::fetchOne(
+                "SELECT * FROM tblUsageBillingSummary
+                 WHERE subscriptionID = ? AND status = 'pending'
+                 ORDER BY billingPeriodEnd DESC
+                 LIMIT 1",
+                [$subscriptionID],
+                'i'
+            );
+
+            if (!$summary) {
+                return [
+                    'success' => true,
+                    'message' => 'No pending usage billing summary found for subscription ' . $subscriptionID,
+                ];
+            }
+
+            $summaryID = (int) $summary['summaryID'];
+            $cappedAmount = (float) $summary['cappedAmount'];
+
+            // 💰 Skip zero-cost summaries (all usage within free allowance)
+            if ($cappedAmount <= 0.00) {
+                // ✅ Mark as paid with zero amount — no payment needed
+                UsageBillingService::updateSummaryStatus($summaryID, 'paid');
+
+                ActivityLogger::log(
+                    (int) $summary['userID'],
+                    'usage_zero_cost',
+                    'billing',
+                    'info',
+                    'Usage billing for subscription ' . $subscriptionID . ' resulted in zero cost — no charge applied',
+                    ['summaryID' => $summaryID, 'billingMode' => $summary['billingMode']]
+                );
+
+                return [
+                    'success' => true,
+                    'message' => 'Zero usage cost — no charge needed',
+                ];
+            }
+
+            // 🧾 Generate an itemised usage invoice via InvoiceManager
+            $lineItems = json_decode($summary['lineItems'], true) ?? [];
+            $invoiceLineItems = [];
+
+            foreach ($lineItems as $item) {
+                $invoiceLineItems[] = [
+                    'description' => ($item['metricName'] ?? 'Usage') . ' (' . ($item['billableQuantity'] ?? 0) . ' ' . ($item['unitLabel'] ?? 'units') . ')',
+                    'quantity'    => 1,
+                    'unitPrice'   => (float) ($item['subtotal'] ?? 0),
+                    'amount'      => (float) ($item['subtotal'] ?? 0),
+                ];
+            }
+
+            // 📝 If cap was applied, add a line item showing the discount
+            if (!empty($summary['capApplied']) && $summary['capApplied'] == 1) {
+                $savings = (float) $summary['savingsAmount'];
+                if ($savings > 0) {
+                    $invoiceLineItems[] = [
+                        'description' => 'Tier cap discount (hybrid billing)',
+                        'quantity'    => 1,
+                        'unitPrice'   => -$savings,
+                        'amount'      => -$savings,
+                    ];
+                }
+            }
+
+            // 🧾 Create the invoice
+            $invoiceResult = InvoiceManager::createInvoice(
+                (int) $summary['userID'],
+                'usage',
+                $invoiceLineItems,
+                [
+                    'autoIssue'      => true,
+                    'currency'       => $summary['currency'] ?? 'GBP',
+                    'partnerID'      => $summary['partnerID'] ?? null,
+                    'subscriptionID' => $subscriptionID,
+                    'notes'          => 'Usage billing for period '
+                        . $summary['billingPeriodStart'] . ' to ' . $summary['billingPeriodEnd']
+                        . ($summary['capApplied'] ? ' (tier cap applied)' : ''),
+                ]
+            );
+
+            if ($invoiceResult['success']) {
+                // 🔗 Link invoice to billing summary
+                UsageBillingService::updateSummaryStatus(
+                    $summaryID,
+                    'invoiced',
+                    $invoiceResult['invoiceID']
+                );
+
+                // 💳 Attempt to process payment
+                $paymentResult = PaymentManager::processUsagePayment(
+                    (int) $summary['userID'],
+                    $subscriptionID,
+                    $cappedAmount,
+                    $summary['currency'] ?? 'GBP',
+                    $invoiceResult['invoiceID'],
+                    $summaryID
+                );
+
+                if ($paymentResult['success']) {
+                    UsageBillingService::updateSummaryStatus(
+                        $summaryID,
+                        'paid',
+                        $invoiceResult['invoiceID'],
+                        $paymentResult['paymentID'] ?? null
+                    );
+                }
+
+                return $paymentResult;
+            }
+
+            return $invoiceResult;
+
+        } catch (\Exception $e) {
+            ErrorLogger::log($e);
+            return [
+                'success' => false,
+                'message' => 'Usage charge processing failed: ' . $e->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * 🗑️ Process Usage Archival Task
+     *
+     * Cleans up old processed usage records based on the configured retention
+     * period. This is a maintenance task that runs periodically to prevent
+     * tblUsageRecords from growing indefinitely.
+     *
+     * @return array {
+     *     @type bool   $success Whether the archival completed
+     *     @type string $message Result description
+     *     @type int    $deleted Number of records deleted
+     * }
+     *
+     * @see UsageTracker::purgeOldRecords()
+     * @since 2.7.0-beta
+     */
+    public static function processUsageArchival(): array
+    {
+        try {
+            // 📅 Get retention period from settings
+            $retentionDays = (int) getSetting('billing.usage.retention_days', '365');
+
+            // 🗑️ Purge old processed records
+            $deleted = UsageTracker::purgeOldRecords($retentionDays);
+
+            // 📝 Log the archival activity
+            ActivityLogger::log(
+                null,
+                'usage_archival',
+                'billing',
+                'info',
+                'Usage record archival completed: ' . $deleted . ' records deleted'
+                    . ' (retention: ' . $retentionDays . ' days)',
+                ['deletedCount' => $deleted, 'retentionDays' => $retentionDays]
+            );
+
+            // 📅 Schedule next archival task (daily)
+            self::createTask(
+                'archive_usage',
+                'subscription',
+                0, // No specific target — system-wide task
+                date('Y-m-d H:i:s', strtotime('+1 day')),
+                ['retentionDays' => $retentionDays]
+            );
+
+            return [
+                'success' => true,
+                'message' => 'Archival completed: ' . $deleted . ' old usage records deleted',
+                'deleted' => $deleted,
+            ];
+
+        } catch (\Exception $e) {
+            ErrorLogger::log($e);
+            return [
+                'success' => false,
+                'message' => 'Usage archival failed: ' . $e->getMessage(),
+                'deleted' => 0,
+            ];
+        }
+    }
+
+    /**
+     * 📋 Schedule Usage Billing Tasks for Due Subscriptions
+     *
+     * Called at the end of each billing cycle to create calculate_usage tasks
+     * for all subscriptions with usage/hybrid billing mode whose billing period
+     * has ended. This is invoked from processDueTasks or a dedicated cron endpoint.
+     *
+     * @return array {
+     *     @type bool   $success Whether scheduling completed
+     *     @type int    $scheduled Number of tasks scheduled
+     *     @type string $message Result description
+     * }
+     *
+     * @since 2.7.0-beta
+     */
+    public static function scheduleUsageBillingTasks(): array
+    {
+        try {
+            // 🔍 Check if usage billing is enabled
+            $usageEnabled = getSetting('billing.usage.enabled', 'false');
+            if ($usageEnabled !== 'true' && $usageEnabled !== '1') {
+                return [
+                    'success' => true,
+                    'scheduled' => 0,
+                    'message' => 'Usage billing is disabled globally',
+                ];
+            }
+
+            // 📋 Find subscriptions with usage/hybrid billing that need calculation
+            // These are active subscriptions whose nextBillingDate has passed
+            // and don't already have a pending calculate_usage task
+            $subscriptions = Database::fetchAll(
+                "SELECT s.subscriptionID, s.userID, s.billingMode, s.nextBillingDate
+                 FROM tblSubscriptions s
+                 WHERE s.billingMode IN ('usage', 'hybrid')
+                   AND s.subscriptionStatus = 'active'
+                   AND s.nextBillingDate <= CURDATE()
+                   AND NOT EXISTS (
+                       SELECT 1 FROM tblBillingSchedule bs
+                       WHERE bs.targetType = 'subscription'
+                         AND bs.targetID = s.subscriptionID
+                         AND bs.taskType IN ('calculate_usage', 'charge_usage')
+                         AND bs.status IN ('pending', 'processing')
+                   )",
+                [],
+                ''
+            );
+
+            $scheduled = 0;
+            foreach ($subscriptions as $sub) {
+                // 📊 Create a calculate_usage task for each due subscription
+                self::createTask(
+                    'calculate_usage',
+                    'subscription',
+                    (int) $sub['subscriptionID'],
+                    date('Y-m-d H:i:s'), // Process now
+                    [
+                        'userID'      => (int) $sub['userID'],
+                        'billingMode' => $sub['billingMode'],
+                    ]
+                );
+                $scheduled++;
+            }
+
+            return [
+                'success' => true,
+                'scheduled' => $scheduled,
+                'message' => 'Scheduled ' . $scheduled . ' usage billing calculation tasks',
+            ];
+
+        } catch (\Exception $e) {
+            ErrorLogger::log($e);
+            return [
+                'success' => false,
+                'scheduled' => 0,
+                'message' => 'Failed to schedule usage billing tasks: ' . $e->getMessage(),
+            ];
         }
     }
 }
