@@ -244,41 +244,90 @@ $pageTitle = 'Sign In - SIGNula';
                 </span>
             </div>
 
-            <!-- 🔗 OAuth Login Buttons -->
+            <!-- 🔗 OAuth Login Buttons (dynamically rendered based on enabled providers) -->
+            <?php
+            // 🔐 Define all supported OAuth providers with their display configuration
+            // @see web/private_html/auth/providers/ — Provider implementations
+            // @see web/public_html/admin/settings/oauth.php — Admin configuration
+            $oauthProviders = [
+                'google' => [
+                    'name' => 'Google',
+                    'icon' => '<svg style="width: 20px; height: 20px; margin-right: 0.75rem;" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>',
+                    'bg' => 'white', 'color' => '#333', 'border' => '#ddd',
+                    'hover_bg' => '#f8f9fa',
+                ],
+                'microsoft' => [
+                    'name' => 'Microsoft',
+                    'icon' => '<svg style="width: 20px; height: 20px; margin-right: 0.75rem;" viewBox="0 0 23 23"><path fill="#f35325" d="M1 1h10v10H1z"/><path fill="#81bc06" d="M12 1h10v10H12z"/><path fill="#05a6f0" d="M1 12h10v10H1z"/><path fill="#ffba08" d="M12 12h10v10H12z"/></svg>',
+                    'bg' => 'white', 'color' => '#333', 'border' => '#ddd',
+                    'hover_bg' => '#f8f9fa',
+                ],
+                'apple' => [
+                    'name' => 'Apple',
+                    'icon' => '<i class="fab fa-apple" style="font-size: 20px; margin-right: 0.75rem;"></i>',
+                    'bg' => '#000', 'color' => 'white', 'border' => '#000',
+                    'hover_bg' => '#333',
+                ],
+                'facebook' => [
+                    'name' => 'Facebook',
+                    'icon' => '<i class="fab fa-facebook" style="font-size: 20px; margin-right: 0.75rem;"></i>',
+                    'bg' => '#1877f2', 'color' => 'white', 'border' => '#1877f2',
+                    'hover_bg' => '#166fe5',
+                ],
+                'linkedin' => [
+                    'name' => 'LinkedIn',
+                    'icon' => '<i class="fab fa-linkedin" style="font-size: 20px; margin-right: 0.75rem;"></i>',
+                    'bg' => '#0a66c2', 'color' => 'white', 'border' => '#0a66c2',
+                    'hover_bg' => '#004182',
+                ],
+                'yahoo' => [
+                    'name' => 'Yahoo',
+                    'icon' => '<i class="fab fa-yahoo" style="font-size: 20px; margin-right: 0.75rem;"></i>',
+                    'bg' => '#6001d2', 'color' => 'white', 'border' => '#6001d2',
+                    'hover_bg' => '#4b00a8',
+                ],
+                'amazon' => [
+                    'name' => 'Amazon',
+                    'icon' => '<i class="fab fa-amazon" style="font-size: 20px; margin-right: 0.75rem;"></i>',
+                    'bg' => '#ff9900', 'color' => '#111', 'border' => '#ff9900',
+                    'hover_bg' => '#e68a00',
+                ],
+                'paypal' => [
+                    'name' => 'PayPal',
+                    'icon' => '<i class="fab fa-paypal" style="font-size: 20px; margin-right: 0.75rem;"></i>',
+                    'bg' => '#003087', 'color' => 'white', 'border' => '#003087',
+                    'hover_bg' => '#001f5c',
+                ],
+                'wordpress' => [
+                    'name' => 'WordPress',
+                    'icon' => '<i class="fab fa-wordpress" style="font-size: 20px; margin-right: 0.75rem;"></i>',
+                    'bg' => '#21759b', 'color' => 'white', 'border' => '#21759b',
+                    'hover_bg' => '#1a5d7c',
+                ],
+            ];
+
+            // 🔍 Filter to only show providers that have client_id configured
+            $enabledProviders = [];
+            $hoverStyles = '';
+            foreach ($oauthProviders as $key => $provider) {
+                $clientId = getSetting("oauth.{$key}.client_id", '');
+                if (!empty($clientId)) {
+                    $enabledProviders[$key] = $provider;
+                    $hoverStyles .= ".oauth-btn-{$key}:hover { background: {$provider['hover_bg']} !important; }\n";
+                }
+            }
+            ?>
+
+            <?php if (!empty($enabledProviders)): ?>
             <div class="oauth-buttons" style="display: flex; flex-direction: column; gap: 0.75rem;">
-                <!-- Google Sign In -->
-                <a href="/oauth/authorize?provider=google&amp;purpose=signin" class="oauth-btn oauth-btn-google" style="display: flex; align-items: center; justify-content: center; padding: 0.75rem 1rem; border: 1px solid #ddd; border-radius: 0.5rem; text-decoration: none; font-weight: 500; transition: all 0.2s; background: white; color: #333;">
-                    <svg style="width: 20px; height: 20px; margin-right: 0.75rem;" viewBox="0 0 24 24">
-                        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                        <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-                        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-                    </svg>
-                    Sign in with Google
-                </a>
-
-                <!-- Microsoft Sign In -->
-                <a href="/oauth/authorize?provider=microsoft&amp;purpose=signin" class="oauth-btn oauth-btn-microsoft" style="display: flex; align-items: center; justify-content: center; padding: 0.75rem 1rem; border: 1px solid #ddd; border-radius: 0.5rem; text-decoration: none; font-weight: 500; transition: all 0.2s; background: white; color: #333;">
-                    <svg style="width: 20px; height: 20px; margin-right: 0.75rem;" viewBox="0 0 23 23">
-                        <path fill="#f35325" d="M1 1h10v10H1z"/>
-                        <path fill="#81bc06" d="M12 1h10v10H12z"/>
-                        <path fill="#05a6f0" d="M1 12h10v10H1z"/>
-                        <path fill="#ffba08" d="M12 12h10v10H12z"/>
-                    </svg>
-                    Sign in with Microsoft
-                </a>
-
-                <!-- Apple Sign In -->
-                <a href="/oauth/authorize?provider=apple&amp;purpose=signin" class="oauth-btn oauth-btn-apple" style="display: flex; align-items: center; justify-content: center; padding: 0.75rem 1rem; border: 1px solid #000; border-radius: 0.5rem; text-decoration: none; font-weight: 500; transition: all 0.2s; background: #000; color: white;">
-                    <i class="fab fa-apple" style="font-size: 20px; margin-right: 0.75rem;"></i>
-                    Sign in with Apple
-                </a>
-
-                <!-- Facebook Sign In -->
-                <a href="/oauth/authorize?provider=facebook&amp;purpose=signin" class="oauth-btn oauth-btn-facebook" style="display: flex; align-items: center; justify-content: center; padding: 0.75rem 1rem; border: 1px solid #1877f2; border-radius: 0.5rem; text-decoration: none; font-weight: 500; transition: all 0.2s; background: #1877f2; color: white;">
-                    <i class="fab fa-facebook" style="font-size: 20px; margin-right: 0.75rem;"></i>
-                    Sign in with Facebook
-                </a>
+                <?php foreach ($enabledProviders as $providerKey => $provider): ?>
+                    <a href="/oauth/authorize?provider=<?php echo urlencode($providerKey); ?>&amp;purpose=signin"
+                       class="oauth-btn oauth-btn-<?php echo htmlspecialchars($providerKey); ?>"
+                       style="display: flex; align-items: center; justify-content: center; padding: 0.75rem 1rem; border: 1px solid <?php echo $provider['border']; ?>; border-radius: 0.5rem; text-decoration: none; font-weight: 500; transition: all 0.2s; background: <?php echo $provider['bg']; ?>; color: <?php echo $provider['color']; ?>;">
+                        <?php echo $provider['icon']; ?>
+                        Sign in with <?php echo htmlspecialchars($provider['name']); ?>
+                    </a>
+                <?php endforeach; ?>
             </div>
 
             <style>
@@ -286,23 +335,9 @@ $pageTitle = 'Sign In - SIGNula';
                     transform: translateY(-1px);
                     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
                 }
-
-                .oauth-btn-google:hover {
-                    background: #f8f9fa !important;
-                }
-
-                .oauth-btn-microsoft:hover {
-                    background: #f8f9fa !important;
-                }
-
-                .oauth-btn-apple:hover {
-                    background: #333 !important;
-                }
-
-                .oauth-btn-facebook:hover {
-                    background: #166fe5 !important;
-                }
+                <?php echo $hoverStyles; ?>
             </style>
+            <?php endif; ?>
 
             <!-- 📧 Passwordless Login -->
             <div class="text-center mt-4">
