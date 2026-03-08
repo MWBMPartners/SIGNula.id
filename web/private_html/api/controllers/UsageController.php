@@ -659,12 +659,15 @@ class UsageController extends BaseController
             $query = "
                 SELECT k.keyID, k.partnerID, k.isActive, k.expiresAt
                 FROM tblAPIKeys k
-                WHERE k.apiKey = ?
+                WHERE k.keyHash = ?
                   AND k.isActive = 1
                   AND (k.expiresAt IS NULL OR k.expiresAt > NOW())
             ";
 
-            $result = Database::query($query, [$apiKey], 's');
+            // 🔐 Hash the API key before comparison — keys are stored hashed (SHA-256)
+            // @see web/private_html/api/APIKeyManager.php — uses hash('sha256', $apiKey)
+            $keyHash = hash('sha256', $apiKey);
+            $result = Database::query($query, [$keyHash], 's');
             $keyData = $result ? $result->fetch_assoc() : null;
 
             if ($keyData === null) {

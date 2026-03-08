@@ -200,8 +200,14 @@ try {
 } catch (Exception $e) {
     // 🚨 Catch-all error handler — return structured error response
     // ⚠️ Never expose raw exception details to the client in production
-    http_response_code(400);
-    jsonResponse(false, $e->getMessage(), null, 400);
+    // @see https://owasp.org/www-community/Improper_Error_Handling
+    http_response_code(500);
+
+    // 🔍 Log the full exception for debugging
+    error_log('[SIGNula] tier-actions.php error: ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine());
+
+    // 🛡️ Return a generic error message to prevent information disclosure
+    jsonResponse(false, 'An error occurred while processing your request. Please try again.', null, 500);
 }
 
 

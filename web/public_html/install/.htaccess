@@ -1,0 +1,45 @@
+# ============================================================================
+# 🔒 SIGNula Installation Wizard - Access Control
+# ============================================================================
+#
+# Purpose: Block access to the installer once SIGNula has been installed.
+#          If the .installed lock file exists, redirect all requests to the
+#          site root to prevent accidental re-installation.
+#
+# @package    SIGNula
+# @subpackage Installer
+# @version    1.0.0
+# ============================================================================
+
+RewriteEngine On
+
+# 🚫 If .installed lock file exists, block access to this directory entirely
+# This prevents re-running the installer after initial setup
+RewriteCond %{DOCUMENT_ROOT}/install/.installed -f
+RewriteRule ^(.*)$ / [R=302,L]
+
+# 🔒 Deny access to the lock file itself (security precaution)
+<Files ".installed">
+    # Apache 2.4+
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    # Apache 2.2 (legacy fallback)
+    <IfModule !mod_authz_core.c>
+        Order deny,allow
+        Deny from all
+    </IfModule>
+</Files>
+
+# 🔒 Deny access to hidden files (dotfiles)
+<FilesMatch "^\.">
+    # Apache 2.4+
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    # Apache 2.2 (legacy fallback)
+    <IfModule !mod_authz_core.c>
+        Order deny,allow
+        Deny from all
+    </IfModule>
+</FilesMatch>

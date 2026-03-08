@@ -872,7 +872,7 @@ class ExportService
      * @see https://developers.google.com/identity/protocols/oauth2/web-server#creatingclient
      * @see https://developers.google.com/sheets/api/guides/authorizing
      */
-    public static function getGoogleSheetsAuthUrl(string $redirectUri): string
+    public static function getGoogleSheetsAuthUrl(string $redirectUri, string $state = ''): string
     {
         // 🔑 Retrieve the Google OAuth client ID from database settings
         $clientId = getSetting('export.google_sheets.client_id', '');
@@ -881,6 +881,13 @@ class ExportService
             throw new \RuntimeException(
                 'Google Sheets export not configured: export.google_sheets.client_id setting is missing or empty'
             );
+        }
+
+        // 🛡️ Use provided state parameter for CSRF protection, or generate one
+        // The caller should store this in $_SESSION for validation on callback
+        // @see https://datatracker.ietf.org/doc/html/rfc6749#section-10.12
+        if (empty($state)) {
+            $state = bin2hex(random_bytes(16));
         }
 
         // 🔗 Build the OAuth2 authorization URL with required parameters
@@ -898,9 +905,7 @@ class ExportService
             ]),
             'access_type'   => 'offline',  // 🔄 Request refresh token for long-lived access
             'prompt'        => 'consent',  // 🔐 Always show consent screen (ensures refresh token)
-            // 🛡️ State parameter for CSRF protection
-            // @see https://datatracker.ietf.org/doc/html/rfc6749#section-10.12
-            'state'         => bin2hex(random_bytes(16)),
+            'state'         => $state,
         ];
 
         return self::GOOGLE_AUTH_URL . '?' . http_build_query($params, '', '&', PHP_QUERY_RFC3986);
@@ -1132,7 +1137,7 @@ class ExportService
      * @see https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-auth-code-flow
      * @see https://learn.microsoft.com/en-us/graph/auth-v2-user
      */
-    public static function getExcelOnlineAuthUrl(string $redirectUri): string
+    public static function getExcelOnlineAuthUrl(string $redirectUri, string $state = ''): string
     {
         // 🔑 Retrieve Microsoft OAuth settings from database
         $clientId = getSetting('export.excel_online.client_id', '');
@@ -1142,6 +1147,13 @@ class ExportService
             throw new \RuntimeException(
                 'Excel Online export not configured: export.excel_online.client_id setting is missing or empty'
             );
+        }
+
+        // 🛡️ Use provided state parameter for CSRF protection, or generate one
+        // The caller should store this in $_SESSION for validation on callback
+        // @see https://datatracker.ietf.org/doc/html/rfc6749#section-10.12
+        if (empty($state)) {
+            $state = bin2hex(random_bytes(16));
         }
 
         // 🔗 Build the authorization URL with tenant ID
@@ -1162,8 +1174,7 @@ class ExportService
                 'profile',
                 'offline_access',  // 🔄 Request refresh token
             ]),
-            // 🛡️ State parameter for CSRF protection
-            'state'         => bin2hex(random_bytes(16)),
+            'state'         => $state,
             // 🔐 PKCE nonce for additional security
             'nonce'         => bin2hex(random_bytes(16)),
         ];

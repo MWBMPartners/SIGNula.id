@@ -180,11 +180,23 @@ try {
     $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
         ? 'https://'
         : 'http://';
-    $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
 
-    // 📍 Callback endpoints — these handle the OAuth code exchange
-    // The callback files should be at these paths (created separately)
-    $callbackBase = $protocol . $host;
+    // 🛡️ Use configured site URL if available, falling back to SERVER_NAME (safer than HTTP_HOST)
+    // HTTP_HOST can be spoofed by clients; SERVER_NAME is set by the server configuration.
+    // @see https://owasp.org/www-community/attacks/Host_Header_Injection
+    $siteUrl = getSetting('site.url');
+    if (!empty($siteUrl)) {
+        $callbackBase = rtrim($siteUrl, '/');
+    } else {
+        $host = $_SERVER['SERVER_NAME'] ?? 'localhost';
+        $callbackBase = $protocol . $host;
+    }
+
+    // 🔐 Generate and store OAuth state parameter for CSRF protection
+    // The state parameter prevents cross-site request forgery in the OAuth flow.
+    // @see https://datatracker.ietf.org/doc/html/rfc6749#section-10.12
+    $oauthState = bin2hex(random_bytes(16));
+    $_SESSION['oauth_export_state'] = $oauthState;
 
     // ============================================================================
     // 🚀 INITIATE OAUTH REDIRECT
@@ -204,7 +216,7 @@ try {
         $redirectUri = $callbackBase . '/api/v1/export-cloud/callback/google';
 
         try {
-            $authUrl = ExportService::getGoogleSheetsAuthUrl($redirectUri);
+            $authUrl = ExportService::getGoogleSheetsAuthUrl($redirectUri, $oauthState);
         } catch (\RuntimeException $e) {
             // ⚠️ Google Sheets client_id not configured in database settings
             http_response_code(503);
@@ -227,7 +239,7 @@ try {
         $redirectUri = $callbackBase . '/api/v1/export-cloud/callback/microsoft';
 
         try {
-            $authUrl = ExportService::getExcelOnlineAuthUrl($redirectUri);
+            $authUrl = ExportService::getExcelOnlineAuthUrl($redirectUri, $oauthState);
         } catch (\RuntimeException $e) {
             // ⚠️ Excel Online client_id/tenant_id not configured in database settings
             http_response_code(503);
