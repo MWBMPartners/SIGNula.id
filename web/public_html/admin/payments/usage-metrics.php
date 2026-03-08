@@ -495,7 +495,20 @@ $pendingSummaries = (int)($pendingStmt->get_result()->fetch_assoc()['cnt'] ?? 0)
                 <div class="card table-card position-relative">
                     <div class="table-header d-flex justify-content-between align-items-center">
                         <h5 class="mb-0"><i class="fas fa-chart-line me-2"></i>Usage Metrics</h5>
-                        <span id="metricsCount" class="badge bg-light text-dark"></span>
+                        <div class="d-flex align-items-center">
+                            <span id="metricsCount" class="badge bg-light text-dark"></span>
+                            <!-- 📥 Export dropdown for Usage Metrics table -->
+                            <div class="dropdown d-inline-block ms-2">
+                                <button class="btn btn-sm btn-outline-light dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                    <i class="fas fa-download me-1"></i> Export
+                                </button>
+                                <ul class="dropdown-menu dropdown-menu-end">
+                                    <li><a class="dropdown-item" href="#" onclick="exportData('metricsTable', 'csv', 'Usage Metrics'); return false;"><i class="fas fa-file-csv me-2"></i>CSV</a></li>
+                                    <li><a class="dropdown-item" href="#" onclick="exportData('metricsTable', 'excel', 'Usage Metrics'); return false;"><i class="fas fa-file-excel me-2"></i>Excel</a></li>
+                                    <li><a class="dropdown-item" href="#" onclick="exportData('metricsTable', 'pdf', 'Usage Metrics'); return false;"><i class="fas fa-file-pdf me-2"></i>PDF</a></li>
+                                </ul>
+                            </div>
+                        </div>
                     </div>
                     <div id="metricsLoading" class="loading-overlay" style="display: none;">
                         <div class="spinner-border text-success" role="status">
@@ -558,7 +571,20 @@ $pendingSummaries = (int)($pendingStmt->get_result()->fetch_assoc()['cnt'] ?? 0)
                 <div class="card table-card position-relative">
                     <div class="table-header d-flex justify-content-between align-items-center">
                         <h5 class="mb-0"><i class="fas fa-money-bill-wave me-2"></i>Usage Rates</h5>
-                        <span id="ratesCount" class="badge bg-light text-dark"></span>
+                        <div class="d-flex align-items-center">
+                            <span id="ratesCount" class="badge bg-light text-dark"></span>
+                            <!-- 📥 Export dropdown for Usage Rates table -->
+                            <div class="dropdown d-inline-block ms-2">
+                                <button class="btn btn-sm btn-outline-light dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                    <i class="fas fa-download me-1"></i> Export
+                                </button>
+                                <ul class="dropdown-menu dropdown-menu-end">
+                                    <li><a class="dropdown-item" href="#" onclick="exportData('ratesTable', 'csv', 'Usage Rates'); return false;"><i class="fas fa-file-csv me-2"></i>CSV</a></li>
+                                    <li><a class="dropdown-item" href="#" onclick="exportData('ratesTable', 'excel', 'Usage Rates'); return false;"><i class="fas fa-file-excel me-2"></i>Excel</a></li>
+                                    <li><a class="dropdown-item" href="#" onclick="exportData('ratesTable', 'pdf', 'Usage Rates'); return false;"><i class="fas fa-file-pdf me-2"></i>PDF</a></li>
+                                </ul>
+                            </div>
+                        </div>
                     </div>
                     <div id="ratesLoading" class="loading-overlay" style="display: none;">
                         <div class="spinner-border text-success" role="status">
@@ -650,7 +676,20 @@ $pendingSummaries = (int)($pendingStmt->get_result()->fetch_assoc()['cnt'] ?? 0)
                 <div class="card table-card position-relative">
                     <div class="table-header d-flex justify-content-between align-items-center">
                         <h5 class="mb-0"><i class="fas fa-list-ol me-2"></i>Usage Records</h5>
-                        <span id="recordsCount" class="badge bg-light text-dark"></span>
+                        <div class="d-flex align-items-center">
+                            <span id="recordsCount" class="badge bg-light text-dark"></span>
+                            <!-- 📥 Export dropdown for Usage Records table -->
+                            <div class="dropdown d-inline-block ms-2">
+                                <button class="btn btn-sm btn-outline-light dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                    <i class="fas fa-download me-1"></i> Export
+                                </button>
+                                <ul class="dropdown-menu dropdown-menu-end">
+                                    <li><a class="dropdown-item" href="#" onclick="exportData('recordsTable', 'csv', 'Usage Records'); return false;"><i class="fas fa-file-csv me-2"></i>CSV</a></li>
+                                    <li><a class="dropdown-item" href="#" onclick="exportData('recordsTable', 'excel', 'Usage Records'); return false;"><i class="fas fa-file-excel me-2"></i>Excel</a></li>
+                                    <li><a class="dropdown-item" href="#" onclick="exportData('recordsTable', 'pdf', 'Usage Records'); return false;"><i class="fas fa-file-pdf me-2"></i>PDF</a></li>
+                                </ul>
+                            </div>
+                        </div>
                     </div>
                     <div id="recordsLoading" class="loading-overlay" style="display: none;">
                         <div class="spinner-border text-success" role="status">
@@ -737,7 +776,20 @@ $pendingSummaries = (int)($pendingStmt->get_result()->fetch_assoc()['cnt'] ?? 0)
                 <div class="card table-card position-relative">
                     <div class="table-header d-flex justify-content-between align-items-center">
                         <h5 class="mb-0"><i class="fas fa-file-invoice-dollar me-2"></i>Billing Summaries</h5>
-                        <span id="summariesCount" class="badge bg-light text-dark"></span>
+                        <div class="d-flex align-items-center">
+                            <span id="summariesCount" class="badge bg-light text-dark"></span>
+                            <!-- 📥 Export dropdown for Billing Summaries table -->
+                            <div class="dropdown d-inline-block ms-2">
+                                <button class="btn btn-sm btn-outline-light dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                    <i class="fas fa-download me-1"></i> Export
+                                </button>
+                                <ul class="dropdown-menu dropdown-menu-end">
+                                    <li><a class="dropdown-item" href="#" onclick="exportData('summariesTable', 'csv', 'Billing Summaries'); return false;"><i class="fas fa-file-csv me-2"></i>CSV</a></li>
+                                    <li><a class="dropdown-item" href="#" onclick="exportData('summariesTable', 'excel', 'Billing Summaries'); return false;"><i class="fas fa-file-excel me-2"></i>Excel</a></li>
+                                    <li><a class="dropdown-item" href="#" onclick="exportData('summariesTable', 'pdf', 'Billing Summaries'); return false;"><i class="fas fa-file-pdf me-2"></i>PDF</a></li>
+                                </ul>
+                            </div>
+                        </div>
                     </div>
                     <div id="summariesLoading" class="loading-overlay" style="display: none;">
                         <div class="spinner-border text-success" role="status">
@@ -2215,6 +2267,136 @@ $pendingSummaries = (int)($pendingStmt->get_result()->fetch_assoc()['cnt'] ?? 0)
             }
         });
     });
+
+    // ═══════════════════════════════════════════════════════════════
+    // 📥 EXPORT FUNCTIONS — CSV client-side, Excel/PDF server-side
+    // ═══════════════════════════════════════════════════════════════
+
+    /**
+     * 📋 Extract all visible data from a table element.
+     * Reads headers from <thead> and rows from <tbody>, skipping any
+     * detail/expansion rows.
+     *
+     * @param {string} tableId - The DOM id of the table to extract data from
+     * @returns {Object} { headers: string[], rows: string[][] }
+     * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/querySelectorAll
+     */
+    function extractTableData(tableId) {
+        'use strict';
+        var table = document.getElementById(tableId);
+        if (!table) {
+            return { headers: [], rows: [] };
+        }
+
+        // 🏷️ Collect header text from <thead> cells
+        var headers = [];
+        var headerCells = table.querySelectorAll('thead th');
+        headerCells.forEach(function(th) {
+            headers.push(th.textContent.trim());
+        });
+
+        // 📝 Collect row data from <tbody>, skipping detail/expansion rows
+        var rows = [];
+        var bodyRows = table.querySelectorAll('tbody > tr:not(.billing-detail-row)');
+        bodyRows.forEach(function(tr) {
+            var row = [];
+            tr.querySelectorAll('td').forEach(function(td) {
+                row.push(td.textContent.trim());
+            });
+            if (row.length > 0) {
+                rows.push(row);
+            }
+        });
+
+        return { headers: headers, rows: rows };
+    }
+
+    /**
+     * 📋 Convert table data to CSV string and trigger browser download.
+     * Includes UTF-8 BOM for Excel compatibility.
+     *
+     * @param {Object} data - { headers: string[], rows: string[][] }
+     * @param {string} filename - Download filename (including .csv extension)
+     * @see https://developer.mozilla.org/en-US/docs/Web/API/Blob
+     */
+    function downloadCSV(data, filename) {
+        'use strict';
+        // 📌 UTF-8 BOM ensures Excel opens the file with correct encoding
+        var csv = '\uFEFF';
+        csv += data.headers.map(function(h) {
+            return '"' + h.replace(/"/g, '""') + '"';
+        }).join(',') + '\n';
+
+        data.rows.forEach(function(row) {
+            csv += row.map(function(cell) {
+                return '"' + String(cell).replace(/"/g, '""') + '"';
+            }).join(',') + '\n';
+        });
+
+        var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        var link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = filename;
+        link.click();
+        URL.revokeObjectURL(link.href);
+    }
+
+    /**
+     * 📊 Export data from a specified table in the chosen format.
+     * CSV exports are handled client-side; Excel and PDF are POSTed to the
+     * server-side export API endpoint for generation.
+     *
+     * @param {string} tableId - The DOM id of the table to export
+     * @param {string} format  - Export format: 'csv', 'excel', or 'pdf'
+     * @param {string} title   - Human-readable title for the export
+     * @see /api/v1/export/ — Server-side export endpoint
+     */
+    function exportData(tableId, format, title) {
+        'use strict';
+        var data = extractTableData(tableId);
+
+        // ⚠️ Guard: nothing to export if the table body is empty
+        if (data.rows.length === 0) {
+            showToast('No data to export.', 'warning');
+            return;
+        }
+
+        // 📁 Build a descriptive filename with ISO date suffix
+        var filename = 'signula_' + tableId + '_' + new Date().toISOString().slice(0, 10);
+
+        if (format === 'csv') {
+            // 📥 Client-side CSV download
+            downloadCSV(data, filename + '.csv');
+            showToast('CSV exported successfully.', 'success');
+        } else {
+            // 📡 Server-side export (Excel / PDF) via hidden form POST
+            var form = document.createElement('form');
+            form.method = 'POST';
+            form.action = '/api/v1/export/';
+            form.target = '_blank';
+
+            // 🔧 Build hidden fields for the export request
+            var fields = {
+                'format': format,
+                'type': tableId,
+                'title': title,
+                'data': JSON.stringify(data),
+                'csrf_token': csrfToken
+            };
+
+            Object.keys(fields).forEach(function(key) {
+                var input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = key;
+                input.value = fields[key];
+                form.appendChild(input);
+            });
+
+            document.body.appendChild(form);
+            form.submit();
+            document.body.removeChild(form);
+        }
+    }
 
     // ═══════════════════════════════════════════════════════════════
     // 🚀 INITIAL LOAD — Load data when the page is ready

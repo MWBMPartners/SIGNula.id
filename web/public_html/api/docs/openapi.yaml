@@ -8,8 +8,8 @@
 # Markdown:    https://signulo.id/api/docs/
 # Base URL:    https://signulo.id/api/v1
 #
-# Version:     1.0.0
-# Last Updated: 2026-02-18
+# Version:     2.0.0
+# Last Updated: 2026-03-08
 # ============================================================================
 
 openapi: "3.0.3"
@@ -19,7 +19,7 @@ openapi: "3.0.3"
 # ============================================================================
 info:
   title: SIGNula API
-  version: "1.0.0"
+  version: "2.0.0"
   description: |
     ## Overview
 
@@ -38,6 +38,9 @@ info:
     - **Webhook System** &mdash; Real-time event notifications with HMAC-SHA256 signatures
     - **Partner API Keys** &mdash; Server-to-server integration with scoped permissions
     - **Payment & Subscriptions** &mdash; Multi-tier billing with PayPal, Stripe, crypto and more
+    - **Usage-Based Billing** &mdash; Track usage metrics, projected costs, hybrid billing with tier caps
+    - **6 Subscription Tiers** &mdash; Free, Basic, Premium, Pro, Platinum, Enterprise + custom tiers
+    - **Data Export** &mdash; CSV, Excel, PDF, Google Sheets, Excel Online
 
     ### Getting Started
 
@@ -113,6 +116,18 @@ tags:
       FIDO2 / WebAuthn endpoints for registering and authenticating with PassKeys
       (biometrics, hardware security keys). These endpoints are separate from the
       main `/api/v1` router.
+  - name: Usage & Billing
+    description: |
+      Usage tracking, billing summaries, projected costs, and billing mode management.
+      Supports fixed, usage-based, and hybrid billing models with tier cap logic.
+  - name: Subscription Tiers
+    description: |
+      Query available subscription tiers (Free, Basic, Premium, Pro, Platinum, Enterprise).
+      Partners can create custom tiers with bespoke pricing and feature sets.
+  - name: Data Export
+    description: |
+      Export usage data, billing history, and reports in CSV, Excel (XLSX), PDF,
+      Google Sheets, and Excel Online formats.
   - name: Webhooks
     description: |
       Webhook event reference and signature verification guide.
@@ -1051,6 +1066,94 @@ components:
           enum: [required, preferred, discouraged]
 
     # -- Webhook schemas ------------------------------------------------------
+
+    # -- Subscription Tier -------------------------------------------------------
+
+    SubscriptionTier:
+      type: object
+      description: A subscription tier with pricing, features, and limits
+      properties:
+        tier_id:
+          type: integer
+          example: 4
+        tier_name:
+          type: string
+          example: "Pro"
+        tier_slug:
+          type: string
+          example: "pro"
+        description:
+          type: string
+          example: "Professional-grade features for growing businesses"
+        monthly_price:
+          type: string
+          example: "49.99"
+        yearly_price:
+          type: string
+          example: "499.99"
+        currency:
+          type: string
+          example: "GBP"
+        features:
+          type: array
+          items:
+            type: string
+          example: ["Everything in Premium", "50 team members", "200,000 API calls/month"]
+        feature_limits:
+          type: object
+          properties:
+            api_calls:
+              type: integer
+              nullable: true
+            team_members:
+              type: integer
+              nullable: true
+            storage_gb:
+              type: number
+              nullable: true
+        usage_limits:
+          type: object
+          nullable: true
+          description: Per-metric usage limits for this tier
+        billing_mode:
+          type: string
+          enum: [fixed, usage, hybrid]
+          example: "fixed"
+        team_member_limit:
+          type: integer
+          nullable: true
+          example: 50
+        api_calls_per_month:
+          type: integer
+          nullable: true
+          example: 200000
+        storage_gb:
+          type: number
+          nullable: true
+          example: 100.00
+        display_order:
+          type: integer
+          example: 4
+        is_active:
+          type: boolean
+        is_default:
+          type: boolean
+        is_custom:
+          type: boolean
+          description: Whether this is a custom partner-created tier
+        trial_days:
+          type: integer
+          example: 14
+        badge:
+          type: string
+          nullable: true
+          example: "Best Value"
+        badge_color:
+          type: string
+          nullable: true
+          example: "success"
+
+    # -- Webhook Payload ---------------------------------------------------------
 
     WebhookPayload:
       type: object
@@ -2538,6 +2641,488 @@ paths:
           description: Invalid assertion
         "401":
           description: Authentication failed
+
+  # ==========================================================================
+  # USAGE & BILLING
+  # ==========================================================================
+
+  /usage/record:
+    post:
+      tags: [Usage & Billing]
+      operationId: recordUsage
+      summary: Record a usage event
+      description: |
+        Record a single usage metric event (e.g. API call, storage consumed).
+        Requires API key authentication (partner scope).
+      security:
+        - apiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [metric_code, quantity]
+              properties:
+                metric_code:
+                  type: string
+                  example: "api_calls"
+                  description: Code identifying the usage metric
+                quantity:
+                  type: number
+                  example: 1
+                  description: Amount of usage to record
+                user_id:
+                  type: integer
+                  description: User ID (defaults to authenticated user)
+                metadata:
+                  type: object
+                  description: Optional metadata for the usage event
+      responses:
+        "201":
+          description: Usage recorded successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "400":
+          description: Invalid metric code or quantity
+        "401":
+          description: Authentication required
+        "429":
+          description: Rate limited
+
+  /usage/batch:
+    post:
+      tags: [Usage & Billing]
+      operationId: recordBatchUsage
+      summary: Record multiple usage events
+      description: |
+        Record multiple usage metric events in a single request.
+        Accepts an array of usage records for efficient batch processing.
+      security:
+        - apiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [records]
+              properties:
+                records:
+                  type: array
+                  items:
+                    type: object
+                    required: [metric_code, quantity]
+                    properties:
+                      metric_code:
+                        type: string
+                      quantity:
+                        type: number
+                      user_id:
+                        type: integer
+                      metadata:
+                        type: object
+      responses:
+        "201":
+          description: Batch recorded successfully
+        "400":
+          description: Invalid request body
+        "401":
+          description: Authentication required
+
+  /usage/current:
+    get:
+      tags: [Usage & Billing]
+      operationId: getCurrentUsage
+      summary: Get current period usage
+      description: |
+        Returns aggregated usage for the current billing period,
+        broken down by metric.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Current usage data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      period_start:
+                        type: string
+                        format: date
+                      period_end:
+                        type: string
+                        format: date
+                      metrics:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            metric_code:
+                              type: string
+                            metric_name:
+                              type: string
+                            total_usage:
+                              type: number
+                            free_allowance:
+                              type: number
+                            billable_usage:
+                              type: number
+        "401":
+          description: Authentication required
+
+  /usage/history:
+    get:
+      tags: [Usage & Billing]
+      operationId: getUsageHistory
+      summary: Get usage history
+      description: |
+        Returns historical usage data with optional date range and metric filters.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: start_date
+          in: query
+          schema:
+            type: string
+            format: date
+          description: Start date (YYYY-MM-DD)
+        - name: end_date
+          in: query
+          schema:
+            type: string
+            format: date
+          description: End date (YYYY-MM-DD)
+        - name: metric_code
+          in: query
+          schema:
+            type: string
+          description: Filter by metric code
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        "200":
+          description: Usage history data
+        "401":
+          description: Authentication required
+
+  /usage/projected-cost:
+    get:
+      tags: [Usage & Billing]
+      operationId: getProjectedCost
+      summary: Get projected cost for current period
+      description: |
+        Calculates the projected cost for the current billing period
+        based on current usage rates and trends. For hybrid billing,
+        shows both raw usage cost and capped amount.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Projected cost data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      raw_usage_cost:
+                        type: string
+                        example: "45.67"
+                      tier_cap:
+                        type: string
+                        example: "29.99"
+                      effective_cost:
+                        type: string
+                        example: "29.99"
+                      savings:
+                        type: string
+                        example: "15.68"
+                      billing_mode:
+                        type: string
+                        enum: [fixed, usage, hybrid]
+        "401":
+          description: Authentication required
+
+  /usage/billing-summaries:
+    get:
+      tags: [Usage & Billing]
+      operationId: getBillingSummaries
+      summary: Get billing summaries
+      description: |
+        Returns past billing period summaries with costs, caps, and status.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, invoiced, paid, void]
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+      responses:
+        "200":
+          description: Billing summaries
+        "401":
+          description: Authentication required
+
+  /usage/metrics:
+    get:
+      tags: [Usage & Billing]
+      operationId: getUsageMetrics
+      summary: List available usage metrics
+      description: |
+        Returns all active usage metrics (e.g. api_calls, storage_gb, emails_sent).
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of metrics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        metric_id:
+                          type: integer
+                        metric_code:
+                          type: string
+                        metric_name:
+                          type: string
+                        description:
+                          type: string
+                        unit:
+                          type: string
+                          example: "calls"
+        "401":
+          description: Authentication required
+
+  /usage/billing-mode:
+    put:
+      tags: [Usage & Billing]
+      operationId: changeBillingMode
+      summary: Change billing mode
+      description: |
+        Switch the billing mode for the authenticated user's subscription.
+        Available modes: `fixed` (standard tier price), `usage` (pay per use),
+        `hybrid` (usage-based with tier cap).
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [billing_mode]
+              properties:
+                billing_mode:
+                  type: string
+                  enum: [fixed, usage, hybrid]
+      responses:
+        "200":
+          description: Billing mode updated
+        "400":
+          description: Invalid billing mode or tier does not support usage billing
+        "401":
+          description: Authentication required
+
+  # ==========================================================================
+  # SUBSCRIPTION TIERS
+  # ==========================================================================
+
+  /tiers:
+    get:
+      tags: [Subscription Tiers]
+      operationId: listTiers
+      summary: List subscription tiers
+      description: |
+        Returns all active subscription tiers with pricing, features, and limits.
+        Default tiers: Free, Basic, Premium, Pro, Platinum, Enterprise.
+        May also include custom tiers created by partners.
+      parameters:
+        - name: include_custom
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: Include custom partner-created tiers
+        - name: billing_mode
+          in: query
+          schema:
+            type: string
+            enum: [fixed, usage, hybrid]
+          description: Filter by supported billing mode
+      responses:
+        "200":
+          description: List of tiers
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/SubscriptionTier"
+
+  /tiers/{slug}:
+    get:
+      tags: [Subscription Tiers]
+      operationId: getTier
+      summary: Get tier details
+      description: Returns detailed information about a specific subscription tier.
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+          example: premium
+      responses:
+        "200":
+          description: Tier details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: "#/components/schemas/SubscriptionTier"
+        "404":
+          description: Tier not found
+
+  # ==========================================================================
+  # DATA EXPORT
+  # ==========================================================================
+
+  /export:
+    post:
+      tags: [Data Export]
+      operationId: exportData
+      summary: Export data as Excel or PDF
+      description: |
+        Server-side export of table data. Accepts a JSON payload containing
+        headers and rows, returns the formatted file. CSV exports are handled
+        client-side and do not use this endpoint.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [format, data]
+              properties:
+                format:
+                  type: string
+                  enum: [excel, pdf]
+                type:
+                  type: string
+                  description: Data type identifier (e.g. billing_history, usage_trends)
+                title:
+                  type: string
+                  description: Title for the export document
+                data:
+                  type: object
+                  properties:
+                    headers:
+                      type: array
+                      items:
+                        type: string
+                    rows:
+                      type: array
+                      items:
+                        type: array
+                        items:
+                          type: string
+      responses:
+        "200":
+          description: File download
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        "400":
+          description: Invalid format or missing data
+        "401":
+          description: Authentication required
+
+  /export-cloud:
+    get:
+      tags: [Data Export]
+      operationId: exportToCloud
+      summary: Export to Google Sheets or Excel Online
+      description: |
+        Initiates an OAuth flow to export data to Google Sheets or Microsoft
+        Excel Online. Redirects the user to the respective OAuth authorization page.
+        After authorization, data is exported and the user is redirected to the
+        created document.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: format
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [google_sheets, excel_online]
+        - name: type
+          in: query
+          schema:
+            type: string
+        - name: title
+          in: query
+          schema:
+            type: string
+      responses:
+        "302":
+          description: Redirect to OAuth authorization
+        "400":
+          description: Invalid format or missing configuration
+        "401":
+          description: Authentication required
 
   # ==========================================================================
   # WEBHOOKS (Documentation Only)

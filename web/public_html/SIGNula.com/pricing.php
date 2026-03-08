@@ -7,7 +7,7 @@
  *
  * @package    SIGNula
  * @subpackage Marketing
- * @version    1.0.0
+ * @version    2.0.0
  * ============================================================================
  */
 
@@ -57,30 +57,29 @@ require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'private_html' . DIRECT
             </div>
         </div>
 
-        <!-- Pricing Cards -->
-        <div class="row g-4 align-items-center">
-            <!-- Free Tier -->
-            <div class="col-lg-3 col-md-6">
-                <div class="pricing-card">
+        <!-- Pricing Cards — 6 tiers: Free → Basic → Premium → Pro → Platinum → Enterprise -->
+        <div class="row g-3 align-items-stretch">
+            <!-- 🆓 Free Tier -->
+            <div class="col-xl-2 col-lg-4 col-md-6">
+                <div class="pricing-card h-100 d-flex flex-column">
                     <div class="text-center">
                         <h3 class="pricing-title">Free</h3>
                         <div class="pricing-price">
-                            <span class="monthly-price">$0</span>
-                            <span class="annual-price" style="display: none;">$0</span>
+                            <span class="monthly-price">&pound;0</span>
+                            <span class="annual-price" style="display: none;">&pound;0</span>
                             <span>/month</span>
                         </div>
                         <p class="text-secondary mb-4">Perfect for personal use</p>
                     </div>
 
-                    <ul class="pricing-features">
+                    <ul class="pricing-features flex-grow-1">
                         <li><i class="fas fa-check"></i> 1 User Account</li>
                         <li><i class="fas fa-check"></i> Basic Authentication</li>
                         <li><i class="fas fa-check"></i> 2 OAuth Providers</li>
-                        <li><i class="fas fa-check"></i> Email Support</li>
-                        <li><i class="fas fa-check"></i> Community Access</li>
+                        <li><i class="fas fa-check"></i> Community Support</li>
+                        <li><i class="fas fa-check"></i> 1,000 API Calls/mo</li>
                         <li><i class="fas fa-times text-muted"></i> MFA</li>
                         <li><i class="fas fa-times text-muted"></i> PassKeys</li>
-                        <li><i class="fas fa-times text-muted"></i> API Access</li>
                     </ul>
 
                     <div class="text-center mt-4">
@@ -91,31 +90,30 @@ require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'private_html' . DIRECT
                 </div>
             </div>
 
-            <!-- Basic Tier -->
-            <div class="col-lg-3 col-md-6">
-                <div class="pricing-card">
+            <!-- 💼 Basic Tier -->
+            <div class="col-xl-2 col-lg-4 col-md-6">
+                <div class="pricing-card h-100 d-flex flex-column">
                     <div class="text-center">
                         <h3 class="pricing-title">Basic</h3>
                         <div class="pricing-price">
-                            <span class="monthly-price">$5</span>
-                            <span class="annual-price" style="display: none;">$4</span>
+                            <span class="monthly-price">&pound;9.99</span>
+                            <span class="annual-price" style="display: none;">&pound;8.33</span>
                             <span>/month</span>
                         </div>
                         <p class="text-secondary mb-4 annual-savings" style="display: none;">
-                            <small>$48/year (save $12)</small>
+                            <small>&pound;99.99/year (save &pound;19.89)</small>
                         </p>
                         <p class="text-secondary mb-4 monthly-info">For individuals</p>
                     </div>
 
-                    <ul class="pricing-features">
-                        <li><i class="fas fa-check"></i> 1 User Account</li>
-                        <li><i class="fas fa-check"></i> All Authentication Methods</li>
-                        <li><i class="fas fa-check"></i> Unlimited OAuth Providers</li>
-                        <li><i class="fas fa-check"></i> MFA & PassKeys</li>
-                        <li><i class="fas fa-check"></i> Priority Email Support</li>
-                        <li><i class="fas fa-check"></i> 5 API Applications</li>
-                        <li><i class="fas fa-check"></i> Activity Logging</li>
-                        <li><i class="fas fa-times text-muted"></i> Organization Support</li>
+                    <ul class="pricing-features flex-grow-1">
+                        <li><i class="fas fa-check"></i> 10 Team Members</li>
+                        <li><i class="fas fa-check"></i> All Auth Methods</li>
+                        <li><i class="fas fa-check"></i> MFA &amp; PassKeys</li>
+                        <li><i class="fas fa-check"></i> Email Support</li>
+                        <li><i class="fas fa-check"></i> 10,000 API Calls/mo</li>
+                        <li><i class="fas fa-check"></i> Custom Branding</li>
+                        <li><i class="fas fa-check"></i> Webhooks</li>
                     </ul>
 
                     <div class="text-center mt-4">
@@ -126,32 +124,31 @@ require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'private_html' . DIRECT
                 </div>
             </div>
 
-            <!-- Premium Tier (Featured) -->
-            <div class="col-lg-3 col-md-6">
-                <div class="pricing-card featured">
+            <!-- ⭐ Premium Tier (Featured) -->
+            <div class="col-xl-2 col-lg-4 col-md-6">
+                <div class="pricing-card featured h-100 d-flex flex-column">
                     <div class="text-center">
                         <span class="pricing-badge">Most Popular</span>
                         <h3 class="pricing-title">Premium</h3>
                         <div class="pricing-price">
-                            <span class="monthly-price">$10</span>
-                            <span class="annual-price" style="display: none;">$8</span>
+                            <span class="monthly-price">&pound;29.99</span>
+                            <span class="annual-price" style="display: none;">&pound;24.99</span>
                             <span>/month</span>
                         </div>
                         <p class="text-secondary mb-4 annual-savings" style="display: none;">
-                            <small>$96/year (save $24)</small>
+                            <small>&pound;299.99/year (save &pound;59.89)</small>
                         </p>
-                        <p class="text-secondary mb-4 monthly-info">For power users</p>
+                        <p class="text-secondary mb-4 monthly-info">For growing teams</p>
                     </div>
 
-                    <ul class="pricing-features">
-                        <li><i class="fas fa-check"></i> Up to 5 Team Members</li>
-                        <li><i class="fas fa-check"></i> All Authentication Methods</li>
-                        <li><i class="fas fa-check"></i> Unlimited OAuth Providers</li>
-                        <li><i class="fas fa-check"></i> Advanced MFA Options</li>
-                        <li><i class="fas fa-check"></i> Priority Support (24/7)</li>
-                        <li><i class="fas fa-check"></i> Unlimited API Applications</li>
+                    <ul class="pricing-features flex-grow-1">
+                        <li><i class="fas fa-check"></i> 25 Team Members</li>
+                        <li><i class="fas fa-check"></i> Priority Support</li>
+                        <li><i class="fas fa-check"></i> 50,000 API Calls/mo</li>
                         <li><i class="fas fa-check"></i> Advanced Analytics</li>
-                        <li><i class="fas fa-check"></i> Organization Management</li>
+                        <li><i class="fas fa-check"></i> SSO Enforcement</li>
+                        <li><i class="fas fa-check"></i> Audit Log Export</li>
+                        <li><i class="fas fa-check"></i> Organization Mgmt</li>
                     </ul>
 
                     <div class="text-center mt-4">
@@ -162,10 +159,80 @@ require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'private_html' . DIRECT
                 </div>
             </div>
 
-            <!-- Enterprise Tier -->
-            <div class="col-lg-3 col-md-6">
-                <div class="pricing-card">
+            <!-- 🚀 Pro Tier -->
+            <div class="col-xl-2 col-lg-4 col-md-6">
+                <div class="pricing-card h-100 d-flex flex-column">
                     <div class="text-center">
+                        <h3 class="pricing-title">Pro</h3>
+                        <div class="pricing-price">
+                            <span class="monthly-price">&pound;49.99</span>
+                            <span class="annual-price" style="display: none;">&pound;41.66</span>
+                            <span>/month</span>
+                        </div>
+                        <p class="text-secondary mb-4 annual-savings" style="display: none;">
+                            <small>&pound;499.99/year (save &pound;99.89)</small>
+                        </p>
+                        <p class="text-secondary mb-4 monthly-info">For businesses</p>
+                    </div>
+
+                    <ul class="pricing-features flex-grow-1">
+                        <li><i class="fas fa-check"></i> 50 Team Members</li>
+                        <li><i class="fas fa-check"></i> Phone &amp; Email Support</li>
+                        <li><i class="fas fa-check"></i> 200,000 API Calls/mo</li>
+                        <li><i class="fas fa-check"></i> Custom Webhooks</li>
+                        <li><i class="fas fa-check"></i> Role-based Access</li>
+                        <li><i class="fas fa-check"></i> Usage Analytics</li>
+                        <li><i class="fas fa-check"></i> Bulk User Mgmt</li>
+                    </ul>
+
+                    <div class="text-center mt-4">
+                        <a href="https://signula.id/register?plan=pro" class="btn btn-primary w-100">
+                            Choose Pro
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 💎 Platinum Tier -->
+            <div class="col-xl-2 col-lg-4 col-md-6">
+                <div class="pricing-card featured h-100 d-flex flex-column">
+                    <div class="text-center">
+                        <span class="pricing-badge bg-success">Best Value</span>
+                        <h3 class="pricing-title">Platinum</h3>
+                        <div class="pricing-price">
+                            <span class="monthly-price">&pound;79.99</span>
+                            <span class="annual-price" style="display: none;">&pound;66.66</span>
+                            <span>/month</span>
+                        </div>
+                        <p class="text-secondary mb-4 annual-savings" style="display: none;">
+                            <small>&pound;799.99/year (save &pound;159.89)</small>
+                        </p>
+                        <p class="text-secondary mb-4 monthly-info">For scaling orgs</p>
+                    </div>
+
+                    <ul class="pricing-features flex-grow-1">
+                        <li><i class="fas fa-check"></i> 200 Team Members</li>
+                        <li><i class="fas fa-check"></i> Dedicated Manager</li>
+                        <li><i class="fas fa-check"></i> 500,000 API Calls/mo</li>
+                        <li><i class="fas fa-check"></i> SAML SSO &amp; SCIM</li>
+                        <li><i class="fas fa-check"></i> Compliance Reports</li>
+                        <li><i class="fas fa-check"></i> White-label Branding</li>
+                        <li><i class="fas fa-check"></i> Data Residency</li>
+                    </ul>
+
+                    <div class="text-center mt-4">
+                        <a href="https://signula.id/register?plan=platinum" class="btn btn-primary w-100">
+                            Choose Platinum
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 🏢 Enterprise Tier -->
+            <div class="col-xl-2 col-lg-4 col-md-6">
+                <div class="pricing-card h-100 d-flex flex-column">
+                    <div class="text-center">
+                        <span class="pricing-badge bg-dark">Custom</span>
                         <h3 class="pricing-title">Enterprise</h3>
                         <div class="pricing-price">
                             <span style="font-size: 1.5rem;">Custom</span>
@@ -173,15 +240,14 @@ require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'private_html' . DIRECT
                         <p class="text-secondary mb-4">For large organizations</p>
                     </div>
 
-                    <ul class="pricing-features">
+                    <ul class="pricing-features flex-grow-1">
                         <li><i class="fas fa-check"></i> Unlimited Users</li>
-                        <li><i class="fas fa-check"></i> All Premium Features</li>
-                        <li><i class="fas fa-check"></i> Custom OAuth Providers</li>
-                        <li><i class="fas fa-check"></i> SSO Integration</li>
+                        <li><i class="fas fa-check"></i> Unlimited API Calls</li>
                         <li><i class="fas fa-check"></i> Dedicated Support</li>
                         <li><i class="fas fa-check"></i> Custom SLA</li>
-                        <li><i class="fas fa-check"></i> White-label Options</li>
-                        <li><i class="fas fa-check"></i> On-premise Deployment</li>
+                        <li><i class="fas fa-check"></i> On-premise Option</li>
+                        <li><i class="fas fa-check"></i> Custom Contracts</li>
+                        <li><i class="fas fa-check"></i> SAML/SCIM/Custom</li>
                     </ul>
 
                     <div class="text-center mt-4">
@@ -228,23 +294,47 @@ require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'private_html' . DIRECT
                     <table class="table table-bordered bg-white">
                         <thead class="table-primary">
                             <tr>
-                                <th scope="col" style="width: 40%;">Feature</th>
+                                <th scope="col" style="width: 22%;">Feature</th>
                                 <th scope="col" class="text-center">Free</th>
                                 <th scope="col" class="text-center">Basic</th>
                                 <th scope="col" class="text-center">Premium</th>
+                                <th scope="col" class="text-center">Pro</th>
+                                <th scope="col" class="text-center">Platinum</th>
                                 <th scope="col" class="text-center">Enterprise</th>
                             </tr>
                         </thead>
                         <tbody>
                             <tr>
-                                <td><strong>User Accounts</strong></td>
-                                <td class="text-center">1</td>
-                                <td class="text-center">1</td>
+                                <td><strong>Team Members</strong></td>
                                 <td class="text-center">5</td>
+                                <td class="text-center">10</td>
+                                <td class="text-center">25</td>
+                                <td class="text-center">50</td>
+                                <td class="text-center">200</td>
+                                <td class="text-center">Unlimited</td>
+                            </tr>
+                            <tr>
+                                <td><strong>API Calls / Month</strong></td>
+                                <td class="text-center">1,000</td>
+                                <td class="text-center">10,000</td>
+                                <td class="text-center">50,000</td>
+                                <td class="text-center">200,000</td>
+                                <td class="text-center">500,000</td>
+                                <td class="text-center">Unlimited</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Storage</strong></td>
+                                <td class="text-center">1 GB</td>
+                                <td class="text-center">10 GB</td>
+                                <td class="text-center">50 GB</td>
+                                <td class="text-center">100 GB</td>
+                                <td class="text-center">500 GB</td>
                                 <td class="text-center">Unlimited</td>
                             </tr>
                             <tr>
                                 <td><strong>Password Authentication</strong></td>
+                                <td class="text-center"><i class="fas fa-check text-success"></i></td>
+                                <td class="text-center"><i class="fas fa-check text-success"></i></td>
                                 <td class="text-center"><i class="fas fa-check text-success"></i></td>
                                 <td class="text-center"><i class="fas fa-check text-success"></i></td>
                                 <td class="text-center"><i class="fas fa-check text-success"></i></td>
@@ -256,10 +346,14 @@ require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'private_html' . DIRECT
                                 <td class="text-center"><i class="fas fa-check text-success"></i></td>
                                 <td class="text-center"><i class="fas fa-check text-success"></i></td>
                                 <td class="text-center"><i class="fas fa-check text-success"></i></td>
+                                <td class="text-center"><i class="fas fa-check text-success"></i></td>
+                                <td class="text-center"><i class="fas fa-check text-success"></i></td>
                             </tr>
                             <tr>
                                 <td><strong>PassKeys / WebAuthn</strong></td>
                                 <td class="text-center"><i class="fas fa-times text-danger"></i></td>
+                                <td class="text-center"><i class="fas fa-check text-success"></i></td>
+                                <td class="text-center"><i class="fas fa-check text-success"></i></td>
                                 <td class="text-center"><i class="fas fa-check text-success"></i></td>
                                 <td class="text-center"><i class="fas fa-check text-success"></i></td>
                                 <td class="text-center"><i class="fas fa-check text-success"></i></td>
@@ -269,28 +363,27 @@ require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'private_html' . DIRECT
                                 <td class="text-center">2</td>
                                 <td class="text-center">Unlimited</td>
                                 <td class="text-center">Unlimited</td>
+                                <td class="text-center">Unlimited</td>
+                                <td class="text-center">Unlimited</td>
                                 <td class="text-center">Unlimited + Custom</td>
-                            </tr>
-                            <tr>
-                                <td><strong>API Applications</strong></td>
-                                <td class="text-center"><i class="fas fa-times text-danger"></i></td>
-                                <td class="text-center">5</td>
-                                <td class="text-center">Unlimited</td>
-                                <td class="text-center">Unlimited</td>
                             </tr>
                             <tr>
                                 <td><strong>Activity Logging</strong></td>
                                 <td class="text-center">30 days</td>
                                 <td class="text-center">90 days</td>
                                 <td class="text-center">1 year</td>
+                                <td class="text-center">2 years</td>
+                                <td class="text-center">Unlimited</td>
                                 <td class="text-center">Unlimited</td>
                             </tr>
                             <tr>
                                 <td><strong>Support</strong></td>
                                 <td class="text-center">Community</td>
                                 <td class="text-center">Email</td>
-                                <td class="text-center">Priority 24/7</td>
-                                <td class="text-center">Dedicated</td>
+                                <td class="text-center">Priority</td>
+                                <td class="text-center">Phone &amp; Email</td>
+                                <td class="text-center">Dedicated Mgr</td>
+                                <td class="text-center">Dedicated Team</td>
                             </tr>
                             <tr>
                                 <td><strong>Organization Management</strong></td>
@@ -298,19 +391,52 @@ require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'private_html' . DIRECT
                                 <td class="text-center"><i class="fas fa-times text-danger"></i></td>
                                 <td class="text-center"><i class="fas fa-check text-success"></i></td>
                                 <td class="text-center"><i class="fas fa-check text-success"></i></td>
+                                <td class="text-center"><i class="fas fa-check text-success"></i></td>
+                                <td class="text-center"><i class="fas fa-check text-success"></i></td>
                             </tr>
                             <tr>
-                                <td><strong>Advanced Analytics</strong></td>
+                                <td><strong>Usage Analytics</strong></td>
+                                <td class="text-center"><i class="fas fa-times text-danger"></i></td>
+                                <td class="text-center"><i class="fas fa-times text-danger"></i></td>
+                                <td class="text-center"><i class="fas fa-check text-success"></i></td>
+                                <td class="text-center"><i class="fas fa-check text-success"></i></td>
+                                <td class="text-center"><i class="fas fa-check text-success"></i></td>
+                                <td class="text-center"><i class="fas fa-check text-success"></i></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Role-based Access Control</strong></td>
+                                <td class="text-center"><i class="fas fa-times text-danger"></i></td>
+                                <td class="text-center"><i class="fas fa-times text-danger"></i></td>
+                                <td class="text-center"><i class="fas fa-times text-danger"></i></td>
+                                <td class="text-center"><i class="fas fa-check text-success"></i></td>
+                                <td class="text-center"><i class="fas fa-check text-success"></i></td>
+                                <td class="text-center"><i class="fas fa-check text-success"></i></td>
+                            </tr>
+                            <tr>
+                                <td><strong>SAML SSO &amp; SCIM</strong></td>
+                                <td class="text-center"><i class="fas fa-times text-danger"></i></td>
+                                <td class="text-center"><i class="fas fa-times text-danger"></i></td>
                                 <td class="text-center"><i class="fas fa-times text-danger"></i></td>
                                 <td class="text-center"><i class="fas fa-times text-danger"></i></td>
                                 <td class="text-center"><i class="fas fa-check text-success"></i></td>
                                 <td class="text-center"><i class="fas fa-check text-success"></i></td>
                             </tr>
                             <tr>
-                                <td><strong>White-label Options</strong></td>
+                                <td><strong>White-label / Custom Branding</strong></td>
                                 <td class="text-center"><i class="fas fa-times text-danger"></i></td>
                                 <td class="text-center"><i class="fas fa-times text-danger"></i></td>
                                 <td class="text-center"><i class="fas fa-times text-danger"></i></td>
+                                <td class="text-center"><i class="fas fa-times text-danger"></i></td>
+                                <td class="text-center"><i class="fas fa-check text-success"></i></td>
+                                <td class="text-center"><i class="fas fa-check text-success"></i></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Usage-based / Hybrid Billing</strong></td>
+                                <td class="text-center"><i class="fas fa-times text-danger"></i></td>
+                                <td class="text-center"><i class="fas fa-times text-danger"></i></td>
+                                <td class="text-center"><i class="fas fa-check text-success"></i></td>
+                                <td class="text-center"><i class="fas fa-check text-success"></i></td>
+                                <td class="text-center"><i class="fas fa-check text-success"></i></td>
                                 <td class="text-center"><i class="fas fa-check text-success"></i></td>
                             </tr>
                             <tr>
@@ -318,6 +444,8 @@ require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'private_html' . DIRECT
                                 <td class="text-center"><i class="fas fa-times text-danger"></i></td>
                                 <td class="text-center">99%</td>
                                 <td class="text-center">99.9%</td>
+                                <td class="text-center">99.95%</td>
+                                <td class="text-center">99.99%</td>
                                 <td class="text-center">Custom</td>
                             </tr>
                         </tbody>
@@ -397,7 +525,7 @@ require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'private_html' . DIRECT
                         </h2>
                         <div id="faq4" class="accordion-collapse collapse" data-bs-parent="#pricingFAQ">
                             <div class="accordion-body">
-                                We'll notify you when you're approaching your plan limits. You can upgrade to a higher tier at any time. We won't automatically charge you for overages - you're always in control.
+                                We'll notify you when you're approaching your plan limits. You can upgrade to a higher tier, or switch to usage-based or hybrid billing where you only pay for what you use (capped at your tier price). We won't automatically charge you for overages &mdash; you're always in control.
                             </div>
                         </div>
                     </div>
@@ -412,6 +540,34 @@ require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'private_html' . DIRECT
                         <div id="faq5" class="accordion-collapse collapse" data-bs-parent="#pricingFAQ">
                             <div class="accordion-body">
                                 Yes! We offer special pricing for qualified non-profit organizations and educational institutions. Contact our sales team for more information.
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- FAQ 6 -->
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq6">
+                                What is usage-based and hybrid billing?
+                            </button>
+                        </h2>
+                        <div id="faq6" class="accordion-collapse collapse" data-bs-parent="#pricingFAQ">
+                            <div class="accordion-body">
+                                In addition to fixed monthly/annual pricing, Premium plans and above support flexible billing modes. <strong>Usage-based</strong> billing charges only for what you use (API calls, storage, etc.). <strong>Hybrid</strong> billing combines usage-based pricing with a cap &mdash; you pay based on usage, but never more than the fixed tier price. This means low-usage months cost less, while heavy-usage months are capped at the standard rate.
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- FAQ 7 -->
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq7">
+                                Can I create custom pricing tiers?
+                            </button>
+                        </h2>
+                        <div id="faq7" class="accordion-collapse collapse" data-bs-parent="#pricingFAQ">
+                            <div class="accordion-body">
+                                Yes! Partners and resellers can create custom subscription tiers with bespoke pricing, features, and usage limits tailored to their customers. Custom tiers can use fixed, usage-based, or hybrid billing modes. Contact your account manager or visit the Partner portal to get started.
                             </div>
                         </div>
                     </div>

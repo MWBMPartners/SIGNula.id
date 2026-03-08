@@ -415,10 +415,31 @@ $csrfToken = SecurityUtils::generateCSRFToken();
                             <h5 class="mb-0">
                                 <i class="fas fa-chart-line text-primary me-2"></i>Partner Usage Metrics
                             </h5>
-                            <button class="btn btn-primary btn-sm" id="btnCreateMetric"
-                                    data-bs-toggle="modal" data-bs-target="#metricModal">
-                                <i class="fas fa-plus me-1"></i>Create Metric
-                            </button>
+                            <div class="d-flex gap-2">
+                                <button class="btn btn-primary btn-sm" id="btnCreateMetric"
+                                        data-bs-toggle="modal" data-bs-target="#metricModal">
+                                    <i class="fas fa-plus me-1"></i>Create Metric
+                                </button>
+                                <!-- 📥 Export dropdown for Partner Metrics -->
+                                <div class="dropdown d-inline-block">
+                                    <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                                        <i class="fas fa-download me-1"></i> Export
+                                    </button>
+                                    <ul class="dropdown-menu dropdown-menu-end">
+                                        <li><a class="dropdown-item" href="#" onclick="exportData('metricsTable', 'csv', 'Partner_Metrics'); return false;">
+                                            <i class="fas fa-file-csv me-2 text-success"></i> CSV</a></li>
+                                        <li><a class="dropdown-item" href="#" onclick="exportData('metricsTable', 'excel', 'Partner_Metrics'); return false;">
+                                            <i class="fas fa-file-excel me-2 text-success"></i> Excel</a></li>
+                                        <li><a class="dropdown-item" href="#" onclick="exportData('metricsTable', 'pdf', 'Partner_Metrics'); return false;">
+                                            <i class="fas fa-file-pdf me-2 text-danger"></i> PDF</a></li>
+                                        <li><hr class="dropdown-divider"></li>
+                                        <li><a class="dropdown-item" href="#" onclick="exportData('metricsTable', 'google_sheets', 'Partner_Metrics'); return false;">
+                                            <i class="fab fa-google me-2 text-primary"></i> Google Sheets</a></li>
+                                        <li><a class="dropdown-item" href="#" onclick="exportData('metricsTable', 'excel_online', 'Partner_Metrics'); return false;">
+                                            <i class="fab fa-microsoft me-2 text-info"></i> Excel Online</a></li>
+                                    </ul>
+                                </div>
+                            </div>
                         </div>
                         <p class="text-muted small mb-3">
                             Define custom usage metrics specific to your service. Global metrics (shared
@@ -465,10 +486,31 @@ $csrfToken = SecurityUtils::generateCSRFToken();
                             <h5 class="mb-0">
                                 <i class="fas fa-tags text-success me-2"></i>Usage Rates by Tier
                             </h5>
-                            <button class="btn btn-success btn-sm" id="btnCreateRate"
-                                    data-bs-toggle="modal" data-bs-target="#rateModal">
-                                <i class="fas fa-plus me-1"></i>Create Rate
-                            </button>
+                            <div class="d-flex gap-2">
+                                <button class="btn btn-success btn-sm" id="btnCreateRate"
+                                        data-bs-toggle="modal" data-bs-target="#rateModal">
+                                    <i class="fas fa-plus me-1"></i>Create Rate
+                                </button>
+                                <!-- 📥 Export dropdown for Partner Rates -->
+                                <div class="dropdown d-inline-block">
+                                    <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                                        <i class="fas fa-download me-1"></i> Export
+                                    </button>
+                                    <ul class="dropdown-menu dropdown-menu-end">
+                                        <li><a class="dropdown-item" href="#" onclick="exportData('ratesTable', 'csv', 'Partner_Rates'); return false;">
+                                            <i class="fas fa-file-csv me-2 text-success"></i> CSV</a></li>
+                                        <li><a class="dropdown-item" href="#" onclick="exportData('ratesTable', 'excel', 'Partner_Rates'); return false;">
+                                            <i class="fas fa-file-excel me-2 text-success"></i> Excel</a></li>
+                                        <li><a class="dropdown-item" href="#" onclick="exportData('ratesTable', 'pdf', 'Partner_Rates'); return false;">
+                                            <i class="fas fa-file-pdf me-2 text-danger"></i> PDF</a></li>
+                                        <li><hr class="dropdown-divider"></li>
+                                        <li><a class="dropdown-item" href="#" onclick="exportData('ratesTable', 'google_sheets', 'Partner_Rates'); return false;">
+                                            <i class="fab fa-google me-2 text-primary"></i> Google Sheets</a></li>
+                                        <li><a class="dropdown-item" href="#" onclick="exportData('ratesTable', 'excel_online', 'Partner_Rates'); return false;">
+                                            <i class="fab fa-microsoft me-2 text-info"></i> Excel Online</a></li>
+                                    </ul>
+                                </div>
+                            </div>
                         </div>
                         <p class="text-muted small mb-3">
                             Configure per-tier pricing for each usage metric. Set free allowances,
@@ -527,6 +569,25 @@ $csrfToken = SecurityUtils::generateCSRFToken();
                                 <button class="btn btn-outline-warning btn-sm" id="btnFilterUsage">
                                     <i class="fas fa-filter me-1"></i>Filter
                                 </button>
+                                <!-- 📥 Export dropdown for Customer Usage -->
+                                <div class="dropdown d-inline-block ms-2">
+                                    <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                                        <i class="fas fa-download me-1"></i> Export
+                                    </button>
+                                    <ul class="dropdown-menu dropdown-menu-end">
+                                        <li><a class="dropdown-item" href="#" onclick="exportData('usageTable', 'csv', 'Customer_Usage'); return false;">
+                                            <i class="fas fa-file-csv me-2 text-success"></i> CSV</a></li>
+                                        <li><a class="dropdown-item" href="#" onclick="exportData('usageTable', 'excel', 'Customer_Usage'); return false;">
+                                            <i class="fas fa-file-excel me-2 text-success"></i> Excel</a></li>
+                                        <li><a class="dropdown-item" href="#" onclick="exportData('usageTable', 'pdf', 'Customer_Usage'); return false;">
+                                            <i class="fas fa-file-pdf me-2 text-danger"></i> PDF</a></li>
+                                        <li><hr class="dropdown-divider"></li>
+                                        <li><a class="dropdown-item" href="#" onclick="exportData('usageTable', 'google_sheets', 'Customer_Usage'); return false;">
+                                            <i class="fab fa-google me-2 text-primary"></i> Google Sheets</a></li>
+                                        <li><a class="dropdown-item" href="#" onclick="exportData('usageTable', 'excel_online', 'Customer_Usage'); return false;">
+                                            <i class="fab fa-microsoft me-2 text-info"></i> Excel Online</a></li>
+                                    </ul>
+                                </div>
                             </div>
                         </div>
 
@@ -591,6 +652,25 @@ $csrfToken = SecurityUtils::generateCSRFToken();
                                 <button class="btn btn-outline-secondary btn-sm" id="btnFilterBilling">
                                     <i class="fas fa-filter me-1"></i>Filter
                                 </button>
+                                <!-- 📥 Export dropdown for Customer Billing -->
+                                <div class="dropdown d-inline-block ms-2">
+                                    <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                                        <i class="fas fa-download me-1"></i> Export
+                                    </button>
+                                    <ul class="dropdown-menu dropdown-menu-end">
+                                        <li><a class="dropdown-item" href="#" onclick="exportData('billingTable', 'csv', 'Customer_Billing'); return false;">
+                                            <i class="fas fa-file-csv me-2 text-success"></i> CSV</a></li>
+                                        <li><a class="dropdown-item" href="#" onclick="exportData('billingTable', 'excel', 'Customer_Billing'); return false;">
+                                            <i class="fas fa-file-excel me-2 text-success"></i> Excel</a></li>
+                                        <li><a class="dropdown-item" href="#" onclick="exportData('billingTable', 'pdf', 'Customer_Billing'); return false;">
+                                            <i class="fas fa-file-pdf me-2 text-danger"></i> PDF</a></li>
+                                        <li><hr class="dropdown-divider"></li>
+                                        <li><a class="dropdown-item" href="#" onclick="exportData('billingTable', 'google_sheets', 'Customer_Billing'); return false;">
+                                            <i class="fab fa-google me-2 text-primary"></i> Google Sheets</a></li>
+                                        <li><a class="dropdown-item" href="#" onclick="exportData('billingTable', 'excel_online', 'Customer_Billing'); return false;">
+                                            <i class="fab fa-microsoft me-2 text-info"></i> Excel Online</a></li>
+                                    </ul>
+                                </div>
                             </div>
                         </div>
 
@@ -1735,6 +1815,197 @@ $csrfToken = SecurityUtils::generateCSRFToken();
                 }
             });
         });
+    }
+
+    // =========================================================================
+    // 📥 EXPORT FUNCTIONS — CSV (client-side), Excel/PDF (server-side POST),
+    //    Google Sheets / Excel Online (cloud redirect)
+    // =========================================================================
+
+    /**
+     * 🔍 extractTableData(tableId)
+     * Extracts headers and row data from an HTML table element.
+     *
+     * @param {string} tableId - The DOM id of the <table> element
+     * @returns {Object} { headers: string[], rows: string[][] }
+     *
+     * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLTableElement
+     */
+    function extractTableData(tableId) {
+        // 📋 Locate the table element in the DOM
+        const table = document.getElementById(tableId);
+        if (!table) {
+            console.error('📥 Export: Table not found with id "' + tableId + '"');
+            return { headers: [], rows: [] };
+        }
+
+        // 📑 Extract header cells from <thead>
+        const headers = [];
+        const thead = table.querySelector('thead');
+        if (thead) {
+            const headerCells = thead.querySelectorAll('th');
+            headerCells.forEach(function(th) {
+                // 🔤 Use textContent to strip any HTML (icons, badges etc.)
+                headers.push(th.textContent.trim());
+            });
+        }
+
+        // 📝 Extract data rows from <tbody>
+        const rows = [];
+        const tbody = table.querySelector('tbody');
+        if (tbody) {
+            const dataRows = tbody.querySelectorAll('tr');
+            dataRows.forEach(function(tr) {
+                const rowData = [];
+                const cells = tr.querySelectorAll('td');
+                cells.forEach(function(td) {
+                    // 🔤 Strip HTML, normalise whitespace
+                    rowData.push(td.textContent.trim().replace(/\s+/g, ' '));
+                });
+                // ⚠️ Only include rows that have data (skip empty/placeholder rows)
+                if (rowData.length > 0) {
+                    rows.push(rowData);
+                }
+            });
+        }
+
+        return { headers: headers, rows: rows };
+    }
+
+    /**
+     * 💾 downloadCSV(data, filename)
+     * Creates a CSV Blob from extracted table data and triggers a browser download.
+     *
+     * @param {Object} data - { headers: string[], rows: string[][] } from extractTableData()
+     * @param {string} filename - The desired filename (without .csv extension)
+     *
+     * @see https://developer.mozilla.org/en-US/docs/Web/API/Blob
+     * @see https://developer.mozilla.org/en-US/docs/Web/API/URL/createObjectURL
+     */
+    function downloadCSV(data, filename) {
+        // 📋 Build CSV content with proper escaping
+        const csvRows = [];
+
+        // 📑 Add header row
+        if (data.headers.length > 0) {
+            csvRows.push(data.headers.map(function(header) {
+                // 🔒 Escape double quotes by doubling them, wrap in quotes
+                return '"' + header.replace(/"/g, '""') + '"';
+            }).join(','));
+        }
+
+        // 📝 Add data rows
+        data.rows.forEach(function(row) {
+            csvRows.push(row.map(function(cell) {
+                // 🔒 Escape double quotes by doubling them, wrap in quotes
+                return '"' + cell.replace(/"/g, '""') + '"';
+            }).join(','));
+        });
+
+        // 💾 Create Blob and trigger download via temporary anchor element
+        const csvContent = csvRows.join('\n');
+        const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' }); // 🔤 BOM for Excel UTF-8 compat
+        const url = URL.createObjectURL(blob);
+
+        const link = document.createElement('a');
+        link.setAttribute('href', url);
+        link.setAttribute('download', filename + '.csv');
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+
+        // 🧹 Clean up the temporary DOM element and object URL
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    }
+
+    /**
+     * 📥 exportData(tableId, format, title)
+     * Routes export requests to the appropriate handler:
+     *   - 'csv'          → client-side CSV download via downloadCSV()
+     *   - 'excel', 'pdf' → server-side POST to /api/v1/export/
+     *   - 'google_sheets', 'excel_online' → cloud redirect to /api/v1/export-cloud/
+     *
+     * @param {string} tableId - The DOM id of the <table> element to export
+     * @param {string} format  - Export format: csv | excel | pdf | google_sheets | excel_online
+     * @param {string} title   - Human-readable title used for filename and document title
+     *
+     * @see /web/public_html/api/v1/export/     Server-side export endpoint
+     * @see /web/public_html/api/v1/export-cloud/ Cloud export redirect endpoint
+     */
+    function exportData(tableId, format, title) {
+        // 📋 Extract data from the table
+        const data = extractTableData(tableId);
+
+        // ⚠️ Validate that we have data to export
+        if (data.rows.length === 0) {
+            alert('No data available to export. Please ensure the table has loaded.');
+            return;
+        }
+
+        // 🔀 Route to the appropriate export handler based on format
+        if (format === 'csv') {
+            // 💾 Client-side CSV generation and download
+            downloadCSV(data, title);
+
+        } else if (format === 'excel' || format === 'pdf') {
+            // 📤 Server-side export via POST to /api/v1/export/
+            // Build a hidden form and submit it to trigger a file download
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = '/api/v1/export/';
+            form.style.display = 'none';
+
+            // 📦 Pack the table data as JSON for the server to process
+            const inputData = document.createElement('input');
+            inputData.type = 'hidden';
+            inputData.name = 'data';
+            inputData.value = JSON.stringify(data);
+            form.appendChild(inputData);
+
+            // 📋 Format parameter (excel or pdf)
+            const inputFormat = document.createElement('input');
+            inputFormat.type = 'hidden';
+            inputFormat.name = 'format';
+            inputFormat.value = format;
+            form.appendChild(inputFormat);
+
+            // 📝 Title parameter for the exported document
+            const inputTitle = document.createElement('input');
+            inputTitle.type = 'hidden';
+            inputTitle.name = 'title';
+            inputTitle.value = title;
+            form.appendChild(inputTitle);
+
+            // 🔒 Include CSRF token if available
+            const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+            if (csrfMeta) {
+                const inputCsrf = document.createElement('input');
+                inputCsrf.type = 'hidden';
+                inputCsrf.name = 'csrf_token';
+                inputCsrf.value = csrfMeta.getAttribute('content');
+                form.appendChild(inputCsrf);
+            }
+
+            // 📤 Submit the form and clean up
+            document.body.appendChild(form);
+            form.submit();
+            document.body.removeChild(form);
+
+        } else if (format === 'google_sheets' || format === 'excel_online') {
+            // ☁️ Cloud export — redirect to cloud export endpoint
+            const params = new URLSearchParams({
+                format: format,
+                type: tableId,
+                title: title
+            });
+            window.location.href = '/api/v1/export-cloud/?' + params.toString();
+
+        } else {
+            // ⚠️ Unknown format
+            console.error('📥 Export: Unknown format "' + format + '"');
+            alert('Unknown export format: ' + format);
+        }
     }
     </script>
 

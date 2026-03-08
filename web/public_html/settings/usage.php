@@ -647,10 +647,35 @@ include SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATO
                 <!-- 🧾 Billing History — Past period summaries               -->
                 <!-- ======================================================== -->
                 <div class="card shadow mb-4">
-                    <div class="card-header">
+                    <div class="card-header d-flex justify-content-between align-items-center">
                         <h5 class="card-title mb-0">
                             <i class="fas fa-history me-2"></i> Billing History
                         </h5>
+                        <!-- 📤 Export Dropdown — CSV, Excel, PDF -->
+                        <div class="dropdown">
+                            <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button"
+                                    id="exportBillingDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                                <i class="fas fa-download me-1"></i> Export
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="exportBillingDropdown">
+                                <li><a class="dropdown-item" href="#" onclick="exportBillingHistory('csv'); return false;">
+                                    <i class="fas fa-file-csv me-2 text-success"></i> Export as CSV
+                                </a></li>
+                                <li><a class="dropdown-item" href="#" onclick="exportBillingHistory('excel'); return false;">
+                                    <i class="fas fa-file-excel me-2 text-success"></i> Export as Excel
+                                </a></li>
+                                <li><a class="dropdown-item" href="#" onclick="exportBillingHistory('pdf'); return false;">
+                                    <i class="fas fa-file-pdf me-2 text-danger"></i> Export as PDF
+                                </a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><a class="dropdown-item" href="#" onclick="exportBillingHistory('google_sheets'); return false;">
+                                    <i class="fab fa-google me-2 text-primary"></i> Open in Google Sheets
+                                </a></li>
+                                <li><a class="dropdown-item" href="#" onclick="exportBillingHistory('excel_online'); return false;">
+                                    <i class="fab fa-microsoft me-2 text-info"></i> Open in Excel Online
+                                </a></li>
+                            </ul>
+                        </div>
                     </div>
                     <div class="card-body">
                         <?php if (empty($billingHistory)): ?>
@@ -770,6 +795,25 @@ include SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATO
                             <i class="fas fa-chart-line me-2"></i> Usage Trends (Last 6 Months)
                         </h5>
                         <?php if (!empty($usageTrendData)): ?>
+                            <div class="d-flex gap-2">
+                            <!-- 📤 Export usage trend data -->
+                            <div class="dropdown">
+                                <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button"
+                                        id="exportTrendDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                                    <i class="fas fa-download me-1"></i> Export
+                                </button>
+                                <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="exportTrendDropdown">
+                                    <li><a class="dropdown-item" href="#" onclick="exportUsageTrends('csv'); return false;">
+                                        <i class="fas fa-file-csv me-2 text-success"></i> CSV
+                                    </a></li>
+                                    <li><a class="dropdown-item" href="#" onclick="exportUsageTrends('excel'); return false;">
+                                        <i class="fas fa-file-excel me-2 text-success"></i> Excel
+                                    </a></li>
+                                    <li><a class="dropdown-item" href="#" onclick="exportUsageTrends('pdf'); return false;">
+                                        <i class="fas fa-file-pdf me-2 text-danger"></i> PDF
+                                    </a></li>
+                                </ul>
+                            </div>
                             <!-- 🎛️ Metric selector to toggle chart datasets -->
                             <div class="dropdown">
                                 <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button"
@@ -794,6 +838,7 @@ include SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATO
                                     <?php $idx++; endforeach; ?>
                                 </ul>
                             </div>
+                            </div><!-- /.d-flex gap-2 -->
                         <?php endif; ?>
                     </div>
                     <div class="card-body">
@@ -1305,6 +1350,201 @@ var usageTrendChart;
         });
     });
 })();
+
+// ========================================================================
+// 📤 Export Functions — CSV, Excel, PDF, Google Sheets, Excel Online
+// ========================================================================
+
+/**
+ * 🛠️ Generic helper to extract table data from an HTML table element
+ * @param {string} tableId - The DOM id of the table to extract data from
+ * @returns {Object} { headers: string[], rows: string[][] }
+ */
+function extractTableData(tableId) {
+    'use strict';
+    var table = document.getElementById(tableId);
+    if (!table) {
+        return { headers: [], rows: [] };
+    }
+
+    var headers = [];
+    var headerCells = table.querySelectorAll('thead th');
+    headerCells.forEach(function(th) {
+        headers.push(th.textContent.trim());
+    });
+
+    var rows = [];
+    var bodyRows = table.querySelectorAll('tbody > tr:not(.billing-detail-row)');
+    bodyRows.forEach(function(tr) {
+        var row = [];
+        tr.querySelectorAll('td').forEach(function(td) {
+            row.push(td.textContent.trim());
+        });
+        if (row.length > 0) {
+            rows.push(row);
+        }
+    });
+
+    return { headers: headers, rows: rows };
+}
+
+/**
+ * 📋 Convert table data to CSV string and trigger download
+ * @param {Object} data - { headers, rows }
+ * @param {string} filename - Download filename
+ */
+function downloadCSV(data, filename) {
+    'use strict';
+    var csv = '\uFEFF'; // UTF-8 BOM for Excel compatibility
+    csv += data.headers.map(function(h) {
+        return '"' + h.replace(/"/g, '""') + '"';
+    }).join(',') + '\n';
+
+    data.rows.forEach(function(row) {
+        csv += row.map(function(cell) {
+            return '"' + String(cell).replace(/"/g, '""') + '"';
+        }).join(',') + '\n';
+    });
+
+    var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    var link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(link.href);
+}
+
+/**
+ * 📊 Export billing history table data
+ * @param {string} format - 'csv', 'excel', 'pdf', 'google_sheets', 'excel_online'
+ */
+function exportBillingHistory(format) {
+    'use strict';
+    var data = extractTableData('billingHistoryTable');
+    if (data.rows.length === 0) {
+        showToast('No billing data to export.', 'warning');
+        return;
+    }
+
+    var filename = 'signula_billing_history_' + new Date().toISOString().slice(0, 10);
+
+    switch (format) {
+        case 'csv':
+            downloadCSV(data, filename + '.csv');
+            showToast('CSV exported successfully.', 'success');
+            break;
+
+        case 'excel':
+        case 'pdf':
+            // 📡 Server-side export via ExportService
+            var form = document.createElement('form');
+            form.method = 'POST';
+            form.action = '/api/v1/usage/export';
+            form.target = '_blank';
+
+            var fields = {
+                'format': format,
+                'type': 'billing_history',
+                'title': 'Billing History',
+                'data': JSON.stringify(data),
+                'csrf_token': document.querySelector('meta[name="csrf-token"]')
+                    ? document.querySelector('meta[name="csrf-token"]').getAttribute('content') : ''
+            };
+
+            Object.keys(fields).forEach(function(key) {
+                var input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = key;
+                input.value = fields[key];
+                form.appendChild(input);
+            });
+
+            document.body.appendChild(form);
+            form.submit();
+            document.body.removeChild(form);
+            break;
+
+        case 'google_sheets':
+        case 'excel_online':
+            // 🔗 Redirect to OAuth flow then export
+            window.location.href = '/api/v1/usage/export-cloud?format=' +
+                encodeURIComponent(format) +
+                '&type=billing_history' +
+                '&title=' + encodeURIComponent('Billing History');
+            break;
+
+        default:
+            showToast('Unknown export format.', 'danger');
+    }
+}
+
+/**
+ * 📈 Export usage trend data
+ * @param {string} format - 'csv', 'excel', 'pdf'
+ */
+function exportUsageTrends(format) {
+    'use strict';
+
+    // 📊 Build trend data from the PHP-injected chart data
+    var trendLabels = <?php echo json_encode($trendMonthLabels ?? []); ?>;
+    var trendData = <?php echo json_encode($usageTrendData ?? []); ?>;
+    var trendMonthKeys = <?php echo json_encode($trendMonths ?? []); ?>;
+
+    if (trendLabels.length === 0) {
+        showToast('No trend data to export.', 'warning');
+        return;
+    }
+
+    // Build headers: Month + one column per metric
+    var metrics = Object.keys(trendData);
+    var headers = ['Month'].concat(metrics);
+    var rows = [];
+
+    trendMonthKeys.forEach(function(mk, idx) {
+        var row = [trendLabels[idx] || mk];
+        metrics.forEach(function(metric) {
+            var val = (trendData[metric] && trendData[metric][mk])
+                ? trendData[metric][mk].value : 0;
+            row.push(val);
+        });
+        rows.push(row);
+    });
+
+    var data = { headers: headers, rows: rows };
+    var filename = 'signula_usage_trends_' + new Date().toISOString().slice(0, 10);
+
+    if (format === 'csv') {
+        downloadCSV(data, filename + '.csv');
+        showToast('CSV exported successfully.', 'success');
+    } else {
+        // Server-side export for Excel/PDF
+        var form = document.createElement('form');
+        form.method = 'POST';
+        form.action = '/api/v1/usage/export';
+        form.target = '_blank';
+
+        var fields = {
+            'format': format,
+            'type': 'usage_trends',
+            'title': 'Usage Trends (Last 6 Months)',
+            'data': JSON.stringify(data),
+            'csrf_token': document.querySelector('meta[name="csrf-token"]')
+                ? document.querySelector('meta[name="csrf-token"]').getAttribute('content') : ''
+        };
+
+        Object.keys(fields).forEach(function(key) {
+            var input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = key;
+            input.value = fields[key];
+            form.appendChild(input);
+        });
+
+        document.body.appendChild(form);
+        form.submit();
+        document.body.removeChild(form);
+    }
+}
 </script>
 <?php endif; /* end if $subscription JS block */ ?>
 
