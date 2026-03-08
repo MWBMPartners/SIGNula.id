@@ -77,12 +77,20 @@ $currentPage = basename($_SERVER['PHP_SELF'], '.php');
                 <span class="me-2">🔒</span> Privacy
             </a>
 
-            <!-- Notifications -->
+            <!-- Notification Center -->
+            <a
+                href="/settings/notification-center"
+                class="nav-link <?php echo $currentPage === 'notification-center' ? 'active' : ''; ?>"
+            >
+                <span class="me-2">🔔</span> Notifications
+            </a>
+
+            <!-- Notification Preferences -->
             <a
                 href="/settings/notifications"
                 class="nav-link <?php echo $currentPage === 'notifications' ? 'active' : ''; ?>"
             >
-                <span class="me-2">🔔</span> Notifications
+                <span class="me-2">⚙️</span> Notification Preferences
             </a>
         </nav>
 
