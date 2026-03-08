@@ -77,6 +77,11 @@ if (class_exists('Auth')) {
     <meta name="apple-mobile-web-app-title" content="SIGNula">
     <link rel="apple-touch-icon" href="/assets/images/icons/icon-192x192.png">
 
+    <!-- 🌙 Dark Mode CSS & Theme Toggle (loaded early to prevent flash) -->
+    <!-- @see https://web.dev/prefers-color-scheme/ — Dark Mode Best Practices -->
+    <link rel="stylesheet" href="/assets/css/dark-mode.css">
+    <script src="/assets/js/theme-toggle.js"></script>
+
     <!-- Bootstrap 5.3.2 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"
           integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN"
@@ -160,6 +165,11 @@ if (class_exists('Auth')) {
                                href="/contact">Contact</a>
                         </li>
                     </ul>
+
+                    <!-- 🌙 Theme Toggle Button -->
+                    <button class="theme-toggle me-2" type="button" aria-label="Toggle theme">
+                        <i class="fas fa-sun"></i>
+                    </button>
 
                     <!-- User Menu / Auth Buttons -->
                     <div class="d-flex align-items-center">
