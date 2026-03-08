@@ -24,6 +24,28 @@ $userID = $_SESSION['userID'];
 
 $message = null;
 $messageType = null;
+$csrfToken = SecurityUtils::generateCSRFToken();
+
+// ============================================================================
+// 📥 HANDLE DATA EXPORT DOWNLOAD (GET with token)
+// ============================================================================
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && !empty($_GET['action']) && $_GET['action'] === 'download_export') {
+    $downloadToken = $_GET['token'] ?? '';
+    if (!empty($downloadToken)) {
+        // 🔍 Look up export by token
+        if (!class_exists('AccountManager')) {
+            require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'private_html'
+                . DIRECTORY_SEPARATOR . 'auth' . DIRECTORY_SEPARATOR . 'AccountManager.php';
+        }
+        $export = AccountManager::getExportByToken($downloadToken);
+        if ($export && $export['userID'] == $userID) {
+            AccountManager::serveExportFile($export['exportID']);
+            // serveExportFile() exits
+        }
+    }
+    $message = 'Export not found or has expired.';
+    $messageType = 'danger';
+}
 
 // 📝 Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -155,8 +177,79 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         } catch (Exception $e) {
             error_log("Revoke access error: " . $e->getMessage());
-            $message = $e->getMessage();
+            $message = htmlspecialchars($e->getMessage());
             $messageType = 'danger';
+        }
+
+    // ====================================================================
+    // 📦 EXPORT USER DATA (GDPR Article 20)
+    // ====================================================================
+    } elseif ($action === 'export_data') {
+        if (!SecurityUtils::verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+            $message = 'Invalid security token. Please try again.';
+            $messageType = 'danger';
+        } else {
+            $password = $_POST['export_password'] ?? '';
+            if (empty($password)) {
+                $message = 'Password is required to export your data.';
+                $messageType = 'danger';
+            } else {
+                if (!class_exists('AccountManager')) {
+                    require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'private_html'
+                        . DIRECTORY_SEPARATOR . 'auth' . DIRECTORY_SEPARATOR . 'AccountManager.php';
+                }
+                $result = AccountManager::exportUserData($userID, $password);
+                $message = htmlspecialchars($result['message']);
+                $messageType = $result['success'] ? 'success' : 'danger';
+            }
+        }
+
+    // ====================================================================
+    // 🗑️ REQUEST ACCOUNT DELETION (GDPR Article 17)
+    // ====================================================================
+    } elseif ($action === 'request_deletion') {
+        if (!SecurityUtils::verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+            $message = 'Invalid security token. Please try again.';
+            $messageType = 'danger';
+        } else {
+            $password = $_POST['deletion_password'] ?? '';
+            $reason = $_POST['deletion_reason'] ?? '';
+            $confirmText = $_POST['confirm_deletion'] ?? '';
+
+            if ($confirmText !== 'DELETE MY ACCOUNT') {
+                $message = 'Please type "DELETE MY ACCOUNT" to confirm.';
+                $messageType = 'danger';
+            } elseif (empty($password)) {
+                $message = 'Password is required to delete your account.';
+                $messageType = 'danger';
+            } else {
+                if (!class_exists('AccountManager')) {
+                    require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'private_html'
+                        . DIRECTORY_SEPARATOR . 'auth' . DIRECTORY_SEPARATOR . 'AccountManager.php';
+                }
+                $result = AccountManager::requestAccountDeletion($userID, $password, $reason);
+                $message = htmlspecialchars($result['message']);
+                $messageType = $result['success'] ? 'warning' : 'danger';
+            }
+        }
+
+    // ====================================================================
+    // ↩️ CANCEL ACCOUNT DELETION
+    // ====================================================================
+    } elseif ($action === 'cancel_deletion') {
+        if (!SecurityUtils::verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+            $message = 'Invalid security token. Please try again.';
+            $messageType = 'danger';
+        } else {
+            if (!class_exists('AccountManager')) {
+                require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'private_html'
+                    . DIRECTORY_SEPARATOR . 'auth' . DIRECTORY_SEPARATOR . 'AccountManager.php';
+            }
+            $result = AccountManager::cancelAccountDeletion($userID);
+            $message = htmlspecialchars($result['message']);
+            $messageType = $result['success'] ? 'success' : 'danger';
+            // 🔄 Refresh user data after cancellation
+            $user = getCurrentUser();
         }
     }
 }
@@ -420,46 +513,112 @@ include SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATO
                 </div>
             </div>
 
-            <!-- Data Rights & Privacy Information -->
+            <!-- ============================================================ -->
+            <!-- 📦 DATA EXPORT (GDPR Article 20 — Right to Data Portability) -->
+            <!-- ============================================================ -->
             <div class="card shadow mt-4">
                 <div class="card-body p-4">
-                    <h5 class="mb-3">📋 Your Data Rights</h5>
+                    <h5 class="mb-3"><i class="fas fa-download text-primary"></i> Export Your Data</h5>
+                    <p class="text-muted small mb-3">
+                        Download a copy of all your personal data stored in SIGNula in JSON format.
+                        This includes your profile, activity log, linked accounts, payments, preferences, and more.
+                        <br><small>Per GDPR Article 20 (Right to Data Portability).</small>
+                    </p>
 
-                    <div class="row">
-                        <div class="col-md-6 mb-3">
-                            <div class="card h-100 border-primary">
-                                <div class="card-body">
-                                    <h6 class="card-title">
-                                        <i class="fas fa-download text-primary"></i> Export Your Data
-                                    </h6>
-                                    <p class="card-text small text-muted">
-                                        Download a copy of all your SIGNula data in JSON or CSV format.
-                                    </p>
-                                    <a href="/settings/export-data" class="btn btn-sm btn-outline-primary">
-                                        Export Data
-                                    </a>
-                                </div>
-                            </div>
+                    <form method="POST" action="">
+                        <input type="hidden" name="action" value="export_data">
+                        <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrfToken); ?>">
+
+                        <div class="mb-3">
+                            <label for="export_password" class="form-label">Confirm your password to export</label>
+                            <input type="password" class="form-control" id="export_password" name="export_password"
+                                   required autocomplete="current-password" placeholder="Enter your password">
                         </div>
 
-                        <div class="col-md-6 mb-3">
-                            <div class="card h-100 border-danger">
-                                <div class="card-body">
-                                    <h6 class="card-title">
-                                        <i class="fas fa-trash-alt text-danger"></i> Delete Account
-                                    </h6>
-                                    <p class="card-text small text-muted">
-                                        Permanently delete your account and all associated data.
-                                    </p>
-                                    <a href="/settings/delete-account" class="btn btn-sm btn-outline-danger">
-                                        Delete Account
-                                    </a>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-download me-1"></i> Export My Data
+                        </button>
+                    </form>
+                </div>
+            </div>
 
-                    <div class="alert alert-info mt-3 mb-0">
+            <!-- ============================================================ -->
+            <!-- 🗑️ ACCOUNT DELETION (GDPR Article 17 — Right to Erasure) -->
+            <!-- ============================================================ -->
+            <div class="card shadow mt-4 border-danger">
+                <div class="card-body p-4">
+                    <?php if (!empty($user['deletionRequestedAt'])): ?>
+                        <!-- ⏰ Deletion Already Scheduled -->
+                        <h5 class="mb-3 text-danger"><i class="fas fa-exclamation-triangle"></i> Account Deletion Pending</h5>
+                        <div class="alert alert-warning">
+                            <p class="mb-1"><strong>Your account is scheduled for deletion on:</strong></p>
+                            <p class="mb-2 fs-5"><?php echo date('j F Y', strtotime($user['deletionScheduledFor'])); ?></p>
+                            <p class="mb-0 small">You can cancel this request before the scheduled date.</p>
+                        </div>
+
+                        <form method="POST" action="">
+                            <input type="hidden" name="action" value="cancel_deletion">
+                            <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrfToken); ?>">
+                            <button type="submit" class="btn btn-success">
+                                <i class="fas fa-undo me-1"></i> Cancel Deletion
+                            </button>
+                        </form>
+
+                    <?php else: ?>
+                        <!-- 🗑️ Request Deletion Form -->
+                        <h5 class="mb-3 text-danger"><i class="fas fa-trash-alt"></i> Delete Your Account</h5>
+                        <div class="alert alert-danger mb-3">
+                            <strong>Warning:</strong> This action will permanently delete your account and all associated data
+                            after a <?php echo htmlspecialchars(getSetting('gdpr.deletion.grace_period_days', '30')); ?>-day grace period.
+                            This cannot be undone.
+                        </div>
+
+                        <form method="POST" action="" id="deletionForm">
+                            <input type="hidden" name="action" value="request_deletion">
+                            <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrfToken); ?>">
+
+                            <div class="mb-3">
+                                <label for="deletion_reason" class="form-label">Reason for leaving (optional)</label>
+                                <textarea class="form-control" id="deletion_reason" name="deletion_reason"
+                                          rows="2" placeholder="Help us improve — why are you deleting your account?"></textarea>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="deletion_password" class="form-label">Confirm your password</label>
+                                <input type="password" class="form-control" id="deletion_password" name="deletion_password"
+                                       required autocomplete="current-password">
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="confirm_deletion" class="form-label">
+                                    Type <strong>DELETE MY ACCOUNT</strong> to confirm
+                                </label>
+                                <input type="text" class="form-control" id="confirm_deletion" name="confirm_deletion"
+                                       required placeholder="DELETE MY ACCOUNT"
+                                       pattern="DELETE MY ACCOUNT" title="Type DELETE MY ACCOUNT exactly">
+                            </div>
+
+                            <button type="submit" class="btn btn-danger" id="deleteBtn" disabled>
+                                <i class="fas fa-trash-alt me-1"></i> Request Account Deletion
+                            </button>
+                        </form>
+
+                        <script>
+                        // 🔒 Enable delete button only when confirmation text matches
+                        document.getElementById('confirm_deletion')?.addEventListener('input', function() {
+                            document.getElementById('deleteBtn').disabled = (this.value !== 'DELETE MY ACCOUNT');
+                        });
+                        </script>
+                    <?php endif; ?>
+                </div>
+            </div>
+
+            <!-- ============================================================ -->
+            <!-- ℹ️ PRIVACY INFORMATION -->
+            <!-- ============================================================ -->
+            <div class="card shadow mt-4">
+                <div class="card-body p-4">
+                    <div class="alert alert-info mb-0">
                         <h6 class="alert-heading">
                             <i class="fas fa-shield-alt"></i> We Respect Your Privacy
                         </h6>
