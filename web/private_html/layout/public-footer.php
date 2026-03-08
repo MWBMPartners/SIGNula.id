@@ -161,5 +161,32 @@ $currentYear = date('Y');
     }
     </script>
 
+    <!-- 📱 Service Worker Registration -->
+    <!-- @see https://developer.mozilla.org/en-US/docs/Web/API/ServiceWorkerContainer/register -->
+    <script>
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function() {
+            navigator.serviceWorker.register('/sw.js', { scope: '/' })
+                .then(function(registration) {
+                    // 🔄 Check for updates periodically
+                    registration.addEventListener('updatefound', function() {
+                        var newWorker = registration.installing;
+                        if (newWorker) {
+                            newWorker.addEventListener('statechange', function() {
+                                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                    // 🆕 New version available — notify user
+                                    console.log('[SIGNula SW] New version available');
+                                }
+                            });
+                        }
+                    });
+                })
+                .catch(function(error) {
+                    console.log('[SIGNula SW] Registration failed:', error);
+                });
+        });
+    }
+    </script>
+
 </body>
 </html>

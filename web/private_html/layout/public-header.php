@@ -67,6 +67,16 @@ if (class_exists('Auth')) {
     <link rel="icon" type="image/svg+xml" href="/assets/images/favicon.svg">
     <link rel="alternate icon" href="/assets/images/favicon.ico">
 
+    <!-- 📱 PWA Support -->
+    <!-- @see https://web.dev/add-manifest/ — Web App Manifest -->
+    <!-- @see https://developer.mozilla.org/en-US/docs/Web/Manifest — MDN Manifest Reference -->
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#007bff">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="SIGNula">
+    <link rel="apple-touch-icon" href="/assets/images/icons/icon-192x192.png">
+
     <!-- Bootstrap 5.3.2 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"
           integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN"
