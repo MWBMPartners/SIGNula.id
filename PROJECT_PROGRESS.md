@@ -1,7 +1,7 @@
 # SIGNula.ID Development Progress
 
-**Last Updated:** 2026-02-24
-**Current Version:** 2.6.0-beta
+**Last Updated:** 2026-03-08
+**Current Version:** 2.7.0-beta
 **Project Status:** 🟢 Active Development
 
 ---
@@ -36,6 +36,10 @@
 | **Ko-fi & Patreon Integration** | ✅ Complete | 100% | 🟡 Medium |
 | Admin Dashboard (Full) | ✅ Complete | 100% | 🟠 High |
 | **Mass Credential Reset** | ✅ Complete | 100% | 🔴 Critical |
+| **Usage-Based Billing** | ✅ Complete | 100% | 🟠 High |
+| **Tier Expansion (6 tiers + custom)** | ✅ Complete | 100% | 🟠 High |
+| **Data Export (CSV/Excel/PDF/Cloud)** | ✅ Complete | 100% | 🟡 Medium |
+| **Installation/Upgrade Wizard** | ✅ Complete | 100% | 🟠 High |
 | **Deployment Checklist** | ✅ Complete | 100% | 🟠 High |
 | Documentation | ✅ Complete | 100% | 🟠 High |
 | Testing | 🟢 In Progress | 85% | 🔴 Critical |

@@ -14,6 +14,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Mobile apps (iOS, Android)
 - Advanced analytics and reporting dashboard
 
+### Added - Tier Expansion, Custom Tiers, Usage Export & Installation Wizard (v2.7.0-beta)
+
+**Subscription Tier Expansion**
+- Migration `019_tier_expansion.sql`: Adds Pro and Platinum default tiers (6-tier lineup: Free, Basic, Premium, Pro, Platinum, Enterprise). Adds custom tier support columns (isCustom, createdByPartnerID, parentTierID, usageLimits, billingMode).
+- Updated pricing page (`SIGNula.com/pricing.php`) with all 6 tiers, GBP pricing, expanded comparison table, usage-based billing FAQ.
+- Updated `signula_complete_install_v2.5.0.sql` with new tier data and schema.
+
+**Custom Tier Management**
+- `web/public_html/admin/api/tier-actions.php` — Admin AJAX API for CRUD operations on subscription tiers. 9 actions: get_tiers, get_tier, create_tier, update_tier, delete_tier, activate_tier, set_default, reorder_tiers, duplicate_tier.
+- `web/public_html/admin/payments/tiers.php` — Admin UI for managing all subscription tiers. Global and custom tier tabs, create/edit modal with live preview, settings management.
+
+**Data Export System**
+- `web/private_html/utils/ExportService.php` (~1,500 lines) — Multi-format export utility. CSV (client-side with BOM), Excel XLSX (ZipArchive-based Office Open XML), PDF (TCPDF with HTML fallback), Google Sheets (OAuth2 + Sheets API v4), Excel Online (Microsoft Graph API).
+- `web/public_html/api/v1/export/index.php` — Server-side export endpoint (Excel/PDF).
+- `web/public_html/api/v1/export-cloud/index.php` — Cloud export OAuth redirect (Google Sheets/Excel Online).
+- Export dropdowns added to all usage dashboards (user, admin, partner).
+
+**Installation/Upgrade Wizard**
+- `web/public_html/install/index.php` (~2,000 lines) — 6-step web-based installation wizard: system requirements check, database configuration, migration runner, initial config, admin account creation, completion with lock file.
+- `web/public_html/install/upgrade.php` (~900 lines) — Database upgrade wizard with migration detection, progress tracking, and rollback.
+- `web/public_html/install/.htaccess` — Blocks access after installation complete.
+
+**OpenAPI Specification v2.0**
+- Added 3 new tag groups: Usage & Billing, Subscription Tiers, Data Export.
+- Documented 12 new endpoints: usage recording, current/history/projected-cost, billing summaries, metrics, billing mode, tier listing, data export, cloud export.
+- Added SubscriptionTier schema with all tier properties.
+
+**Security Fixes**
+- Fixed API key plaintext comparison in UsageController (now uses SHA-256 hash via keyHash column).
+- Fixed OAuth state parameter not stored in session for CSRF validation (export-cloud).
+- Fixed HTTP_HOST header injection risk (now uses SERVER_NAME or site.url setting).
+- Fixed exception message leakage in tier-actions.php error handler.
+
+**GitHub Issues**
+- Created #48 (tier expansion) — closed after implementation.
+- Created #49 (installation wizard) — closed after implementation.
+
 ### Added - Mass Credential Reset System & Email Enhancement (v2.6.0-beta)
 
 **New Admin Service Class**
