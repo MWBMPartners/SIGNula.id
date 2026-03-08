@@ -31,15 +31,33 @@ if (!defined('SIGNULA_INIT') && php_sapi_name() !== 'cli') {
     die('Direct access not permitted');
 }
 
-// 📚 Require email providers
-require_once __DIR__ . DIRECTORY_SEPARATOR . 'providers' . DIRECTORY_SEPARATOR . 'EmailProvider.php';
-require_once __DIR__ . DIRECTORY_SEPARATOR . 'providers' . DIRECTORY_SEPARATOR . 'MicrosoftGraphEmailProvider.php';
-require_once __DIR__ . DIRECTORY_SEPARATOR . 'providers' . DIRECTORY_SEPARATOR . 'GmailAPIEmailProvider.php';
-require_once __DIR__ . DIRECTORY_SEPARATOR . 'providers' . DIRECTORY_SEPARATOR . 'SMTPEmailProvider.php';
-require_once __DIR__ . DIRECTORY_SEPARATOR . 'providers' . DIRECTORY_SEPARATOR . 'SendGridEmailProvider.php';
-require_once __DIR__ . DIRECTORY_SEPARATOR . 'providers' . DIRECTORY_SEPARATOR . 'MailgunEmailProvider.php';
-require_once __DIR__ . DIRECTORY_SEPARATOR . 'providers' . DIRECTORY_SEPARATOR . 'AmazonSESEmailProvider.php';
-require_once __DIR__ . DIRECTORY_SEPARATOR . 'providers' . DIRECTORY_SEPARATOR . 'PostmarkEmailProvider.php';
+// 📚 Require email providers (conditionally — some providers may not be available)
+// @see web/private_html/email/providers/ for available provider implementations
+$providersDir = __DIR__ . DIRECTORY_SEPARATOR . 'providers' . DIRECTORY_SEPARATOR;
+
+// 🔄 Load base provider interface/abstract class first
+if (file_exists($providersDir . 'EmailProvider.php')) {
+    require_once $providersDir . 'EmailProvider.php';
+}
+
+// 📧 Load available provider implementations
+// Each provider is loaded only if its file exists (graceful degradation)
+$providerFiles = [
+    'MicrosoftGraphEmailProvider.php',
+    'GmailAPIEmailProvider.php',
+    'SMTPEmailProvider.php',
+    'SendGridEmailProvider.php',
+    'MailgunEmailProvider.php',
+    'AmazonSESEmailProvider.php',
+    'PostmarkEmailProvider.php',
+];
+
+foreach ($providerFiles as $providerFile) {
+    $providerPath = $providersDir . $providerFile;
+    if (file_exists($providerPath)) {
+        require_once $providerPath;
+    }
+}
 
 /**
  * 📧 Email Queue Processor
@@ -93,16 +111,30 @@ class EmailQueueProcessor
         // 🔍 Get preferred provider from settings
         $preferredProvider = getSetting('email.provider', 'microsoft_graph');
 
-        // 📋 Load providers in priority order
-        $providerClasses = [
-            'microsoft_graph' => MicrosoftGraphEmailProvider::class,
-            'gmail_api' => GmailAPIEmailProvider::class,
-            'sendgrid' => SendGridEmailProvider::class,
-            'mailgun' => MailgunEmailProvider::class,
-            'amazon_ses' => AmazonSESEmailProvider::class,
-            'postmark' => PostmarkEmailProvider::class,
-            'smtp' => SMTPEmailProvider::class
-        ];
+        // 📋 Load providers in priority order (only if their class exists)
+        // Some providers may not be installed/available
+        $providerClasses = [];
+        if (class_exists('MicrosoftGraphEmailProvider')) {
+            $providerClasses['microsoft_graph'] = MicrosoftGraphEmailProvider::class;
+        }
+        if (class_exists('GmailAPIEmailProvider')) {
+            $providerClasses['gmail_api'] = GmailAPIEmailProvider::class;
+        }
+        if (class_exists('SendGridEmailProvider')) {
+            $providerClasses['sendgrid'] = SendGridEmailProvider::class;
+        }
+        if (class_exists('MailgunEmailProvider')) {
+            $providerClasses['mailgun'] = MailgunEmailProvider::class;
+        }
+        if (class_exists('AmazonSESEmailProvider')) {
+            $providerClasses['amazon_ses'] = AmazonSESEmailProvider::class;
+        }
+        if (class_exists('PostmarkEmailProvider')) {
+            $providerClasses['postmark'] = PostmarkEmailProvider::class;
+        }
+        if (class_exists('SMTPEmailProvider')) {
+            $providerClasses['smtp'] = SMTPEmailProvider::class;
+        }
 
         // 🔝 Add preferred provider first
         if (isset($providerClasses[$preferredProvider])) {
@@ -491,22 +523,122 @@ class EmailQueueProcessor
     /**
      * 🧹 Cleanup Old Emails
      *
-     * Removes old sent emails from queue (for housekeeping).
+     * Removes old sent, failed, and cancelled emails from queue (for housekeeping).
+     * Pending and processing emails are never deleted regardless of age.
      *
-     * @param int $daysOld Number of days to keep
+     * @param int|null $daysOld Number of days to keep (null = use setting)
      * @return int Number of emails deleted
+     *
+     * @see tblSettings: email.queue.retention_days
      */
-    public static function cleanupOldEmails(int $daysOld = 30): int
+    public static function cleanupOldEmails(?int $daysOld = null): int
     {
+        $retentionDays = $daysOld ?? (int) getSetting('email.queue.retention_days', 30);
+
         $query = "
             DELETE FROM tblEmailQueue
-            WHERE status = 'sent'
-              AND sentAt < DATE_SUB(NOW(), INTERVAL ? DAY)
+            WHERE status IN ('sent', 'failed', 'cancelled')
+              AND createdAt < DATE_SUB(NOW(), INTERVAL ? DAY)
         ";
 
-        $result = Database::query($query, [$daysOld], 'i');
+        $result = Database::query($query, [$retentionDays], 'i');
+        $deleted = $result ? Database::getAffectedRows() : 0;
 
-        return $result ? Database::getAffectedRows() : 0;
+        if ($deleted > 0 && class_exists('ActivityLogger')) {
+            ActivityLogger::log(
+                userID: null,
+                activityType: 'email_queue_cleanup',
+                activityResult: 'success',
+                activityDetails: "Cleaned up {$deleted} old emails (retention: {$retentionDays} days)"
+            );
+        }
+
+        return $deleted;
+    }
+
+    /**
+     * 🔄 Retry Failed Emails
+     *
+     * Re-queues permanently failed emails for another round of attempts.
+     * Useful when an SMTP configuration issue has been fixed.
+     *
+     * @param int $maxAdditionalRetries Number of extra attempts to add
+     * @return array ['requeued' => int, 'skipped' => int]
+     */
+    public static function retryFailed(int $maxAdditionalRetries = 3): array
+    {
+        $result = ['requeued' => 0, 'skipped' => 0];
+
+        try {
+            $failedEmails = Database::fetchAll(
+                "SELECT queueID FROM tblEmailQueue WHERE status = 'failed' ORDER BY createdAt DESC LIMIT 100",
+                [],
+                ''
+            );
+
+            foreach ($failedEmails as $email) {
+                Database::query(
+                    "UPDATE tblEmailQueue
+                     SET status = 'pending',
+                         scheduledAt = DATE_ADD(NOW(), INTERVAL 60 SECOND),
+                         maxAttempts = COALESCE(maxAttempts, 3) + 1
+                     WHERE queueID = ? AND status = 'failed'",
+                    [$email['queueID']],
+                    'i'
+                );
+
+                if (Database::affectedRows() > 0) {
+                    $result['requeued']++;
+                } else {
+                    $result['skipped']++;
+                }
+            }
+
+            if ($result['requeued'] > 0 && class_exists('ActivityLogger')) {
+                ActivityLogger::log(
+                    userID: null,
+                    activityType: 'email_queue_retry',
+                    activityResult: 'success',
+                    activityDetails: "Re-queued {$result['requeued']} failed emails for retry"
+                );
+            }
+
+        } catch (Exception $e) {
+            if (class_exists('ErrorLogger')) {
+                ErrorLogger::logError('Exception', 'Failed to retry emails: ' . $e->getMessage(), $e->getFile(), $e->getLine());
+            }
+            $result['error'] = $e->getMessage();
+        }
+
+        return $result;
+    }
+
+    /**
+     * ❌ Cancel a Queued Email
+     *
+     * Sets a pending email's status to 'cancelled'. Cannot cancel emails
+     * that are already processing, sent, or failed.
+     *
+     * @param int $queueID The email queue ID to cancel
+     * @return bool Whether the cancellation was successful
+     */
+    public static function cancelEmail(int $queueID): bool
+    {
+        try {
+            Database::query(
+                "UPDATE tblEmailQueue SET status = 'cancelled' WHERE queueID = ? AND status = 'pending'",
+                [$queueID],
+                'i'
+            );
+
+            return Database::affectedRows() > 0;
+
+        } catch (Exception $e) {
+            if (class_exists('ErrorLogger')) {
+                ErrorLogger::logError('Exception', 'Failed to cancel email: ' . $e->getMessage(), $e->getFile(), $e->getLine());
+            }
+            return false;
+        }
     }
 }
 
