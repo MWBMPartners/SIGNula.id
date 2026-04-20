@@ -2,12 +2,12 @@
 ###############################################################################
 # Build Complete Installation SQL Script
 #
-# Purpose: Generate signula_complete_install_v2.5.0.sql from base + migrations
+# Purpose: Generate signula_complete_install_v2.7.0.sql from base + migrations
 #
 # Copyright © 2025-2026 MWBM Partners Ltd (t/a MWservices). All rights reserved.
 #
-# Version: 1.2.0
-# Date: February 19, 2026
+# Version: 1.3.0
+# Date: April 20, 2026
 #
 # Usage: bash _scripts/build-complete-install.sh
 #
@@ -25,12 +25,12 @@ NC='\033[0m'
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 DB_DIR="$PROJECT_ROOT/_database"
-OUTPUT_FILE="$DB_DIR/signula_complete_install_v2.5.0.sql"
+OUTPUT_FILE="$DB_DIR/signula_complete_install_v2.7.0.sql"
 
 cd "$PROJECT_ROOT"
 
 echo -e "${BLUE}╔══════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${BLUE}║     Building Complete Installation SQL v2.5.0              ║${NC}"
+echo -e "${BLUE}║     Building Complete Installation SQL v2.7.0              ║${NC}"
 echo -e "${BLUE}╚══════════════════════════════════════════════════════════════╝${NC}"
 echo ""
 
@@ -47,10 +47,10 @@ cat > "$OUTPUT_FILE" << 'EOF'
 --
 -- 📁 SIGNula Universal Login System - Complete Installation Script
 -- ============================================================================
--- Version: 2.5.0-beta
--- Date: 2026-02-19
+-- Version: 2.7.0-beta
+-- Date: 2026-04-20
 -- Description: Complete database schema for SIGNula universal authentication
--- Includes: All features through v2.5.0-beta (all 13 migrations consolidated)
+-- Includes: All features through v2.7.0-beta (all 24 migrations consolidated)
 --
 -- Supports: MySQL 8.0+, MariaDB 10.5+
 -- Character Set: utf8mb4 (full Unicode support including emojis)
@@ -74,9 +74,19 @@ cat > "$OUTPUT_FILE" << 'EOF'
 --   ✅ Webhooks & payment system (Stripe, PayPal, Coinbase Commerce)
 --   ✅ Two-tier payment expansion (invoices, credits, service fees)
 --   ✅ Ko-fi & Patreon integration
+--   ✅ Enhanced security (CSRF tokens, form protection)
+--   ✅ Avatar/profile picture support
+--   ✅ Credential reset system with email workflow
+--   ✅ Usage tracking and billing
+--   ✅ Service tier expansion (custom tiers, usage limits)
+--   ✅ Password history and reuse prevention
+--   ✅ Account deletion with data export
+--   ✅ Notification center
+--   ✅ Internationalization (i18n) support
+--   ✅ Advanced webhook delivery system
 --
 -- Installation:
---   mysql -u your_username -p your_database < signula_complete_install_v2.5.0.sql
+--   mysql -u your_username -p your_database < signula_complete_install_v2.7.0.sql
 --
 -- ============================================================================
 
@@ -303,6 +313,149 @@ if [ -f "$DB_DIR/migrations/013_kofi_patreon_providers.sql" ]; then
     echo "" >> "$OUTPUT_FILE"
 fi
 
+# Security Enhancements (014)
+echo "" >> "$OUTPUT_FILE"
+echo "-- ============================================================================" >> "$OUTPUT_FILE"
+echo "-- 🔒 SECURITY ENHANCEMENTS" >> "$OUTPUT_FILE"
+echo "-- ============================================================================" >> "$OUTPUT_FILE"
+echo "" >> "$OUTPUT_FILE"
+
+if [ -f "$DB_DIR/migrations/014_security_enhancements.sql" ]; then
+    echo -e "   ${GREEN}✓${NC} 014_security_enhancements.sql"
+    sed -n '/^ALTER TABLE/,/;/p; /^CREATE TABLE/,/^);/p; /^INSERT INTO/,/;/p' "$DB_DIR/migrations/014_security_enhancements.sql" >> "$OUTPUT_FILE"
+    echo "" >> "$OUTPUT_FILE"
+fi
+
+# Form Protection Settings (015)
+echo "" >> "$OUTPUT_FILE"
+echo "-- ============================================================================" >> "$OUTPUT_FILE"
+echo "-- 🛡️  FORM PROTECTION SETTINGS" >> "$OUTPUT_FILE"
+echo "-- ============================================================================" >> "$OUTPUT_FILE"
+echo "" >> "$OUTPUT_FILE"
+
+if [ -f "$DB_DIR/migrations/015_form_protection_settings.sql" ]; then
+    echo -e "   ${GREEN}✓${NC} 015_form_protection_settings.sql"
+    sed -n '/^INSERT INTO/,/;/p; /^ALTER TABLE/,/;/p' "$DB_DIR/migrations/015_form_protection_settings.sql" >> "$OUTPUT_FILE"
+    echo "" >> "$OUTPUT_FILE"
+fi
+
+# Avatar Support (016)
+echo "" >> "$OUTPUT_FILE"
+echo "-- ============================================================================" >> "$OUTPUT_FILE"
+echo "-- 🖼️  AVATAR/PROFILE PICTURE SUPPORT" >> "$OUTPUT_FILE"
+echo "-- ============================================================================" >> "$OUTPUT_FILE"
+echo "" >> "$OUTPUT_FILE"
+
+if [ -f "$DB_DIR/migrations/016_avatar_support.sql" ]; then
+    echo -e "   ${GREEN}✓${NC} 016_avatar_support.sql"
+    sed -n '/^ALTER TABLE/,/;/p' "$DB_DIR/migrations/016_avatar_support.sql" >> "$OUTPUT_FILE"
+    echo "" >> "$OUTPUT_FILE"
+fi
+
+# Credential Reset System (017)
+echo "" >> "$OUTPUT_FILE"
+echo "-- ============================================================================" >> "$OUTPUT_FILE"
+echo "-- 🔑 CREDENTIAL RESET SYSTEM" >> "$OUTPUT_FILE"
+echo "-- ============================================================================" >> "$OUTPUT_FILE"
+echo "" >> "$OUTPUT_FILE"
+
+if [ -f "$DB_DIR/migrations/017_credential_reset_system.sql" ]; then
+    echo -e "   ${GREEN}✓${NC} 017_credential_reset_system.sql"
+    sed -n '/^CREATE TABLE/,/^);/p; /^INSERT INTO/,/;/p' "$DB_DIR/migrations/017_credential_reset_system.sql" >> "$OUTPUT_FILE"
+    echo "" >> "$OUTPUT_FILE"
+fi
+
+# Usage Billing (018)
+echo "" >> "$OUTPUT_FILE"
+echo "-- ============================================================================" >> "$OUTPUT_FILE"
+echo "-- 📊 USAGE TRACKING & BILLING" >> "$OUTPUT_FILE"
+echo "-- ============================================================================" >> "$OUTPUT_FILE"
+echo "" >> "$OUTPUT_FILE"
+
+if [ -f "$DB_DIR/migrations/018_usage_billing.sql" ]; then
+    echo -e "   ${GREEN}✓${NC} 018_usage_billing.sql"
+    sed -n '/^CREATE TABLE/,/^);/p; /^ALTER TABLE/,/;/p; /^INSERT INTO/,/;/p' "$DB_DIR/migrations/018_usage_billing.sql" >> "$OUTPUT_FILE"
+    echo "" >> "$OUTPUT_FILE"
+fi
+
+# Tier Expansion (019)
+echo "" >> "$OUTPUT_FILE"
+echo "-- ============================================================================" >> "$OUTPUT_FILE"
+echo "-- 🏆 SERVICE TIER EXPANSION" >> "$OUTPUT_FILE"
+echo "-- ============================================================================" >> "$OUTPUT_FILE"
+echo "" >> "$OUTPUT_FILE"
+
+if [ -f "$DB_DIR/migrations/019_tier_expansion.sql" ]; then
+    echo -e "   ${GREEN}✓${NC} 019_tier_expansion.sql"
+    sed -n '/^ALTER TABLE/,/;/p; /^CREATE TABLE/,/^);/p; /^INSERT INTO/,/;/p' "$DB_DIR/migrations/019_tier_expansion.sql" >> "$OUTPUT_FILE"
+    echo "" >> "$OUTPUT_FILE"
+fi
+
+# Password History (020)
+echo "" >> "$OUTPUT_FILE"
+echo "-- ============================================================================" >> "$OUTPUT_FILE"
+echo "-- 🔐 PASSWORD HISTORY & REUSE PREVENTION" >> "$OUTPUT_FILE"
+echo "-- ============================================================================" >> "$OUTPUT_FILE"
+echo "" >> "$OUTPUT_FILE"
+
+if [ -f "$DB_DIR/migrations/020_password_history.sql" ]; then
+    echo -e "   ${GREEN}✓${NC} 020_password_history.sql"
+    sed -n '/^CREATE TABLE/,/^);/p; /^INSERT INTO/,/;/p' "$DB_DIR/migrations/020_password_history.sql" >> "$OUTPUT_FILE"
+    echo "" >> "$OUTPUT_FILE"
+fi
+
+# Account Deletion & Export (021)
+echo "" >> "$OUTPUT_FILE"
+echo "-- ============================================================================" >> "$OUTPUT_FILE"
+echo "-- 🗑️  ACCOUNT DELETION WITH DATA EXPORT" >> "$OUTPUT_FILE"
+echo "-- ============================================================================" >> "$OUTPUT_FILE"
+echo "" >> "$OUTPUT_FILE"
+
+if [ -f "$DB_DIR/migrations/021_account_deletion_export.sql" ]; then
+    echo -e "   ${GREEN}✓${NC} 021_account_deletion_export.sql"
+    sed -n '/^CREATE TABLE/,/^);/p; /^INSERT INTO/,/;/p; /^ALTER TABLE/,/;/p' "$DB_DIR/migrations/021_account_deletion_export.sql" >> "$OUTPUT_FILE"
+    echo "" >> "$OUTPUT_FILE"
+fi
+
+# Notification Center (022)
+echo "" >> "$OUTPUT_FILE"
+echo "-- ============================================================================" >> "$OUTPUT_FILE"
+echo "-- 🔔 NOTIFICATION CENTER" >> "$OUTPUT_FILE"
+echo "-- ============================================================================" >> "$OUTPUT_FILE"
+echo "" >> "$OUTPUT_FILE"
+
+if [ -f "$DB_DIR/migrations/022_notification_center.sql" ]; then
+    echo -e "   ${GREEN}✓${NC} 022_notification_center.sql"
+    sed -n '/^CREATE TABLE/,/^);/p; /^INSERT INTO/,/;/p' "$DB_DIR/migrations/022_notification_center.sql" >> "$OUTPUT_FILE"
+    echo "" >> "$OUTPUT_FILE"
+fi
+
+# Internationalization (023)
+echo "" >> "$OUTPUT_FILE"
+echo "-- ============================================================================" >> "$OUTPUT_FILE"
+echo "-- 🌍 INTERNATIONALIZATION (i18n)" >> "$OUTPUT_FILE"
+echo "-- ============================================================================" >> "$OUTPUT_FILE"
+echo "" >> "$OUTPUT_FILE"
+
+if [ -f "$DB_DIR/migrations/023_i18n_settings.sql" ]; then
+    echo -e "   ${GREEN}✓${NC} 023_i18n_settings.sql"
+    sed -n '/^CREATE TABLE/,/^);/p; /^INSERT INTO/,/;/p; /^ALTER TABLE/,/;/p' "$DB_DIR/migrations/023_i18n_settings.sql" >> "$OUTPUT_FILE"
+    echo "" >> "$OUTPUT_FILE"
+fi
+
+# Webhook System (024)
+echo "" >> "$OUTPUT_FILE"
+echo "-- ============================================================================" >> "$OUTPUT_FILE"
+echo "-- 🪝 ADVANCED WEBHOOK DELIVERY SYSTEM" >> "$OUTPUT_FILE"
+echo "-- ============================================================================" >> "$OUTPUT_FILE"
+echo "" >> "$OUTPUT_FILE"
+
+if [ -f "$DB_DIR/migrations/024_webhook_system.sql" ]; then
+    echo -e "   ${GREEN}✓${NC} 024_webhook_system.sql"
+    sed -n '/^CREATE TABLE/,/^);/p; /^ALTER TABLE/,/;/p; /^INSERT INTO/,/;/p; /^CREATE INDEX/p' "$DB_DIR/migrations/024_webhook_system.sql" >> "$OUTPUT_FILE"
+    echo "" >> "$OUTPUT_FILE"
+fi
+
 # Add footer
 cat >> "$OUTPUT_FILE" << 'EOF'
 
@@ -315,7 +468,7 @@ SET FOREIGN_KEY_CHECKS = 1;
 
 -- Verify installation
 SELECT
-    'SIGNula v2.5.0-beta database installation complete!' AS status,
+    'SIGNula v2.7.0-beta database installation complete!' AS status,
     DATABASE() AS database_name,
     COUNT(*) AS table_count
 FROM information_schema.tables
@@ -332,12 +485,12 @@ echo ""
 
 # Get file size
 FILE_SIZE=$(ls -lh "$OUTPUT_FILE" | awk '{print $5}')
-echo -e "${GREEN}✅ Created: signula_complete_install_v2.5.0.sql${NC}"
+echo -e "${GREEN}✅ Created: signula_complete_install_v2.7.0.sql${NC}"
 echo -e "${GREEN}📦 Size: $FILE_SIZE${NC}"
 echo ""
 
 echo -e "${YELLOW}📋 Test installation:${NC}"
-echo "   mysql -u your_username -p < _database/signula_complete_install_v2.5.0.sql"
+echo "   mysql -u your_username -p < _database/signula_complete_install_v2.7.0.sql"
 echo ""
 
 exit 0
