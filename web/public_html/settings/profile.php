@@ -223,13 +223,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             if (empty($errors)) {
+                $oldEmail = $user['email'];
+
                 // 📝 Update email
                 $query = "UPDATE tblUsers SET email = ?, emailVerified = 0, updatedAt = NOW() WHERE userID = ?";
                 $result = Database::query($query, [$newEmail, $userID], 'si');
 
                 if ($result) {
                     // 📧 Send verification email
-                    // TODO: Implement email verification
+                    $verificationToken = SecurityUtils::generateToken();
+                    $verificationCode = strtoupper(substr(bin2hex(random_bytes(3)), 0, 6));
+                    $expiryMinutes = getSetting('security.email_verification_expiry_minutes', 1440); // 24 hours
+
+                    // Store verification token
+                    Database::query(
+                        "INSERT INTO tblVerificationTokens (userID, token, tokenType, code, expiresAt)
+                         VALUES (?, ?, 'email_verification', ?, DATE_ADD(NOW(), INTERVAL ? MINUTE))",
+                        [$userID, $verificationToken, $verificationCode, $expiryMinutes],
+                        'issi'
+                    );
+
+                    $baseURL = getSetting('url.base', 'https://signula.id');
+                    $verificationUrl = "{$baseURL}/verify-email?token={$verificationToken}";
+                    $displayName = trim($user['firstName'] . ' ' . $user['lastName']) ?: 'User';
+
+                    $emailVariables = [
+                        'displayName' => $displayName,
+                        'oldEmail' => $oldEmail,
+                        'newEmail' => $newEmail,
+                        'verificationUrl' => $verificationUrl,
+                        'verificationCode' => $verificationCode,
+                        'expiryMinutes' => '24 hours'
+                    ];
+
+                    EmailService::sendTemplateEmail($newEmail, 'email_change_verification', $emailVariables, $userID, 2);
 
                     // 📝 Log activity
                     ActivityLogger::log(

@@ -78,10 +78,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!empty($errors)) {
             $error = implode(' ', $errors);
         } else {
-            // TODO: Save to database when tblContactSubmissions is created
-            // TODO: Send email notification
+            // 💾 Save to database
+            $ipAddress = $_SERVER['REMOTE_ADDR'] ?? 'Unknown';
+            $userAgent = $_SERVER['HTTP_USER_AGENT'] ?? 'Unknown';
 
-            // For now, just show success
+            Database::query(
+                "INSERT INTO tblContactSubmissions (name, email, inquiryType, subject, message, ipAddress, userAgent, submittedAt)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, NOW())",
+                [$formData['name'], $formData['email'], $formData['type'], $formData['subject'], $formData['message'], $ipAddress, $userAgent],
+                'sssssss'
+            );
+
+            // 📧 Send email notification to admin/support team
+            $contactEmail = getSetting('contact.email_address', 'contact@signula.com');
+
+            $emailVariables = [
+                'name' => $formData['name'],
+                'email' => $formData['email'],
+                'phone' => '',  // Optional field not in this form
+                'company' => '',  // Optional field not in this form
+                'subject' => $formData['subject'],
+                'message' => $formData['message'],
+                'submittedAt' => date('Y-m-d H:i:s'),
+                'ipAddress' => $ipAddress,
+                'userAgent' => $userAgent
+            ];
+
+            EmailService::sendTemplateEmail($contactEmail, 'contact_form_submission', $emailVariables, null, 3);
+
+            // Show success
             $success = true;
 
             // Clear form data on success

@@ -74,15 +74,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         if ($existingEmail) {
                             $error = 'This email address is already in use.';
                         } else {
+                            $oldEmail = $user['email'];
+
                             Database::query(
                                 "UPDATE tblUsers SET email = ?, emailVerified = FALSE WHERE userID = ?",
                                 [$newEmail, $user['userID']],
                                 'si'
                             );
 
-                            // TODO: Send verification email to new address
+                            // 📧 Send verification email to new address
+                            $verificationToken = SecurityUtils::generateToken();
+                            $verificationCode = strtoupper(substr(bin2hex(random_bytes(3)), 0, 6));
+                            $expiryMinutes = getSetting('security.email_verification_expiry_minutes', 1440); // 24 hours
+
+                            // Store verification token
+                            Database::query(
+                                "INSERT INTO tblVerificationTokens (userID, token, tokenType, code, expiresAt)
+                                 VALUES (?, ?, 'email_verification', ?, DATE_ADD(NOW(), INTERVAL ? MINUTE))",
+                                [$user['userID'], $verificationToken, $verificationCode, $expiryMinutes],
+                                'issi'
+                            );
+
+                            $baseURL = getSetting('url.base', 'https://signula.id');
+                            $verificationUrl = "{$baseURL}/verify-email?token={$verificationToken}";
+                            $displayName = trim($user['firstName'] . ' ' . $user['lastName']) ?: 'User';
+
+                            $emailVariables = [
+                                'displayName' => $displayName,
+                                'oldEmail' => $oldEmail,
+                                'newEmail' => $newEmail,
+                                'verificationUrl' => $verificationUrl,
+                                'verificationCode' => $verificationCode,
+                                'expiryMinutes' => '24 hours'
+                            ];
+
+                            EmailService::sendTemplateEmail($newEmail, 'email_change_verification', $emailVariables, $user['userID'], 2);
+
                             ActivityLogger::log($user['userID'], 'email_changed', 'account', 'info', 'Email address changed', [
-                                'old_email' => $user['email'],
+                                'old_email' => $oldEmail,
                                 'new_email' => $newEmail
                             ]);
 

@@ -561,6 +561,8 @@ class Auth
 
             if ($user && $user['failedLoginAttempts'] >= $maxAttempts) {
                 // Lock account
+                $lockoutMinutes = getSetting('security.login.lockout_duration_minutes', 30);
+
                 Database::query(
                     "UPDATE tblUsers SET accountStatus = 'locked' WHERE userID = ?",
                     [$userID],
@@ -570,7 +572,36 @@ class Auth
                 ActivityLogger::log($userID, 'account_locked', 'security', 'critical',
                     'Account locked due to multiple failed login attempts');
 
-                // TODO: Send email notification about account lockout
+                // 📧 Send lockout notification email
+                $userDetails = Database::fetchOne(
+                    "SELECT email, firstName, lastName FROM tblUsers WHERE userID = ?",
+                    [$userID],
+                    'i'
+                );
+
+                if ($userDetails) {
+                    $baseURL = getSetting('url.base', 'https://signula.id');
+                    $displayName = trim($userDetails['firstName'] . ' ' . $userDetails['lastName']) ?: 'User';
+                    $lockedUntil = date('Y-m-d H:i:s', strtotime("+{$lockoutMinutes} minutes"));
+
+                    $emailVariables = [
+                        'displayName' => $displayName,
+                        'email' => $userDetails['email'],
+                        'failedAttempts' => $user['failedLoginAttempts'],
+                        'lockedUntil' => $lockedUntil,
+                        'lockoutMinutes' => $lockoutMinutes,
+                        'ipAddress' => $_SERVER['REMOTE_ADDR'] ?? 'Unknown',
+                        'resetPasswordUrl' => "{$baseURL}/reset-password"
+                    ];
+
+                    EmailService::sendTemplateEmail(
+                        $userDetails['email'],
+                        'account_lockout',
+                        $emailVariables,
+                        $userID,
+                        1  // High priority
+                    );
+                }
             }
 
         } catch (Exception $e) {
