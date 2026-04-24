@@ -207,9 +207,79 @@ abstract class BaseController
      */
     private function getUserByToken(string $token): ?array
     {
-        // TODO: Implement JWT validation
-        // For now, return null
-        return null;
+        try {
+            // 🔐 Validate JWT format (header.payload.signature)
+            $parts = explode('.', $token);
+            if (count($parts) !== 3) {
+                ErrorLogger::logError('JWT_ERROR', 'Invalid JWT format: expected 3 parts', __FILE__, __LINE__);
+                return null;
+            }
+
+            [$headerB64, $payloadB64, $signatureB64] = $parts;
+
+            // 🔓 Decode header and payload
+            $header = json_decode(base64_decode(strtr($headerB64, '-_', '+/')), true);
+            $payload = json_decode(base64_decode(strtr($payloadB64, '-_', '+/')), true);
+
+            if (!$header || !$payload) {
+                ErrorLogger::logError('JWT_ERROR', 'Failed to decode JWT header/payload', __FILE__, __LINE__);
+                return null;
+            }
+
+            // ✅ Verify algorithm (only allow HS256)
+            if (($header['alg'] ?? '') !== 'HS256') {
+                ErrorLogger::logError('JWT_ERROR', 'Unsupported JWT algorithm: ' . ($header['alg'] ?? 'none'), __FILE__, __LINE__);
+                return null;
+            }
+
+            // 🔑 Verify signature
+            $jwtSecret = getSetting('security.jwt_secret', ENCRYPTION_KEY);
+            $validSignature = hash_hmac('sha256', "{$headerB64}.{$payloadB64}", $jwtSecret, true);
+            $validSignatureB64 = rtrim(strtr(base64_encode($validSignature), '+/', '-_'), '=');
+
+            if (!hash_equals($validSignatureB64, $signatureB64)) {
+                ErrorLogger::logError('JWT_ERROR', 'Invalid JWT signature', __FILE__, __LINE__);
+                return null;
+            }
+
+            // ⏰ Check expiration
+            $now = time();
+            if (isset($payload['exp']) && $now >= $payload['exp']) {
+                ErrorLogger::logError('JWT_ERROR', 'JWT token expired', __FILE__, __LINE__);
+                return null;
+            }
+
+            // ⏳ Check not-before time
+            if (isset($payload['nbf']) && $now < $payload['nbf']) {
+                ErrorLogger::logError('JWT_ERROR', 'JWT token not yet valid', __FILE__, __LINE__);
+                return null;
+            }
+
+            // 👤 Get user by ID from token payload
+            $userID = $payload['sub'] ?? $payload['user_id'] ?? null;
+            if (!$userID) {
+                ErrorLogger::logError('JWT_ERROR', 'JWT missing user identifier (sub/user_id)', __FILE__, __LINE__);
+                return null;
+            }
+
+            // 🔍 Fetch user from database
+            $user = Database::fetchOne(
+                "SELECT * FROM tblUsers WHERE userID = ? AND accountStatus = 'active'",
+                [(int)$userID],
+                'i'
+            );
+
+            if (!$user) {
+                ErrorLogger::logError('JWT_ERROR', "User not found or inactive: {$userID}", __FILE__, __LINE__);
+                return null;
+            }
+
+            return $user;
+
+        } catch (Exception $e) {
+            ErrorLogger::logError('Exception', 'JWT validation error: ' . $e->getMessage(), $e->getFile(), $e->getLine());
+            return null;
+        }
     }
 
     /**

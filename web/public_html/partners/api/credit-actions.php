@@ -780,14 +780,46 @@ function handleTopUpCredits($input, $db, $accessControl, $sessionManager, $activ
             'invoiceNumber' => $invoiceNumber
         ]);
 
-        // 📦 Return success with pending status
-        // TODO: Replace with actual payment provider redirect URLs once
-        //       CreditManager and payment provider integrations are implemented.
+        // 📦 Return success with pending status and payment provider redirect URL
+        $baseURL = getSetting('url.base', 'https://signula.id');
+        $redirectUrl = null;
+
+        // 🔗 Generate payment provider redirect URLs
+        switch (strtolower($paymentMethod)) {
+            case 'stripe':
+                // Redirect to Stripe checkout page (placeholder - requires Stripe session creation)
+                $redirectUrl = "{$baseURL}/checkout/stripe?payment_id={$paymentID}&invoice={$invoiceNumber}";
+                break;
+
+            case 'paypal':
+                // Redirect to PayPal checkout page (placeholder - requires PayPal order creation)
+                $redirectUrl = "{$baseURL}/checkout/paypal?payment_id={$paymentID}&invoice={$invoiceNumber}";
+                break;
+
+            case 'coinbase':
+            case 'coinbase_commerce':
+                // Redirect to Coinbase Commerce checkout
+                $redirectUrl = "{$baseURL}/checkout/coinbase?payment_id={$paymentID}&invoice={$invoiceNumber}";
+                break;
+
+            case 'bank_transfer':
+            case 'wire':
+                // Redirect to bank transfer instructions page
+                $redirectUrl = "{$baseURL}/checkout/bank-transfer?payment_id={$paymentID}&invoice={$invoiceNumber}";
+                break;
+
+            default:
+                // Generic checkout page for manual payment
+                $redirectUrl = "{$baseURL}/checkout/manual?payment_id={$paymentID}&invoice={$invoiceNumber}";
+                break;
+        }
+
         echo json_encode([
             'success'     => true,
-            'message'     => 'Credit top-up payment created. Awaiting payment confirmation.',
+            'message'     => 'Credit top-up payment created. Please complete payment.',
             'paymentID'   => $paymentID,
-            'redirectUrl' => null // 🔗 Will be set by CreditManager when implemented
+            'invoiceNumber' => $invoiceNumber,
+            'redirectUrl' => $redirectUrl
         ]);
     }
 }
