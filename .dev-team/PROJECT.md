@@ -38,7 +38,7 @@ Emoji-annotated docblocks; prepared statements via the `Database` wrapper; modul
 ## Current status
 Bootstrap + spec-authoring done. **G-001..G-004 user-approved** (specs in `.dev-team/specs/`). Phase: **STABILIZE** (safety floor leads before the security-critical feature builds). Build sequence:
 1. ✅ **STABILIZE-1 DONE** (cycle 3): phpstan+phpcs now run; unknown-class FPs 647→74; baseline ≈3632 real phpstan errors; 5 SIGNULA_INIT guards; 342 tests green. **NEXT → STABILIZE-2.**
-2. **STABILIZE-2**: B-020 safety-net tests (Auth/API/WebAuthn/Email) — required before behaviour-touching auth work.
+2. ✅ **STABILIZE-2 DONE** (cycle 4): +48 safety-net tests (342→390 green). Surfaced 2 HIGH — **B-027** (`Database::insert()` missing → WebAuthn registration broken) + **FG-013** (WebAuthn accepts unsigned assertions — auth-bypass, PoC-confirmed). **SAFETY FLOOR → next cycles (5–6) fix WebAuthn BEFORE the feature campaign:** cycle 5 = B-027 (make registration/storage work) + B-028; cycle 6 = FG-013 (real signature/authenticatorData/sign-count verification, red-team re-attack). THEN resume G-003 → G-001 → G-002 → G-004.
 3. **G-003** JWT auth (S1–S5), then **G-001** IdP Phase A (A1–A5), then **G-002** billing (test-mode, fix B-025 first), then **G-004** compliance (L1 first).
 4. Interleave **SECURE** fixes for any High finding (incl. B-024 CORS, the 11 deferred email/admin/api issues, FG-013 WebAuthn).
 New findings this cycle: **B-024** (CORS `*`+credentials), **B-025** (billing schema drift), suggested **FG-018** (SCIM provisioning, Phase C of G-001).
@@ -52,6 +52,7 @@ New findings this cycle: **B-024** (CORS `*`+credentials), **B-025** (billing sc
 ## Checkpoint log
 - **cycle 0 (DISCOVER)** — docs-only: PROJECT.md + FEATURES.md written; 0 PHP parse errors; 342 unit tests green; tooling config bug found (B-001). Commit: bootstrap.
 - **cycle 3 (STABILIZE-1)** — B-001/B-002/B-005 PASS: `composer analyze`/`check-style` run; phpstan unknown-class FPs 647→74 (74 genuine); 5 guards added; 342 tests green, no regression. EmailDripProcessor guard placed after its config-require (CLI entrypoint) — lead ACCEPTED.
+- **cycle 4 (STABILIZE-2)** — B-020 safety net PASS: +48 tests (342→390 green, stable across 3 seeds), no behaviour change. Net surfaced 2 HIGH (B-027 WebAuthn registration broken via missing `Database::insert()`; FG-013 WebAuthn auth-bypass — unsigned assertions accepted, PoC test) + pinned B-024/B-012/B-011/B-028. Per safety floor, next cycles fix WebAuthn before the feature campaign.
 
 ## Feature Specs
 
@@ -211,6 +212,8 @@ Syntax sweep result: **`php -l` over all 271 `web/` PHP files + `_scripts`/`_tes
 - B-024 | CORS misconfig: `Response::setCorsHeaders()` sends `Access-Control-Allow-Origin: *` WITH `Allow-Credentials: true` — invalid + insecure for credentialed API/JWT requests; tighten to a configurable origin allowlist | security | High | S | (api/Response.php; yes) | — (found in G-003 spec)
 - B-025 | `tblBillingSchedule` schema↔code drift: mig 012 PK/columns/ENUM (`scheduleID`,`completedAt`,`errorMessage`) don't match scheduler reads/writes (`taskID`,`result`,`nextRetryAt` + task types `suspend_account`/`calculate_usage`/`charge_usage`/`archive_usage`) — errors on clean install | correctness | High | S | (mig 012 + new mig, BillingScheduler.php; yes) | gh:#67 (found in G-002 spec; fix as G-002 build-stage 0)
 - B-026 | Stale `SessionManager::isLoggedIn` references in 3 API docblock comments (no such class; sessions handled by Auth/SessionGuard) — cosmetic comment cleanup, NOT a runtime bug (verified: 0 executable usages) | code-quality | Low | S | (invoice-actions.php, usage-actions.php, tier-actions.php docblocks; no) | — (phpstan-surfaced cycle 3)
+- B-027 | `Database::insert()` called by `WebAuthnHandler::storeChallenge()`/`storeCredential()` (lines 420,538) but NO such method exists on Database (no `insert()`, no `__callStatic`) → WebAuthn registration + challenge storage THROW `Error` and are non-functional | correctness | High | S | (WebAuthnHandler.php; maybe add Database::insert helper; yes) | — (PoC-pinned cycle 4; SAFETY FLOOR) |
+- B-028 | `BaseController::getUserById()/getUserByApiKey()` filter `accountStatus='active'` (lowercase) while app/fixtures use `'Active'` — API auth path would fail to resolve users on a case-sensitive (`_bin`) collation | robustness | Low | S | (BaseController.php; yes) | — (found cycle 4) |
 
 ## Run record
 Bootstrap DISCOVER — codebase audit complete 2026-06-30
@@ -224,4 +227,5 @@ see FEATURES.md
 |-------|-------|------|--------|--------|
 | 1 | DISCOVER | bootstrap: codebase map + 23-item backlog + 17 feature gaps + 40-issue reconciliation | docs written; 0 parse errors, 342 tests green; tooling-config bug found (B-001) | b6128b4 |
 | 2 | COMPLETE-prep | author full specs for user-approved G-001/G-003/G-002/G-004 | 4 build-ready specs written; surfaced B-024 (CORS) + B-025 (billing schema drift) + suggested FG-018 (SCIM) | 39b0bcd |
-| 3 | STABILIZE | B-001/B-002/B-005: fix phpstan/phpcs runnability + class discovery + 5 SIGNULA_INIT guards | tools run; unknown-class FPs 647→74; phpstan baseline ≈3632 real errors; 342 tests green; no behaviour change | cycle-3 commit |
+| 3 | STABILIZE | B-001/B-002/B-005: fix phpstan/phpcs runnability + class discovery + 5 SIGNULA_INIT guards | tools run; unknown-class FPs 647→74; phpstan baseline ≈3632 real errors; 342 tests green; no behaviour change | e5376fd |
+| 4 | STABILIZE | B-020 safety-net: +48 characterization tests for API-auth/Auth/WebAuthn/Email seams | 342→390 tests green; surfaced HIGH B-027 (WebAuthn registration broken) + FG-013 (WebAuthn auth-bypass, PoC) + pinned B-024/B-012/B-011/B-028 | cycle-4 commit |
