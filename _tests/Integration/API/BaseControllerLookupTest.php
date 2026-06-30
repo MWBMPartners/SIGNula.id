@@ -98,6 +98,8 @@ class BaseControllerLookupTest extends DatabaseTestCase
         $controller = new LookupProbeController();
 
         $userID = $this->insertRecord('tblUsers', [
+            // 🆔 userUUID is NOT NULL / UNIQUE with no DB default
+            'userUUID'      => self::generateTestUuid(),
             'email'         => random_email('bc'),
             'username'      => 'bc_' . uniqid(),
             'passwordHash'  => password_hash('x', PASSWORD_ARGON2ID),
@@ -136,6 +138,8 @@ class BaseControllerLookupTest extends DatabaseTestCase
         $controller = new LookupProbeController();
 
         $userID = $this->insertRecord('tblUsers', [
+            // 🆔 userUUID is NOT NULL / UNIQUE with no DB default
+            'userUUID'      => self::generateTestUuid(),
             'email'         => random_email('bc'),
             'username'      => 'bc_' . uniqid(),
             'passwordHash'  => password_hash('x', PASSWORD_ARGON2ID),

@@ -303,7 +303,7 @@ class MFA
             // 🗑️ Remove old codes if regenerating
             if ($regenerate) {
                 Database::query(
-                    "DELETE FROM tblUserMFA WHERE userID = ? AND mfaType = 'backup_code'",
+                    "DELETE FROM tblUserMFA WHERE userID = ? AND mfaType = 'backup_codes'",
                     [$userID],
                     'i'
                 );
@@ -323,7 +323,7 @@ class MFA
                 $query = "
                     INSERT INTO tblUserMFA
                     (userID, mfaType, mfaSecret, mfaEnabled, isVerified, createdAt)
-                    VALUES (?, 'backup_code', ?, 1, 1, NOW())
+                    VALUES (?, 'backup_codes', ?, 1, 1, NOW())
                 ";
 
                 Database::query(
@@ -366,7 +366,7 @@ class MFA
                 SELECT mfaID, mfaSecret
                 FROM tblUserMFA
                 WHERE userID = ?
-                AND mfaType = 'backup_code'
+                AND mfaType = 'backup_codes'
                 AND mfaEnabled = 1
                 AND isVerified = 1
             ";
@@ -392,7 +392,7 @@ class MFA
 
                     // ⚠️ Check remaining codes and warn if low
                     $remaining = Database::fetchOne(
-                        "SELECT COUNT(*) as count FROM tblUserMFA WHERE userID = ? AND mfaType = 'backup_code' AND mfaEnabled = 1",
+                        "SELECT COUNT(*) as count FROM tblUserMFA WHERE userID = ? AND mfaType = 'backup_codes' AND mfaEnabled = 1",
                         [$userID],
                         'i'
                     );
@@ -429,7 +429,7 @@ class MFA
     {
         try {
             $result = Database::fetchOne(
-                "SELECT COUNT(*) as count FROM tblUserMFA WHERE userID = ? AND mfaType = 'backup_code' AND mfaEnabled = 1",
+                "SELECT COUNT(*) as count FROM tblUserMFA WHERE userID = ? AND mfaType = 'backup_codes' AND mfaEnabled = 1",
                 [$userID],
                 'i'
             );
@@ -605,7 +605,7 @@ class MFA
     {
         try {
             $result = Database::fetchOne(
-                "SELECT COUNT(*) as count FROM tblUserMFA WHERE userID = ? AND mfaType != 'backup_code' AND mfaEnabled = 1 AND isVerified = 1",
+                "SELECT COUNT(*) as count FROM tblUserMFA WHERE userID = ? AND mfaType != 'backup_codes' AND mfaEnabled = 1 AND isVerified = 1",
                 [$userID],
                 'i'
             );
@@ -633,7 +633,7 @@ class MFA
                 SELECT mfaType
                 FROM tblUserMFA
                 WHERE userID = ?
-                AND mfaType != 'backup_code'
+                AND mfaType != 'backup_codes'
                 AND mfaEnabled = 1
                 AND isVerified = 1
             ";

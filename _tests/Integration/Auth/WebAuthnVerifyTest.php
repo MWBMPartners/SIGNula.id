@@ -101,6 +101,8 @@ class WebAuthnVerifyTest extends DatabaseTestCase
     private function seedAuthScenario(): array
     {
         $userID = $this->insertRecord('tblUsers', [
+            // 🆔 userUUID is NOT NULL / UNIQUE with no DB default
+            'userUUID'      => self::generateTestUuid(),
             'email'         => random_email('wa'),
             'username'      => 'wa_' . uniqid(),
             'passwordHash'  => \SecurityUtils::hashPassword('TestPassword123!'),
@@ -288,6 +290,8 @@ class WebAuthnVerifyTest extends DatabaseTestCase
 
         // 🌱 Seed user + credential (storing the REAL PEM) + live challenge.
         $userID = $this->insertRecord('tblUsers', [
+            // 🆔 userUUID is NOT NULL / UNIQUE with no DB default
+            'userUUID'      => self::generateTestUuid(),
             'email'         => random_email('wa'),
             'username'      => 'wa_' . uniqid(),
             'passwordHash'  => \SecurityUtils::hashPassword('TestPassword123!'),
@@ -378,6 +382,8 @@ class WebAuthnVerifyTest extends DatabaseTestCase
         ])['pem'];
 
         $userID = $this->insertRecord('tblUsers', [
+            // 🆔 userUUID is NOT NULL / UNIQUE with no DB default
+            'userUUID'      => self::generateTestUuid(),
             'email'         => random_email('wa'),
             'username'      => 'wa_' . uniqid(),
             'passwordHash'  => \SecurityUtils::hashPassword('TestPassword123!'),

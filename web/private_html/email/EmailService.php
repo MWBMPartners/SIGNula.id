@@ -161,7 +161,10 @@ class EmailService
                 $attachmentsJson,
                 $priority,
                 $scheduledFor ? $scheduledFor->format('Y-m-d H:i:s') : null
-            ], 'iisssssssssssiss');
+            // 🔧 15 bound params: userID(i) templateID(i) + 11 strings + priority(i) + scheduledAt(s).
+            //    The type string previously had 16 chars (a stray extra 's'),
+            //    tripping ArgumentCountError on every queueEmail() call.
+            ], 'iisssssssssssis');
 
             return true;
 

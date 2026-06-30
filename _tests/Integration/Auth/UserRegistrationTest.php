@@ -23,6 +23,9 @@ class UserRegistrationTest extends DatabaseTestCase
     public function testSuccessfulUserRegistration(): void
     {
         $userData = [
+            // 🆔 tblUsers requires userUUID + username (NOT NULL, UNIQUE, no DB default)
+            'userUUID' => self::generateTestUuid(),
+            'username' => 'newuser_' . bin2hex(random_bytes(4)),
             'email' => 'newuser@example.com',
             'passwordHash' => password_hash('Password123', PASSWORD_ARGON2ID),
             'displayName' => 'New User',
@@ -124,6 +127,9 @@ class UserRegistrationTest extends DatabaseTestCase
     public function testEmailVerificationDefaultsToFalse(): void
     {
         $userID = $this->insertRecord('tblUsers', [
+            // 🆔 tblUsers requires userUUID + username (NOT NULL, UNIQUE, no DB default)
+            'userUUID' => self::generateTestUuid(),
+            'username' => 'unverified_' . bin2hex(random_bytes(4)),
             'email' => 'unverified@example.com',
             'passwordHash' => password_hash('test', PASSWORD_ARGON2ID),
             'displayName' => 'Test User',

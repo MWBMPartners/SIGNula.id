@@ -29,6 +29,10 @@ requireSource('private_html/security/SecurityUtils.php');
 requireSource('private_html/security/TOTP.php');
 requireSource('private_html/utils/ActivityLogger.php');
 requireSource('private_html/utils/ErrorLogger.php');
+// 🏢 Auth::register() calls Organization::findByEmailDomain(); the app
+//    autoloader resolves it in production, but the test bootstrap requires
+//    sources explicitly, so load it here too.
+requireSource('private_html/auth/Organization.php');
 requireSource('private_html/auth/Auth.php');
 
 /**
@@ -58,6 +62,8 @@ class AuthLoginTest extends DatabaseTestCase
     private function createUserWithPassword(array $overrides = []): array
     {
         $defaults = [
+            // 🆔 userUUID is NOT NULL / UNIQUE with no DB default
+            'userUUID' => self::generateTestUuid(),
             'email' => random_email('auth_test'),
             'username' => 'testuser_' . uniqid(),
             'passwordHash' => \SecurityUtils::hashPassword($this->testPassword),
@@ -210,6 +216,18 @@ class AuthLoginTest extends DatabaseTestCase
     public function testLoginWithMFAEnabledReturnsMFAFlag(): void
     {
         $user = $this->createUserWithPassword(['mfaEnabled' => 1]);
+
+        // 🔐 Auth::login() gates MFA via MFA::isEnabled(), which looks for an
+        //    ENABLED + VERIFIED row in tblUserMFA (NOT the tblUsers.mfaEnabled
+        //    flag). Seed a verified TOTP method so the MFA-required path triggers.
+        $this->insertRecord('tblUserMFA', [
+            'userID'     => $user['userID'],
+            'mfaType'    => 'totp',
+            'mfaEnabled' => 1,
+            'mfaSecret'  => 'TESTSECRET234567', // not validated on the login gate
+            'isVerified' => 1,
+            'createdAt'  => date('Y-m-d H:i:s'),
+        ]);
 
         $result = \Auth::login($user['email'], $this->testPassword);
 

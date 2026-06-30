@@ -98,6 +98,46 @@ class ErrorLogger
     }
 
     /**
+     * 🪵 Log a Throwable (convenience wrapper)
+     *
+     * Convenience entry point for the very common `catch (Throwable $e)` pattern
+     * used throughout the codebase (API controllers, payment managers, etc.),
+     * which call `ErrorLogger::log($e);`. It unpacks the throwable into the
+     * fields expected by {@see self::logError()} so callers don't have to repeat
+     * the `('Exception', $e->getMessage(), $e->getFile(), $e->getLine())` boilerplate.
+     *
+     * The error type is derived from the throwable's (short) class name so that,
+     * e.g., a RuntimeException is logged with errorType "RuntimeException".
+     *
+     * @param \Throwable $e        The caught exception/error to log
+     * @param array      $context  Additional context data (merged with the
+     *                             throwable code under 'exceptionCode')
+     * @param string     $severity Error severity (default 'error')
+     * @return bool Success status (propagated from logError())
+     */
+    public static function log(
+        \Throwable $e,
+        array $context = [],
+        string $severity = 'error'
+    ): bool {
+        // 🏷️ Derive a concise error type from the throwable's class name.
+        //    e.g. "App\\Exceptions\\FooException" -> "FooException"
+        $errorType = (new \ReflectionClass($e))->getShortName();
+
+        // 📦 Preserve the throwable's numeric code alongside any caller context.
+        $context['exceptionCode'] = $e->getCode();
+
+        return self::logError(
+            $errorType,
+            $e->getMessage(),
+            $e->getFile(),
+            $e->getLine(),
+            $context,
+            $severity
+        );
+    }
+
+    /**
      * 📋 Format Backtrace
      *
      * @param array $backtrace Debug backtrace array

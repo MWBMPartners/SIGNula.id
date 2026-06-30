@@ -160,12 +160,14 @@ class EmailServiceQueueTest extends DatabaseTestCase
     {
         // Seed an active template with both HTML and text bodies.
         $this->insertRecord('tblEmailTemplates', [
-            'templateKey' => 'characterization_tpl',
-            'subject'     => 'Hi {{name}}',
-            'bodyHTML'    => '<p>Welcome {{name}}</p>',
-            'bodyText'    => 'Welcome {{name}}',
-            'isActive'    => 1,
-            'createdAt'   => date('Y-m-d H:i:s'),
+            'templateKey'  => 'characterization_tpl',
+            // 🏷️ tblEmailTemplates.templateName is NOT NULL with no DB default
+            'templateName' => 'Characterization Template',
+            'subject'      => 'Hi {{name}}',
+            'bodyHTML'     => '<p>Welcome {{name}}</p>',
+            'bodyText'     => 'Welcome {{name}}',
+            'isActive'     => 1,
+            'createdAt'    => date('Y-m-d H:i:s'),
         ]);
 
         $to = 'render@example.com';

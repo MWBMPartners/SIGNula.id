@@ -121,6 +121,8 @@ class MFATest extends DatabaseTestCase
     {
         // 🏗️ Build default user fixture data
         $defaults = [
+            // 🆔 userUUID is NOT NULL / UNIQUE with no DB default
+            'userUUID'           => self::generateTestUuid(),
             // 📧 Unique email so parallel test runs don't collide
             'email'              => random_email('mfa_test'),
             // 👤 Unique username with a random suffix
