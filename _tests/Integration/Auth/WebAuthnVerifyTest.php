@@ -13,15 +13,18 @@
  * and follow DatabaseTestCase. Without a running signula_test database they
  * error/skip exactly like the other Integration suites — that is expected.
  *
- * ⚠️ NEEDS-LEAD-REVIEW (documented, NOT fixed here)
+ * ✅ RESOLVED (cycle 6 — FG-013)
  * --------------------------------------------------
- *  • SIGNATURE / AUTHENTICATOR-DATA NOT VERIFIED. verifyAuthentication() checks
- *    only: credential exists + challenge valid/unused/unexpired + origin match +
- *    type == "webauthn.get". It NEVER verifies the assertion signature, the
- *    authenticatorData, or the sign-count (the source code comments admit this).
- *    Consequence pinned by testTamperedSignatureStillAccepted(): an attacker who
- *    can read a credentialPublicKeyID and replay/obtain a live challenge can
- *    forge a successful authentication. This is an auth-bypass risk.
+ *  • SIGNATURE / AUTHENTICATOR-DATA NOW VERIFIED. verifyAuthentication() now
+ *    performs full W3C §7.2 cryptographic verification: it requires
+ *    authenticatorData + signature, parses authData (rpIdHash + UP/UV flags +
+ *    signCount), and runs openssl_verify(authData ‖ SHA-256(clientDataJSON),
+ *    signature, storedPublicKeyPem, SHA-256), accepting ONLY verify === 1.
+ *    Sign-count clone-detection is enforced. The unsigned-assertion auth-bypass
+ *    is closed — pinned here by testTamperedSignatureRejected() (an assertion
+ *    with NO signature is now REJECTED), and exercised at the crypto level (with
+ *    a real EC P-256 keypair + each attack vector) by the DB-free unit suite
+ *    _tests/Unit/Auth/WebAuthnVerificationTest.php.
  *
  * ✅ RESOLVED (cycle 5)
  * --------------------------------------------------
@@ -49,6 +52,7 @@ requireSource('_config/database.php');
 requireSource('private_html/security/SecurityUtils.php');
 requireSource('private_html/utils/ActivityLogger.php');
 requireSource('private_html/utils/ErrorLogger.php');
+requireSource('_lib/webauthn/WebAuthnCbor.php');
 requireSource('private_html/auth/WebAuthnHandler.php');
 
 /**
@@ -213,21 +217,21 @@ class WebAuthnVerifyTest extends DatabaseTestCase
     }
 
     // ========================================================================
-    // 🟢 ACCEPT PATH + ⚠️ THE SIGNATURE GAP (NEEDS-LEAD-REVIEW)
+    // 🟢 SIGNATURE VERIFICATION NOW ENFORCED (FG-013 RESOLVED)
     // ========================================================================
 
     /**
-     * ⚠️ AUTH-BYPASS CHARACTERIZATION.
+     * ✅ AUTH-BYPASS CLOSED (FG-013, cycle 6).
      *
-     * With a valid stored credential + live challenge + correct origin + correct
-     * type, verifyAuthentication() SUCCEEDS even though the supplied response
-     * carries NO authenticatorData and NO signature (and what is present is
-     * attacker-forgeable). This pins the missing cryptographic verification.
+     * The exact PoC that previously proved the bypass: a valid stored credential
+     * + live challenge + correct origin + correct type, but a response carrying
+     * NO authenticatorData and NO signature. verifyAuthentication() now REJECTS
+     * it — the missing assertion fields are caught before any session is granted.
      *
-     * The SECURE fix will make this case FAIL — at which point this test must be
-     * inverted deliberately. Do NOT "fix" by editing production code here.
+     * This is the deliberate inversion of the old
+     * testTamperedSignatureStillAccepted(): an unsigned assertion MUST fail.
      */
-    public function testTamperedSignatureStillAccepted(): void
+    public function testTamperedSignatureRejected(): void
     {
         $scenario = $this->seedAuthScenario();
         $handler  = new \WebAuthnHandler();
@@ -245,37 +249,191 @@ class WebAuthnVerifyTest extends DatabaseTestCase
             ],
         ]);
 
-        $this->assertTrue(
+        $this->assertFalse(
             $result['success'],
-            'CURRENT behaviour: assertion accepted without signature verification (auth-bypass risk)'
+            'FG-013 FIX: an assertion with NO signature MUST be rejected (auth-bypass closed)'
         );
-        $this->assertSame((int) $scenario['userID'], (int) $result['userID']);
+        // The reject reason should point at the missing signature/authenticator data.
+        $this->assertMatchesRegularExpression(
+            '/signature|authenticator/i',
+            $result['error'],
+            'Rejection must be due to missing/invalid signature or authenticator data'
+        );
     }
 
     /**
-     * The accept path marks the challenge used (single-use enforcement) so a
-     * replay of the SAME challenge is then rejected.
+     * ✅ END-TO-END ACCEPT: a genuinely signed assertion verifies through the
+     * full DB-backed path (real EC P-256 key stored as the credential PEM, a
+     * real ECDSA signature over authData ‖ SHA-256(clientDataJSON)).
      */
-    public function testChallengeIsConsumedAfterSuccessfulAuth(): void
+    public function testValidSignedAssertionAcceptedEndToEnd(): void
     {
-        $scenario = $this->seedAuthScenario();
-        $handler  = new \WebAuthnHandler();
+        $rpId = 'localhost'; // matches the settings.json fixture rp_id
 
-        $payload = [
-            'id'       => $scenario['credId'],
-            'rawId'    => $scenario['credId'],
+        // 🔑 Real EC P-256 keypair → COSE → PEM (as registration would store).
+        $priv = openssl_pkey_new([
+            'private_key_type' => OPENSSL_KEYTYPE_EC,
+            'curve_name'       => 'prime256v1',
+        ]);
+        $details = openssl_pkey_get_details($priv);
+        $x = str_pad($details['ec']['x'], 32, "\x00", STR_PAD_LEFT);
+        $y = str_pad($details['ec']['y'], 32, "\x00", STR_PAD_LEFT);
+        $pem = \WebAuthnCbor::coseKeyToPem([
+            \WebAuthnCbor::COSE_KTY => \WebAuthnCbor::KTY_EC2,
+            \WebAuthnCbor::COSE_ALG => \WebAuthnCbor::ALG_ES256,
+            \WebAuthnCbor::COSE_CRV => \WebAuthnCbor::CRV_P256,
+            \WebAuthnCbor::COSE_X   => $x,
+            \WebAuthnCbor::COSE_Y   => $y,
+        ])['pem'];
+
+        // 🌱 Seed user + credential (storing the REAL PEM) + live challenge.
+        $userID = $this->insertRecord('tblUsers', [
+            'email'         => random_email('wa'),
+            'username'      => 'wa_' . uniqid(),
+            'passwordHash'  => \SecurityUtils::hashPassword('TestPassword123!'),
+            'displayName'   => 'WebAuthn User',
+            'accountStatus' => 'active',
+            'emailVerified' => 1,
+            'createdAt'     => date('Y-m-d H:i:s'),
+        ]);
+        $credId = 'cred_' . bin2hex(random_bytes(8));
+        $this->insertRecord('tblWebAuthnCredentials', [
+            'userID'                => $userID,
+            'credentialPublicKeyID' => $credId,
+            'credentialPublicKey'   => $pem,
+            'attestationType'       => 'none',
+            'signCount'             => 5,
+            'isActive'              => 1,
+            'createdAt'             => date('Y-m-d H:i:s'),
+        ]);
+        $challenge = base64_encode(random_bytes(32));
+        $this->insertRecord('tblWebAuthnChallenges', [
+            'userID'          => $userID,
+            'challenge'       => $challenge,
+            'challengeType'   => 'authentication',
+            'isUsed'          => 0,
+            'expiresAt'       => date('Y-m-d H:i:s', time() + 300),
+            'validityMinutes' => 5,
+            'createdAt'       => date('Y-m-d H:i:s'),
+        ]);
+
+        // 🧱 Build authData (rpIdHash + UP flag + a HIGHER sign-count) and sign.
+        $authData = hash('sha256', $rpId, true) . chr(0x01) . pack('N', 6);
+        $clientDataJSON = json_encode([
+            'type'      => 'webauthn.get',
+            'challenge' => $challenge,
+            'origin'    => $this->rpOrigin,
+        ]);
+        $signedData = $authData . hash('sha256', $clientDataJSON, true);
+        $signature  = '';
+        openssl_sign($signedData, $signature, $priv, OPENSSL_ALGO_SHA256);
+
+        $handler = new \WebAuthnHandler();
+        $result  = $handler->verifyAuthentication([
+            'id'       => $credId,
+            'rawId'    => $credId,
             'response' => [
-                'clientDataJSON' => $this->clientDataJSON('webauthn.get', $scenario['challenge'], $this->rpOrigin),
+                'clientDataJSON'    => base64_encode($clientDataJSON),
+                'authenticatorData' => base64_encode($authData),
+                'signature'         => base64_encode($signature),
             ],
-        ];
+        ]);
 
-        $first = $handler->verifyAuthentication($payload);
-        $this->assertTrue($first['success']);
+        $this->assertTrue(
+            $result['success'],
+            'A genuinely signed assertion MUST verify through the full DB-backed path'
+        );
+        $this->assertSame((int) $userID, (int) $result['userID']);
 
-        // Replaying the now-consumed challenge must fail the challenge check.
-        $second = $handler->verifyAuthentication($payload);
-        $this->assertFalse($second['success']);
-        $this->assertStringContainsString('challenge', strtolower($second['error']));
+        // 🔢 The new (higher) sign-count must have been persisted.
+        $row = \Database::fetchOne(
+            "SELECT signCount FROM tblWebAuthnCredentials WHERE credentialPublicKeyID = ?",
+            [$credId],
+            's'
+        );
+        $this->assertSame(6, (int) $row['signCount'], 'Sign-count must advance to the asserted value');
+    }
+
+    /**
+     * 🚫 END-TO-END sign-count regression: a correctly signed assertion whose
+     * sign-count is NOT greater than the stored value is rejected (clone guard).
+     */
+    public function testSignCountRegressionRejectedEndToEnd(): void
+    {
+        $rpId = 'localhost';
+
+        $priv = openssl_pkey_new([
+            'private_key_type' => OPENSSL_KEYTYPE_EC,
+            'curve_name'       => 'prime256v1',
+        ]);
+        $details = openssl_pkey_get_details($priv);
+        $x = str_pad($details['ec']['x'], 32, "\x00", STR_PAD_LEFT);
+        $y = str_pad($details['ec']['y'], 32, "\x00", STR_PAD_LEFT);
+        $pem = \WebAuthnCbor::coseKeyToPem([
+            \WebAuthnCbor::COSE_KTY => \WebAuthnCbor::KTY_EC2,
+            \WebAuthnCbor::COSE_ALG => \WebAuthnCbor::ALG_ES256,
+            \WebAuthnCbor::COSE_CRV => \WebAuthnCbor::CRV_P256,
+            \WebAuthnCbor::COSE_X   => $x,
+            \WebAuthnCbor::COSE_Y   => $y,
+        ])['pem'];
+
+        $userID = $this->insertRecord('tblUsers', [
+            'email'         => random_email('wa'),
+            'username'      => 'wa_' . uniqid(),
+            'passwordHash'  => \SecurityUtils::hashPassword('TestPassword123!'),
+            'displayName'   => 'WebAuthn User',
+            'accountStatus' => 'active',
+            'emailVerified' => 1,
+            'createdAt'     => date('Y-m-d H:i:s'),
+        ]);
+        $credId = 'cred_' . bin2hex(random_bytes(8));
+        $this->insertRecord('tblWebAuthnCredentials', [
+            'userID'                => $userID,
+            'credentialPublicKeyID' => $credId,
+            'credentialPublicKey'   => $pem,
+            'attestationType'       => 'none',
+            'signCount'             => 10, // stored counter
+            'isActive'              => 1,
+            'createdAt'             => date('Y-m-d H:i:s'),
+        ]);
+        $challenge = base64_encode(random_bytes(32));
+        $this->insertRecord('tblWebAuthnChallenges', [
+            'userID'          => $userID,
+            'challenge'       => $challenge,
+            'challengeType'   => 'authentication',
+            'isUsed'          => 0,
+            'expiresAt'       => date('Y-m-d H:i:s', time() + 300),
+            'validityMinutes' => 5,
+            'createdAt'       => date('Y-m-d H:i:s'),
+        ]);
+
+        // Sign with a LOWER sign-count (5 <= stored 10) — must be rejected.
+        $authData = hash('sha256', $rpId, true) . chr(0x01) . pack('N', 5);
+        $clientDataJSON = json_encode([
+            'type'      => 'webauthn.get',
+            'challenge' => $challenge,
+            'origin'    => $this->rpOrigin,
+        ]);
+        $signedData = $authData . hash('sha256', $clientDataJSON, true);
+        $signature  = '';
+        openssl_sign($signedData, $signature, $priv, OPENSSL_ALGO_SHA256);
+
+        $handler = new \WebAuthnHandler();
+        $result  = $handler->verifyAuthentication([
+            'id'       => $credId,
+            'rawId'    => $credId,
+            'response' => [
+                'clientDataJSON'    => base64_encode($clientDataJSON),
+                'authenticatorData' => base64_encode($authData),
+                'signature'         => base64_encode($signature),
+            ],
+        ]);
+
+        $this->assertFalse(
+            $result['success'],
+            'A signed assertion with a regressed sign-count MUST be rejected (clone detection)'
+        );
+        $this->assertStringContainsString('Sign count', $result['error']);
     }
 
     // ========================================================================

@@ -22,7 +22,10 @@
   "phase_cursor": 1,
   "state": "RUNNING",
   "cursor": null,
-  "next_action": "cycle 5 DONE: B-027 fixed broadly (added Database::insert()/insertId() — unbroke 7 callers incl. PasswordlessLoginHandler + 4 email features + AccountManager + WebAuthn storage) + B-028 (premise inverted; canonical lowercase 'active'; BaseController already correct; fixtures aligned). 390 tests green. NEXT = cycle 6 FG-013 (HIGH security, safety floor): implement REAL WebAuthn verification in verifyAuthentication()/verifyRegistration() — parse authenticatorData (rpIdHash + UP/UV flags), verify the assertion signature over (authenticatorData || SHA-256(clientDataJSON)) using the stored COSE public key via openssl_verify (ES256/RS256), verify+advance the sign-count (clone detection). RED-TEAM re-attack: the unsigned-assertion PoC (testTamperedSignatureStillAccepted) must now FAIL; flip the characterization test to assert rejection. Reuse AppleOAuth's existing ES256/openssl approach as the crypto reference. THEN resume build campaign: G-003 JWT (specs/G-003.md, vendor firebase/php-jwt into web/_lib/jwt/) -> G-001 IdP Phase A -> G-002 billing TEST-MODE (fix B-025 first) -> G-004 compliance L1. Pending SECURE: B-024 CORS, 11 deferred issues #22-#34/#73. NOTE: B-027 implies more 'call to undefined method' real bugs may lurk in the ~3632 phpstan baseline — a dedicated B-015 triage cycle is warranted in STABILIZE/SECURE. Conductor assigns migration numbers sequentially (existing 001-024).",
+  "next_action": "cycle 6 DONE: FG-013 closed — real WebAuthn verification (CBOR/COSE->PEM in web/_lib/webauthn/WebAuthnCbor.php, openssl_verify, sign-count clone-detect) + 2 pre-existing bug fixes; 401 tests green; RED-TEAM verdict HOLDS across 7 vectors. NEXT = cycle 7 (B-029, HIGH correctness, safety floor — blocks 'core task works e2e'): stand up a local signula_test MySQL DB (builder showed it's installable), run the Integration suite, TRIAGE the ~63 errors (AuthLogin, MFA, RateLimiter, SecurityMiddleware incl. RateLimiter::checkLimit() static-call mismatch) into REAL bugs vs test-schema/harness drift, and FIX the clear real bugs (same 'missing/mismatched method' class as B-027). THEN a SECURE cleanup cycle for the WebAuthn residuals B-030 (challenge TOCTOU race — atomic UPDATE) + B-031 (userID=0 guard) + B-024 (CORS *+credentials) + start the 11 deferred email/admin/api issues #22-#34/#73. THEN the feature campaign: G-003 JWT (specs/G-003.md, vendor firebase/php-jwt into web/_lib/jwt/) -> G-001 IdP Phase A -> G-002 billing TEST-MODE (fix B-025 first) -> G-004 compliance L1 (B-032 usernameless WebAuthn folds in with WebAuthn feature work). Conductor assigns migration numbers sequentially (existing 001-024). Also queue a dedicated B-015 phpstan 'undefined method/wrong-arg' triage.",
+  "capstone_tasks": [
+    {"id": "CAP-API", "title": "Comprehensive API completeness + security pass + complete OpenAPI/Swagger docs", "source": "user directive 2026-06-30", "when": "AFTER all queued cycles + the G-001..G-004 feature campaign are complete", "scope": "Audit + extend the REST API so EVERY feature (auth, MFA, OAuth, WebAuthn, passwordless, IdP/G-001, JWT/G-003, billing/G-002, compliance/G-004, partners, usage, account-mgmt, admin) has secure endpoints: authn+authz enforced, consistent error keys (B-011), rate-limited, input-validated, no IDOR, correct CORS (B-024). THEN regenerate/complete the OpenAPI 3.x spec at web/public_html/api/docs/openapi.yaml (currently ~43 paths) + Swagger UI to document all of them. Tracked by issue #80 (OpenAPI) + a new API-completeness/security issue (create if absent).", "github_issue": "pending-create + #80"}
+  ],
   "queue": {"backlog": ".dev-team/PROJECT.md#Backlog", "feature_gaps": ".dev-team/FEATURES.md", "findings": ".dev-team/SECURITY.md#Findings"},
   "gate_ledger": [
     {"id": "G-001", "kind": "feature", "fg": "FG-001", "title": "SIGNula as IdP — SAML/OIDC provider + OAuth2 authorization server", "spec_ref": ".dev-team/specs/G-001.md", "status": "approved", "approved_by": "user", "approved_ts": "2026-06-30T07:42:57Z", "reason": "Large architectural epic; biggest single capability gap. Build multi-cycle on tested base; security-reviewed per stage (token signing, JWKS, key rotation, client registration, consent)."},
@@ -33,15 +36,15 @@
   "gate_ledger_note": "All four epics user-approved 2026-06-30. Remaining deferred gaps still in FEATURES.md, surfaced as COMPLETE reaches them: FG-006 push MFA, FG-007 SMS-OTP, FG-010 fine-grained authz, FG-012 SIEM streaming, FG-014 adaptive/step-up MFA, FG-015 partner SSO portal, FG-016 custom JWT claims, FG-017 impersonation, iLyricsDB #64/#65/#66. FG-013 WebAuthn signature verification is a SECURE-phase finding.",
   "autonomy_eligible_features": ["FG-009 breached-password (HIBP k-anonymity) [High,S]", "FG-002a consent audit trail + DSAR tracker [High,M] (now under G-004)", "FG-011 entitlement feature-gating [Med,M]", "FG-005 email-template designer WYSIWYG [Med,M]", "FG-008 generic-OIDC connector [Low,M]"],
   "blocked": {"is": false, "reason": null, "since": null},
-  "cycle": 5,
+  "cycle": 6,
   "cap": 60,
   "verify": {"commit": null, "claim_groups": [], "integration": "pending", "completeness_critic": "pending"},
   "verified_at_commit": null,
   "lock": {"holder": null, "ts": null, "stale_after_min": 90},
   "branch": "autopilot/2026-06-30",
-  "last_commit": "850a9b8",
+  "last_commit": "4387288",
   "trajectory_ref": ".dev-team/PROJECT.md#Trajectory-ledger",
   "user_docs_to_keep_current": ["PROJECT_PROGRESS.md", "PROJECT_STATUS.md", "CHANGELOG.md", ".claude/PROJECT_STATUS.md", "_docs/setup/SECURITY_SETUP.md"],
   "terminal": false,
-  "updated": "2026-06-30T08:55:00Z"
+  "updated": "2026-06-30T09:20:00Z"
 }
