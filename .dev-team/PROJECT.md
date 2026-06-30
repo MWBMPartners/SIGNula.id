@@ -36,7 +36,12 @@ Emoji-annotated docblocks; prepared statements via the `Database` wrapper; modul
 6. **VERIFY** — independent review (report-only) at the shipped commit. *Exit: complete pass overall PASS.*
 
 ## Current status
-Bootstrap complete (cycle 0, DISCOVER). Phase: **STABILIZE**. Next: **cycle 1** — B-001 (fix phpstan/phpcs config) + B-002 (phpstan class discovery) + B-005 (SIGNULA_INIT guards on 5 class files) — all non-behaviour-touching infra/security, establishing a clean static-analysis baseline. Then cycle 2: B-020 safety-net tests before any behaviour-touching fix.
+Bootstrap + spec-authoring done. **G-001..G-004 user-approved** (specs in `.dev-team/specs/`). Phase: **STABILIZE** (safety floor leads before the security-critical feature builds). Build sequence:
+1. **STABILIZE-1**: B-001/B-002 tooling fix + B-005 guards (non-behaviour-touching infra/security; clean static-analysis baseline).
+2. **STABILIZE-2**: B-020 safety-net tests (Auth/API/WebAuthn/Email) — required before behaviour-touching auth work.
+3. **G-003** JWT auth (S1–S5), then **G-001** IdP Phase A (A1–A5), then **G-002** billing (test-mode, fix B-025 first), then **G-004** compliance (L1 first).
+4. Interleave **SECURE** fixes for any High finding (incl. B-024 CORS, the 11 deferred email/admin/api issues, FG-013 WebAuthn).
+New findings this cycle: **B-024** (CORS `*`+credentials), **B-025** (billing schema drift), suggested **FG-018** (SCIM provisioning, Phase C of G-001).
 
 ## Decision log
 - **2026-06-30 — Bootstrap.** User-confirmed: hybrid gate · in-scope feature ambition · hands-off = DB creds + git push · cap = 60. Dev-team artifacts under `.dev-team/` (root `SECURITY.md` is the GitHub disclosure policy; `PROJECT_PROGRESS.md` is the user's own doc — neither clobbered).
@@ -48,7 +53,20 @@ Bootstrap complete (cycle 0, DISCOVER). Phase: **STABILIZE**. Next: **cycle 1** 
 - **cycle 0 (DISCOVER)** — docs-only: PROJECT.md + FEATURES.md written; 0 PHP parse errors; 342 unit tests green; tooling config bug found (B-001). Commit: bootstrap.
 
 ## Feature Specs
-*(Conductor-authored full specs land here, one block per gate item, anchored `#spec-G-001` etc., when a feature is built or queued.)*
+
+Full build-ready specs authored 2026-06-30 (user-approved G-001..G-004); build cycles cite these verbatim. **Migration numbers are conductor-assigned sequentially AT BUILD TIME** (existing run 001–024; several specs tentatively claimed 025/026 — resolve collisions when each builds).
+
+### #spec-G-003 — JWT API Authentication (build FIRST) → `.dev-team/specs/G-003.md`
+Vendor `firebase/php-jwt` v6.x into `web/_lib/jwt/` (self-host pattern, MIT, ext-openssl). RS256 + public JWKS; access JWT (15-min, `jti`, `scope`) + opaque SHA-256 refresh token with family rotation + reuse-detection; `jti` denylist (`tblRevokedTokens`); signing key encrypted in tblSettings (`_private` PEM fallback), `kid`-rotated. Endpoints `/api/v1/auth/{token,refresh,revoke}` + `/.well-known/jwks.json`; wire `BaseController::getUserByToken()`/`requireAuth()` to accept Bearer alongside X-API-Key. Stages: S1 crypto foundation → S2 issuance+rotation → S3 endpoints/wiring → S4 JWKS+hardening → S5 docs.
+
+### #spec-G-001 — SIGNula as IdP (OAuth2/OIDC provider; SAML later) → `.dev-team/specs/G-001.md`
+Phase A (buildable, reuses G-003 signing): `/oauth/authorize`+consent, `/oauth/token` (auth_code + PKCE-required + refresh), `/oauth/userinfo`, OIDC discovery, `id_token`. RP clients owned by `tblPartners`; new `tblOAuthClients/tblOAuthAuthCodes/tblOAuthConsents/tblOAuthAccessGrants` (secrets hashed like `tblAPIKeys`). Phase B SAML IdP (needs vendored `xmlseclibs`, separately gated). Phase C SCIM → suggested **FG-018**. **Depends on G-003 (ships first).**
+
+### #spec-G-002 — Recurring Billing Engine (⚠️ TEST MODE ONLY) → `.dev-team/specs/G-002.md`
+Provider-managed subscriptions (PayPal/Stripe own the recurring clock; SIGNula reacts to webhooks). Lifecycle: pending/trial/active/past_due/**grace**/paused/cancelled/expired. Reuses BillingScheduler/PaymentManager/providers/InvoiceManager. New: grace state, dunning columns, `tblBillingAttempts` (UNIQUE `idempotencyKey`), `changeTier()` bcmath proration. `assertTestMode()` fail-closed; **live activation = user op #70**. BUILD-FIRST FIXES: B-025 schema drift + missing `chargeStoredMethod()` (pivot resolves it).
+
+### #spec-G-004 — Multi-jurisdiction Compliance (data-driven) → `.dev-team/specs/G-004.md`
+L1 (build first, autonomy-eligible): `tblConsentRecords`+`tblDataSubjectRequests`+events, DSAR tracker, admin queue, user form — `DSARManager` **delegates** to existing `AccountManager` export/delete (no dup; one additive edit to `permanentlyDeleteAccount()` to anonymise). L2 consent banner/preference-center + GPC. L3 `tblComplianceRegimes` data-driven model (`RegimeResolver` — adding a regime = row inserts, 0 PHP edits). L4 breach log/RoPA/retention/COPPA age-gate. **Anonymise-don't-delete** on erasure. Legal values ship draft/empty (user fills).
 
 ## Codebase Map
 
@@ -189,6 +207,8 @@ Syntax sweep result: **`php -l` over all 271 `web/` PHP files + `_scripts`/`_tes
 - B-021 | VERSION (2.6.0-beta) disagrees with PROJECT_PROGRESS/docs (2.7.0-beta); progress doc over-claims "100% complete" vs TODO stubs | code-quality | Low | S | (VERSION, PROJECT_PROGRESS.md; no) | —
 - B-022 | OpenAPI/Swagger spec missing despite `api/docs/` — API not machine-documented | code-quality | Med | M | (public_html/api/docs; no) | gh:#80
 - B-023 | Side-effects in 134 class files & 113 forbidden-function uses flagged by PHPCS (likely die()/print_r in scripts) — triage non-test ones | code-quality | Low | M | (flagged files; no) | —
+- B-024 | CORS misconfig: `Response::setCorsHeaders()` sends `Access-Control-Allow-Origin: *` WITH `Allow-Credentials: true` — invalid + insecure for credentialed API/JWT requests; tighten to a configurable origin allowlist | security | High | S | (api/Response.php; yes) | — (found in G-003 spec)
+- B-025 | `tblBillingSchedule` schema↔code drift: mig 012 PK/columns/ENUM (`scheduleID`,`completedAt`,`errorMessage`) don't match scheduler reads/writes (`taskID`,`result`,`nextRetryAt` + task types `suspend_account`/`calculate_usage`/`charge_usage`/`archive_usage`) — errors on clean install | correctness | High | S | (mig 012 + new mig, BillingScheduler.php; yes) | gh:#67 (found in G-002 spec; fix as G-002 build-stage 0)
 
 ## Run record
 Bootstrap DISCOVER — codebase audit complete 2026-06-30
@@ -199,3 +219,5 @@ see FEATURES.md
 ## Trajectory ledger
 | cycle | phase | move | result | commit |
 |-------|-------|------|--------|--------|
+| 1 | DISCOVER | bootstrap: codebase map + 23-item backlog + 17 feature gaps + 40-issue reconciliation | docs written; 0 parse errors, 342 tests green; tooling-config bug found (B-001) | b6128b4 |
+| 2 | COMPLETE-prep | author full specs for user-approved G-001/G-003/G-002/G-004 | 4 build-ready specs written; surfaced B-024 (CORS) + B-025 (billing schema drift) + suggested FG-018 (SCIM) | spec commit |

@@ -8,40 +8,40 @@
     "no unresolved Critical/High security finding (11 deferred issues #22-#34/#73 + FG-013 resolved)",
     "no High correctness/UX backlog item remains (11 High B-items resolved or gated)",
     "docs enough to run it (README/install; PROJECT_PROGRESS/CHANGELOG/SECURITY_SETUP current)",
-    "feature-complete in scope (every High in-scope FG built or queued)"
+    "feature-complete in scope (every High in-scope FG built or queued); approved epics G-001..G-004 built"
   ],
   "out_of_code_scope_surfaced": ["#83 prod DB creds", "#84 email provider creds", "#85 cron", "#70 live payment creds", "#71 staging deploy", "#79 HTTPS/.htaccess finalize", "#77 monitoring", "#78 backups", "#72 manual E2E", "#75 cross-device", "#74 load test", "#81 legal review"],
   "plan": [
     {"phase": "DISCOVER",  "mode": "iterate-audit+featurefind", "exit": "work queue seeded", "status": "done"},
     {"phase": "STABILIZE", "mode": "iterate",  "exit": "no High correctness/test gap; safety net exists", "status": "in-progress"},
     {"phase": "SECURE",    "mode": "security", "exit": "Phase-0 done; no unresolved Critical/High finding; rounds dry", "status": "pending"},
-    {"phase": "COMPLETE",  "mode": "orchestrator(feature)", "exit": "every High in-scope gap built-or-queued", "status": "pending"},
+    {"phase": "COMPLETE",  "mode": "orchestrator(feature)", "exit": "every High in-scope gap built-or-queued; G-001..G-004 built", "status": "pending"},
     {"phase": "POLISH",    "mode": "iterate",  "exit": "no High UX/perf item", "status": "pending"},
     {"phase": "VERIFY",    "mode": "review",   "exit": "complete review pass: overall PASS @ last_commit", "status": "pending"}
   ],
   "phase_cursor": 1,
   "state": "RUNNING",
   "cursor": null,
-  "next_action": "STABILIZE cycle 1: B-001 (fix phpstan.neon/phpcs.xml paths so composer analyze/check-style run) + B-002 (phpstan bootstrap/scan config to discover require-based classes) + B-005 (add SIGNULA_INIT guard to RateLimiter, APIKeyManager, APIKeyMiddleware, RateLimitMiddleware, EmailDripProcessor). All non-behaviour-touching infra/security; establishes a clean static-analysis baseline before any behaviour-touching fix.",
+  "next_action": "Specs authored (G-001..G-004 in .dev-team/specs/). NEXT = STABILIZE-1: B-001 (fix phpstan.neon/phpcs.xml paths) + B-002 (phpstan bootstrap/scan for require-based classes) + B-005 (SIGNULA_INIT guards on RateLimiter/APIKeyManager/APIKeyMiddleware/RateLimitMiddleware/EmailDripProcessor). Non-behaviour-touching infra/security; clean static-analysis baseline. THEN STABILIZE-2: B-020 safety-net tests (Auth/API/WebAuthn/Email) before behaviour-touching auth. THEN build campaign promoted ahead of phase-cursor (each: checker + security review + one commit): G-003 JWT (S1-S5) -> G-001 IdP Phase A (A1-A5) -> G-002 billing TEST-MODE (fix B-025 first) -> G-004 compliance (L1 first). Interleave SECURE for any High finding (B-024 CORS, 11 deferred issues, FG-013). Conductor assigns migration numbers sequentially at build time (existing 001-024).",
   "queue": {"backlog": ".dev-team/PROJECT.md#Backlog", "feature_gaps": ".dev-team/FEATURES.md", "findings": ".dev-team/SECURITY.md#Findings"},
   "gate_ledger": [
-    {"id": "G-001", "kind": "feature", "fg": "FG-001", "title": "SIGNula as IdP — SAML/OIDC provider + OAuth2 authorization server", "spec_ref": ".dev-team/FEATURES.md#FG-001", "status": "awaiting-user", "reason": "Large architectural epic; today SIGNula only CONSUMES OAuth. Token-signing/key-rotation security-critical. Biggest single capability gap."},
-    {"id": "G-002", "kind": "feature", "fg": "FG-003", "title": "Recurring billing / subscription lifecycle engine (#67)", "spec_ref": ".dev-team/FEATURES.md#FG-003", "status": "awaiting-user", "reason": "Payment-touching (real charges, irreversible) -> Bucket-3; route via dev-team-stripe when approved. Engine scaffolded (BillingScheduler). B-007 placeholder payment redirects tied here."},
-    {"id": "G-003", "kind": "feature", "fg": "FG-004", "title": "JWT API authentication (#41 / B-006)", "spec_ref": ".dev-team/FEATURES.md#FG-004", "status": "awaiting-user", "reason": "Security-critical auth path + requires vendoring a JWT library (dependency decision). Overlaps G-001."},
-    {"id": "G-004", "kind": "feature", "fg": "FG-002", "title": "Multi-jurisdiction compliance tooling (consent/age-gating/do-not-sell across 18+ regimes)", "spec_ref": ".dev-team/FEATURES.md#FG-002", "status": "awaiting-user", "reason": "Requires legal judgement on which regimes/semantics. FG-002a (consent audit trail + DSAR tracker) is the autonomy-eligible slice built separately in COMPLETE."}
+    {"id": "G-001", "kind": "feature", "fg": "FG-001", "title": "SIGNula as IdP — SAML/OIDC provider + OAuth2 authorization server", "spec_ref": ".dev-team/specs/G-001.md", "status": "approved", "approved_by": "user", "approved_ts": "2026-06-30T07:42:57Z", "reason": "Large architectural epic; biggest single capability gap. Build multi-cycle on tested base; security-reviewed per stage (token signing, JWKS, key rotation, client registration, consent)."},
+    {"id": "G-002", "kind": "feature", "fg": "FG-003", "title": "Recurring billing / subscription lifecycle engine (#67)", "spec_ref": ".dev-team/specs/G-002.md", "status": "approved", "approved_by": "user", "approved_ts": "2026-06-30T07:42:57Z", "reason": "Payment-touching -> build in TEST MODE only; live-payment credential wiring (#70) stays operational/user (Bucket-3, never autonomous). Engine scaffolded (BillingScheduler). B-007 placeholder redirects fixed here."},
+    {"id": "G-003", "kind": "feature", "fg": "FG-004", "title": "JWT API authentication (#41 / B-006)", "spec_ref": ".dev-team/specs/G-003.md", "status": "approved", "approved_by": "user", "approved_ts": "2026-06-30T07:42:57Z", "reason": "Security-critical auth path + vendored JWT lib (self-hosted, no Composer in prod). Shares token-signing/JWKS foundation with G-001; build after auth safety-net."},
+    {"id": "G-004", "kind": "feature", "fg": "FG-002", "title": "Multi-jurisdiction compliance tooling (consent/age-gating/do-not-sell across 18+ regimes)", "spec_ref": ".dev-team/specs/G-004.md", "status": "approved", "approved_by": "user", "approved_ts": "2026-06-30T07:42:57Z", "reason": "Approved; spec encodes regime/semantics decisions. FG-002a (consent audit trail + DSAR tracker) is the foundational slice; built incrementally."}
   ],
-  "gate_ledger_note": "Remaining deferred gaps live in FEATURES.md and are surfaced/queued as COMPLETE reaches them: FG-006 push MFA, FG-007 SMS-OTP, FG-010 fine-grained authz, FG-012 SIEM streaming, FG-014 adaptive/step-up MFA, FG-015 partner SSO portal, FG-016 custom JWT claims, FG-017 impersonation, iLyricsDB #64/#65/#66. FG-013 WebAuthn signature verification is a SECURE-phase finding (auth-bypass risk), not a gate item.",
-  "autonomy_eligible_features": ["FG-009 breached-password (HIBP k-anonymity) [High,S]", "FG-002a consent audit trail + DSAR tracker [High,M]", "FG-011 entitlement feature-gating [Med,M]", "FG-005 email-template designer WYSIWYG [Med,M]", "FG-008 generic-OIDC connector [Low,M]"],
+  "gate_ledger_note": "All four epics user-approved 2026-06-30. Remaining deferred gaps still in FEATURES.md, surfaced as COMPLETE reaches them: FG-006 push MFA, FG-007 SMS-OTP, FG-010 fine-grained authz, FG-012 SIEM streaming, FG-014 adaptive/step-up MFA, FG-015 partner SSO portal, FG-016 custom JWT claims, FG-017 impersonation, iLyricsDB #64/#65/#66. FG-013 WebAuthn signature verification is a SECURE-phase finding.",
+  "autonomy_eligible_features": ["FG-009 breached-password (HIBP k-anonymity) [High,S]", "FG-002a consent audit trail + DSAR tracker [High,M] (now under G-004)", "FG-011 entitlement feature-gating [Med,M]", "FG-005 email-template designer WYSIWYG [Med,M]", "FG-008 generic-OIDC connector [Low,M]"],
   "blocked": {"is": false, "reason": null, "since": null},
-  "cycle": 1,
+  "cycle": 2,
   "cap": 60,
   "verify": {"commit": null, "claim_groups": [], "integration": "pending", "completeness_critic": "pending"},
   "verified_at_commit": null,
   "lock": {"holder": null, "ts": null, "stale_after_min": 90},
   "branch": "autopilot/2026-06-30",
-  "last_commit": "dc49766",
+  "last_commit": "b6128b4",
   "trajectory_ref": ".dev-team/PROJECT.md#Trajectory-ledger",
   "user_docs_to_keep_current": ["PROJECT_PROGRESS.md", "PROJECT_STATUS.md", "CHANGELOG.md", ".claude/PROJECT_STATUS.md", "_docs/setup/SECURITY_SETUP.md"],
   "terminal": false,
-  "updated": "2026-06-30T07:12:29Z"
+  "updated": "2026-06-30T07:43:00Z"
 }
