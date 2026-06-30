@@ -22,9 +22,15 @@
  *    Consequence pinned by testTamperedSignatureStillAccepted(): an attacker who
  *    can read a credentialPublicKeyID and replay/obtain a live challenge can
  *    forge a successful authentication. This is an auth-bypass risk.
- *  • Database::insert() does NOT exist on the Database class (no method, no
- *    __callStatic), yet storeChallenge()/storeCredential() call it — pinned by
- *    testRegistrationStoragePathUsesMissingDatabaseInsert().
+ *
+ * ✅ RESOLVED (cycle 5)
+ * --------------------------------------------------
+ *  • B-027: storeChallenge()/storeCredential() called Database::insert(), which
+ *    previously did not exist on the Database class — the storage path fataled
+ *    with an undefined-method Error. Database::insert() is now a real static
+ *    helper (web/_config/database.php) that runs the INSERT and returns the new
+ *    id. The corrected behaviour is pinned by
+ *    testRegistrationStoragePathUsesDatabaseInsert().
  *
  * @package    SIGNula\Tests\Integration\Auth
  * @version    2.7.0-beta
@@ -95,7 +101,7 @@ class WebAuthnVerifyTest extends DatabaseTestCase
             'username'      => 'wa_' . uniqid(),
             'passwordHash'  => \SecurityUtils::hashPassword('TestPassword123!'),
             'displayName'   => 'WebAuthn User',
-            'accountStatus' => 'Active',
+            'accountStatus' => 'active', // 🔧 B-028: canonical ENUM case
             'emailVerified' => 1,
             'createdAt'     => date('Y-m-d H:i:s'),
         ]);
@@ -273,40 +279,48 @@ class WebAuthnVerifyTest extends DatabaseTestCase
     }
 
     // ========================================================================
-    // 🐞 STORAGE PATH — Database::insert() does not exist (NEEDS-LEAD-REVIEW)
+    // 💾 STORAGE PATH — Database::insert() now exists (B-027 fix, cycle 5)
     // ========================================================================
 
     /**
-     * ⚠️ storeChallenge()/storeCredential() call Database::insert(), but the
-     * Database class defines no insert() method and no __callStatic(). This
-     * pins that the registration/options storage path raises an Error today.
+     * ✅ B-027 FIX: storeChallenge()/storeCredential() call Database::insert(),
+     * which is now a real static helper on the Database class (returns the new
+     * insert id). This pins the corrected behaviour:
+     *   1. The insert() method EXISTS (and is static + public), so the storage
+     *      path no longer dies with an undefined-method Error.
+     *   2. Driving generateAuthenticationOptions(null) — which generates a
+     *      challenge then calls storeChallenge() → Database::insert() — completes
+     *      and persists a challenge row, instead of fataling.
      *
-     * generateAuthenticationOptions() (no email) generates a challenge then
-     * calls storeChallenge() → Database::insert() → undefined-method Error.
+     * @see web/_config/database.php Database::insert()
      */
-    public function testRegistrationStoragePathUsesMissingDatabaseInsert(): void
+    public function testRegistrationStoragePathUsesDatabaseInsert(): void
     {
-        // Confirm the missing-method premise without needing a live DB write.
-        $this->assertFalse(
+        // ✅ The helper must now exist and be a public static method.
+        $this->assertTrue(
             method_exists(\Database::class, 'insert'),
-            'Database::insert() is expected to be ABSENT today (storeChallenge/storeCredential would fatal)'
+            'Database::insert() must exist after the B-027 fix (storeChallenge/storeCredential rely on it)'
         );
+
+        $insertRef = new ReflectionMethod(\Database::class, 'insert');
+        $this->assertTrue($insertRef->isStatic(), 'Database::insert() must be static');
+        $this->assertTrue($insertRef->isPublic(), 'Database::insert() must be public');
 
         $handler = new \WebAuthnHandler();
 
-        $threw = false;
-        try {
-            // Usernameless options → generateChallenge() then storeChallenge().
-            $handler->generateAuthenticationOptions(null);
-        } catch (Throwable $e) {
-            $threw = true;
-            // Error message mentions the undefined insert() call.
-            $this->assertStringContainsStringIgnoringCase('insert', $e->getMessage());
-        }
+        // 🟢 No undefined-method Error now: the storage path runs to completion.
+        //    (DB-gated — this writes a real challenge row via Database::insert().)
+        $options = $handler->generateAuthenticationOptions(null);
 
-        $this->assertTrue(
-            $threw,
-            'CURRENT behaviour: storing a challenge fatals because Database::insert() is undefined'
+        $this->assertIsArray($options, 'generateAuthenticationOptions() should return options once storage works');
+        $this->assertArrayHasKey('challenge', $options, 'Options must carry the generated challenge');
+
+        // 🔎 Prove the challenge was actually persisted by storeChallenge().
+        $stored = \Database::fetchOne(
+            "SELECT challengeID FROM tblWebAuthnChallenges WHERE challenge = ? AND challengeType = 'authentication'",
+            [$options['challenge']],
+            's'
         );
+        $this->assertNotNull($stored, 'storeChallenge() should have persisted the challenge row via Database::insert()');
     }
 }

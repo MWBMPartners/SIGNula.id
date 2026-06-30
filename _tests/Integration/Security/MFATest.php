@@ -130,8 +130,8 @@ class MFATest extends DatabaseTestCase
             'displayName'        => 'MFA Test User',
             'firstName'          => 'MFA',
             'lastName'           => 'Test',
-            // ✅ Active status so auth checks do not block the test flow
-            'accountStatus'      => 'Active',
+            // ✅ Active status so auth checks do not block the test flow (🔧 B-028: canonical ENUM lowercase)
+            'accountStatus'      => 'active',
             // ✅ Email already verified to avoid verification-gate issues
             'emailVerified'      => 1,
             // 🔐 MFA starts disabled; individual tests enable it as required

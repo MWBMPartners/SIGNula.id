@@ -28,7 +28,7 @@ class UserRegistrationTest extends DatabaseTestCase
             'displayName' => 'New User',
             'firstName' => 'New',
             'lastName' => 'User',
-            'accountStatus' => 'Active',
+            'accountStatus' => 'active', // 🔧 B-028: canonical ENUM case
             'emailVerified' => 0,
             'createdAt' => date('Y-m-d H:i:s')
         ];
@@ -112,9 +112,9 @@ class UserRegistrationTest extends DatabaseTestCase
         $user = $this->createTestUser();
 
         $this->assertEquals(
-            'Active',
+            'active', // 🔧 B-028: canonical ENUM case (matches createTestUser default)
             $user['accountStatus'],
-            'Default account status should be Active'
+            'Default account status should be active (canonical ENUM case)'
         );
     }
 
@@ -127,7 +127,7 @@ class UserRegistrationTest extends DatabaseTestCase
             'email' => 'unverified@example.com',
             'passwordHash' => password_hash('test', PASSWORD_ARGON2ID),
             'displayName' => 'Test User',
-            'accountStatus' => 'Active',
+            'accountStatus' => 'active', // 🔧 B-028: canonical ENUM case
             'createdAt' => date('Y-m-d H:i:s')
         ]);
 

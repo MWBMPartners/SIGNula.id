@@ -143,7 +143,7 @@ abstract class DatabaseTestCase extends TestCase
             'displayName' => 'Test User',
             'firstName' => 'Test',
             'lastName' => 'User',
-            'accountStatus' => 'Active',
+            'accountStatus' => 'active', // 🔧 B-028: ENUM canonical case ('active', not 'Active')
             'emailVerified' => 1,
             'mfaEnabled' => 0,
             'createdAt' => date('Y-m-d H:i:s')

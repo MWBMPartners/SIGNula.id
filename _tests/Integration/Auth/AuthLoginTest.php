@@ -64,7 +64,7 @@ class AuthLoginTest extends DatabaseTestCase
             'displayName' => 'Auth Test User',
             'firstName' => 'Auth',
             'lastName' => 'Test',
-            'accountStatus' => 'Active',
+            'accountStatus' => 'active', // 🔧 B-028: canonical ENUM case (Auth.php compares lowercase)
             'emailVerified' => 1,
             'mfaEnabled' => 0,
             'failedLoginAttempts' => 0,
@@ -123,7 +123,7 @@ class AuthLoginTest extends DatabaseTestCase
      */
     public function testLoginWithSuspendedAccount(): void
     {
-        $user = $this->createUserWithPassword(['accountStatus' => 'Suspended']);
+        $user = $this->createUserWithPassword(['accountStatus' => 'suspended']); // 🔧 B-028: Auth.php compares === 'suspended'
 
         $result = \Auth::login($user['email'], $this->testPassword);
 
@@ -140,7 +140,7 @@ class AuthLoginTest extends DatabaseTestCase
      */
     public function testLoginWithLockedAccount(): void
     {
-        $user = $this->createUserWithPassword(['accountStatus' => 'Locked']);
+        $user = $this->createUserWithPassword(['accountStatus' => 'locked']); // 🔧 B-028: Auth.php compares === 'locked'
 
         $result = \Auth::login($user['email'], $this->testPassword);
 

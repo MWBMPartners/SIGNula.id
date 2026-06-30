@@ -22,7 +22,7 @@
   "phase_cursor": 1,
   "state": "RUNNING",
   "cursor": null,
-  "next_action": "STABILIZE-2 DONE (cycle 4): +48 safety-net tests (390 green); net surfaced 2 HIGH WebAuthn issues. SAFETY FLOOR pulls WebAuthn ahead of the feature campaign. NEXT = cycle 5 WebAuthn correctness: fix B-027 (WebAuthnHandler calls non-existent Database::insert() at lines 420/538 -> registration/challenge storage throw; add an idiomatic Database insert helper OR rewrite to use Database::query() + insert id, following how the rest of the code inserts) + B-028 (accountStatus 'active' vs 'Active' casing in BaseController). Update the WebAuthn characterization tests to assert the now-working storage. THEN cycle 6 = FG-013 security fix: implement REAL WebAuthn verification in verifyAuthentication()/verifyRegistration() — parse authenticatorData, verify rpIdHash + UP/UV flags, verify the assertion signature over (authenticatorData || SHA-256(clientDataJSON)) with the stored COSE public key (openssl_verify; ES256/RS256), and verify/advance the signature counter (clone detection); red-team RE-ATTACK the fix (the unsigned-assertion PoC must now FAIL); flip the characterization tests to assert rejection. THEN resume build campaign: G-003 JWT (specs/G-003.md) -> G-001 IdP Phase A -> G-002 billing TEST-MODE (fix B-025 first) -> G-004 compliance L1. Also pending SECURE: B-024 CORS + the 11 deferred issues #22-#34/#73. Conductor assigns migration numbers sequentially (existing 001-024).",
+  "next_action": "cycle 5 DONE: B-027 fixed broadly (added Database::insert()/insertId() — unbroke 7 callers incl. PasswordlessLoginHandler + 4 email features + AccountManager + WebAuthn storage) + B-028 (premise inverted; canonical lowercase 'active'; BaseController already correct; fixtures aligned). 390 tests green. NEXT = cycle 6 FG-013 (HIGH security, safety floor): implement REAL WebAuthn verification in verifyAuthentication()/verifyRegistration() — parse authenticatorData (rpIdHash + UP/UV flags), verify the assertion signature over (authenticatorData || SHA-256(clientDataJSON)) using the stored COSE public key via openssl_verify (ES256/RS256), verify+advance the sign-count (clone detection). RED-TEAM re-attack: the unsigned-assertion PoC (testTamperedSignatureStillAccepted) must now FAIL; flip the characterization test to assert rejection. Reuse AppleOAuth's existing ES256/openssl approach as the crypto reference. THEN resume build campaign: G-003 JWT (specs/G-003.md, vendor firebase/php-jwt into web/_lib/jwt/) -> G-001 IdP Phase A -> G-002 billing TEST-MODE (fix B-025 first) -> G-004 compliance L1. Pending SECURE: B-024 CORS, 11 deferred issues #22-#34/#73. NOTE: B-027 implies more 'call to undefined method' real bugs may lurk in the ~3632 phpstan baseline — a dedicated B-015 triage cycle is warranted in STABILIZE/SECURE. Conductor assigns migration numbers sequentially (existing 001-024).",
   "queue": {"backlog": ".dev-team/PROJECT.md#Backlog", "feature_gaps": ".dev-team/FEATURES.md", "findings": ".dev-team/SECURITY.md#Findings"},
   "gate_ledger": [
     {"id": "G-001", "kind": "feature", "fg": "FG-001", "title": "SIGNula as IdP — SAML/OIDC provider + OAuth2 authorization server", "spec_ref": ".dev-team/specs/G-001.md", "status": "approved", "approved_by": "user", "approved_ts": "2026-06-30T07:42:57Z", "reason": "Large architectural epic; biggest single capability gap. Build multi-cycle on tested base; security-reviewed per stage (token signing, JWKS, key rotation, client registration, consent)."},
@@ -33,15 +33,15 @@
   "gate_ledger_note": "All four epics user-approved 2026-06-30. Remaining deferred gaps still in FEATURES.md, surfaced as COMPLETE reaches them: FG-006 push MFA, FG-007 SMS-OTP, FG-010 fine-grained authz, FG-012 SIEM streaming, FG-014 adaptive/step-up MFA, FG-015 partner SSO portal, FG-016 custom JWT claims, FG-017 impersonation, iLyricsDB #64/#65/#66. FG-013 WebAuthn signature verification is a SECURE-phase finding.",
   "autonomy_eligible_features": ["FG-009 breached-password (HIBP k-anonymity) [High,S]", "FG-002a consent audit trail + DSAR tracker [High,M] (now under G-004)", "FG-011 entitlement feature-gating [Med,M]", "FG-005 email-template designer WYSIWYG [Med,M]", "FG-008 generic-OIDC connector [Low,M]"],
   "blocked": {"is": false, "reason": null, "since": null},
-  "cycle": 4,
+  "cycle": 5,
   "cap": 60,
   "verify": {"commit": null, "claim_groups": [], "integration": "pending", "completeness_critic": "pending"},
   "verified_at_commit": null,
   "lock": {"holder": null, "ts": null, "stale_after_min": 90},
   "branch": "autopilot/2026-06-30",
-  "last_commit": "e5376fd",
+  "last_commit": "850a9b8",
   "trajectory_ref": ".dev-team/PROJECT.md#Trajectory-ledger",
   "user_docs_to_keep_current": ["PROJECT_PROGRESS.md", "PROJECT_STATUS.md", "CHANGELOG.md", ".claude/PROJECT_STATUS.md", "_docs/setup/SECURITY_SETUP.md"],
   "terminal": false,
-  "updated": "2026-06-30T08:35:00Z"
+  "updated": "2026-06-30T08:55:00Z"
 }
