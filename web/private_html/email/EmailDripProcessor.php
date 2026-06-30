@@ -37,6 +37,13 @@ if (php_sapi_name() !== 'cli') {
 // 🚀 Bootstrap application
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . '_config' . DIRECTORY_SEPARATOR . 'config.php';
 
+// 🚫 Prevent direct access (config.php defines SIGNULA_INIT; this also guards
+//    against the file being required from an uninitialised context)
+if (!defined('SIGNULA_INIT')) {
+    http_response_code(403);
+    die('Direct access not permitted');
+}
+
 // 📚 Load required classes
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'EmailDripCampaign.php';
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'EmailService.php';

@@ -23,6 +23,12 @@
  * @since 2026-02-04
  */
 
+// 🚫 Prevent direct access
+if (!defined('SIGNULA_INIT')) {
+    http_response_code(403);
+    die('Direct access not permitted');
+}
+
 class APIKeyManager {
     private $db;
 

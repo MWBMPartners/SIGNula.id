@@ -12,17 +12,35 @@ parameters:
     level: 6
 
     # Paths to analyze
+    # 📁 Real source roots live under web/ (not the repo root)
     paths:
-        - private_html
-        - public_html
+        - web/private_html
+        - web/public_html
+        - web/_config
+        - web/_includes
 
     # Paths to exclude from analysis
     excludePaths:
-        - private_html/layout
-        - public_html/*/assets
+        - web/private_html/layout
+        - web/public_html/*/assets
         - vendor
 
+    # 🔍 Scan (but don't report on) these dirs so PHPStan can DISCOVER the
+    #    require-based class/function symbols at parse time. Without this,
+    #    PHPStan emits ~1900 false "unknown class Database / unknown function"
+    #    errors because the app autoloads via require/include, not Composer PSR-4.
+    #    See: https://phpstan.org/config-reference#discovering-symbols
+    scanDirectories:
+        - web/private_html
+        - web/_config
+        - web/_includes
+        - web/_lib
+        - web/_backend
+
     # Bootstrap file for analysis
+    # 🚀 Defines SIGNULA_INIT and stubs the global helper functions
+    #    (getSetting, getClientIP, redirect, jsonResponse, etc.) so they
+    #    resolve during analysis. See _tests/bootstrap.php.
     bootstrapFiles:
         - _tests/bootstrap.php
 
@@ -35,7 +53,6 @@ parameters:
 
     # Check missing types
     checkMissingIterableValueType: false
-    checkGenericClassInNonGenericObjectType: false
 
     # Report unused private methods/properties
     checkUninitializedProperties: true
