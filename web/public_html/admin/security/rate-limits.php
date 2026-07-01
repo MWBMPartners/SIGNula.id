@@ -31,15 +31,25 @@ if (!isset($userInfo['isAdmin']) || $userInfo['isAdmin'] != 1) {
 
 $message = '';
 
+// 🛡️ CSRF token for the state-changing unblock form (issue #28).
+$csrfToken = SecurityUtils::generateCSRFToken();
+
 // Handle unblock action
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['unblock'])) {
-    $identifier = $_POST['identifier'] ?? '';
-    $identifierType = $_POST['identifier_type'] ?? 'ip';
+    // 🛡️ Verify CSRF token before performing the state-changing unblock.
+    // Without this, the unblock could be triggered by a forged cross-site POST.
+    // @see https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html
+    if (!SecurityUtils::verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+        $message = ['type' => 'danger', 'text' => 'Invalid or expired security token. Please retry.'];
+    } else {
+        $identifier = $_POST['identifier'] ?? '';
+        $identifierType = $_POST['identifier_type'] ?? 'ip';
 
-    $result = $rateLimiter->unblock($identifier, $identifierType);
-    $message = $result['success']
-        ? ['type' => 'success', 'text' => 'Successfully unblocked ' . htmlspecialchars($identifier)]
-        : ['type' => 'danger', 'text' => 'Failed to unblock: ' . $result['error']];
+        $result = $rateLimiter->unblock($identifier, $identifierType);
+        $message = $result['success']
+            ? ['type' => 'success', 'text' => 'Successfully unblocked ' . htmlspecialchars($identifier)]
+            : ['type' => 'danger', 'text' => 'Failed to unblock: ' . htmlspecialchars($result['error'])];
+    }
 }
 
 // Get statistics
@@ -182,6 +192,7 @@ $recentActivity = $db->query("
                                             <?php endif; ?>
                                         </div>
                                         <form method="POST" class="ms-3">
+                                            <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8'); ?>">
                                             <input type="hidden" name="identifier" value="<?php echo htmlspecialchars($block['identifier']); ?>">
                                             <input type="hidden" name="identifier_type" value="<?php echo htmlspecialchars($block['identifierType']); ?>">
                                             <button type="submit" name="unblock" class="btn btn-sm btn-success" onclick="return confirm('Unblock this <?php echo $block['identifierType']; ?>?')">

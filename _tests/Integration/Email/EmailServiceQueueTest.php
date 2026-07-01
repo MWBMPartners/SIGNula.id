@@ -6,8 +6,8 @@
  *
  * Pins the DB-coupled EmailService behaviour the auth/OAuth builds rely on when
  * they add new transactional emails:
- *   • queueEmail()        — what gets persisted into tblEmailQueue (incl. the
- *                           lack of recipient validation — anchors B-012)
+ *   • queueEmail()        — what gets persisted into tblEmailQueue (incl.
+ *                           recipient validation — anchors B-012)
  *   • sendTemplateEmail() — template lookup + dispatch + missing-template path
  *
  * These write to / read from tblEmailQueue + tblEmailTemplates, so they live
@@ -16,13 +16,9 @@
  * variable-substitution / XSS-escaping logic is pinned separately in
  * Unit/Email/EmailServiceVariableTest.php.
  *
- * ⚠️ NEEDS-LEAD-REVIEW (documented, NOT fixed here)
- * --------------------------------------------------
- *  • NO RECIPIENT VALIDATION. queueEmail() never validates $recipientEmail — a
- *    syntactically invalid address (or a header-injection payload containing
- *    CR/LF) is inserted verbatim into tblEmailQueue. Pinned by
- *    testQueueEmailAcceptsMalformedRecipient(). This is the B-012 finding; the
- *    fix belongs in its own cycle.
+ * ✅ B-012 FIXED — queueEmail() now validates $recipientEmail (rejects malformed
+ *    addresses and strips CR/LF/NULL header-injection payloads) before any DB
+ *    insert. testQueueEmailRejectsMalformedRecipient() pins the new behaviour.
  *
  * @package    SIGNula\Tests\Integration\Email
  * @version    2.7.0-beta
@@ -49,7 +45,7 @@ class EmailServiceQueueTest extends DatabaseTestCase
     protected array $truncateTables = ['tblEmailQueue', 'tblEmailTemplates'];
 
     // ========================================================================
-    // 📬 queueEmail() — persistence + recipient handling (B-012)
+    // 📬 queueEmail() — persistence + recipient validation (B-012)
     // ========================================================================
 
     /**
@@ -75,15 +71,15 @@ class EmailServiceQueueTest extends DatabaseTestCase
     }
 
     /**
-     * ⚠️ B-012 CHARACTERIZATION: a malformed recipient is accepted and queued.
+     * ✅ B-012 (FIXED): a malformed recipient is rejected, not queued.
      *
-     * queueEmail() does no FILTER_VALIDATE_EMAIL / sanitizeEmail check, so an
-     * invalid address is inserted verbatim. The later fix will make this case
-     * fail (return false / not insert); this test must then be updated.
+     * queueEmail() now runs FILTER_VALIDATE_EMAIL on $recipientEmail before any
+     * insert, so an invalid address returns false and persists nothing.
      */
-    public function testQueueEmailAcceptsMalformedRecipient(): void
+    public function testQueueEmailRejectsMalformedRecipient(): void
     {
         $malformed = 'not-a-valid-email-address';
+        $before = $this->countRecords('tblEmailQueue');
 
         $ok = \EmailService::queueEmail(
             $malformed,
@@ -92,11 +88,30 @@ class EmailServiceQueueTest extends DatabaseTestCase
             'x'
         );
 
-        // CURRENT behaviour: returns true and persists the bad address.
-        $this->assertTrue($ok, 'CURRENT behaviour: malformed recipient is accepted (no validation)');
+        // 🔐 NEW behaviour: rejected before the DB insert.
+        $this->assertFalse($ok, 'B-012: malformed recipient must be rejected');
         $row = $this->getRecord('tblEmailQueue', ['recipientEmail' => $malformed]);
-        $this->assertNotNull($row, 'CURRENT behaviour: malformed recipient is stored verbatim in the queue');
-        $this->assertSame($malformed, $row['recipientEmail']);
+        $this->assertNull($row, 'B-012: malformed recipient must NOT be stored');
+        $this->assertSame($before, $this->countRecords('tblEmailQueue'), 'No row should be inserted for an invalid recipient');
+    }
+
+    /**
+     * ✅ B-012 (FIXED): a CR/LF header-injection payload in the recipient is
+     *    rejected (the address is invalid once control chars are stripped, and
+     *    the stripping itself prevents header smuggling).
+     */
+    public function testQueueEmailRejectsHeaderInjectionRecipient(): void
+    {
+        $payload = "victim@example.com\r\nBcc: attacker@evil.example";
+        $before = $this->countRecords('tblEmailQueue');
+
+        $ok = \EmailService::queueEmail($payload, 'Subject', '<p>x</p>', 'x');
+
+        $this->assertFalse($ok, 'B-012: CR/LF header-injection recipient must be rejected');
+        // 📝 The raw multi-line payload must never appear in the queue.
+        $row = $this->getRecord('tblEmailQueue', ['recipientEmail' => $payload]);
+        $this->assertNull($row);
+        $this->assertSame($before, $this->countRecords('tblEmailQueue'));
     }
 
     /**

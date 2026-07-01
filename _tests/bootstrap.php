@@ -29,6 +29,38 @@ ini_set('display_errors', '1');
 // 🕐 Consistent timezone for all tests
 date_default_timezone_set('UTC');
 
+// ============================================================================
+// 🔑 START THE PHP SESSION *BEFORE ANY OUTPUT* (hermetic-test fix)
+// ============================================================================
+// 🐞 Root cause of the intermittent "session_start(): Session cannot be started
+//    after headers have already been sent" warnings (which fail the suite under
+//    failOnWarning="true"):
+//
+//    Production code such as SecurityUtils::generateCSRFToken()/verifyCSRFToken()
+//    legitimately calls session_start() when session_status() === PHP_SESSION_NONE.
+//    Once THIS bootstrap prints its CLI banner (the echo block lower down), PHP's
+//    headers_sent() flips to TRUE. From that point on, any session_start() the
+//    production code makes emits the warning above — and TestCase::setUp() used to
+//    SKIP starting a session whenever headers were already sent, so the session
+//    never became active and every CSRF test tripped the warning.
+//
+//    The order-dependence of PHPUnit's random execution order is what made this
+//    look "intermittent" (a run that happened to activate a session before a CSRF
+//    test ran produced fewer/no warnings; a run that did not produced them).
+//
+// ✅ Fix (tests-only): start a real session HERE, before any byte of output, so
+//    session_status() is PHP_SESSION_ACTIVE for the entire process. Production
+//    code then never reaches its own session_start() branch, so the warning can
+//    never fire — deterministically, regardless of test execution order.
+//
+// @see https://www.php.net/manual/en/function.session-start.php
+// @see https://www.php.net/manual/en/function.headers-sent.php
+if (session_status() === PHP_SESSION_NONE && !headers_sent()) {
+    // 🔇 CLI sessions do not persist to a client; the '@' guards the rare case
+    //    where the environment cannot open a session save path.
+    @session_start();
+}
+
 // 🔐 Define SIGNULA_INIT to allow loading source files
 // All source files check: if (!defined('SIGNULA_INIT')) { die(); }
 if (!defined('SIGNULA_INIT')) {

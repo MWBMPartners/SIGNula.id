@@ -579,16 +579,57 @@ class WebAuthnHandler
                 }
             }
 
-            // 📊 Update credential usage AND persist the new sign-count.
-            Database::query(
-                "UPDATE tblWebAuthnCredentials
-                 SET lastUsedAt = NOW(), usageCount = usageCount + 1, signCount = ?
-                 WHERE credentialID = ?",
-                [$receivedCount, $credential['credentialID']],
-                'ii'
-            );
+            // 📊 Update credential usage AND atomically advance the sign-count.
+            //    🔒 B-030: compare-and-set on signCount < ? closes the TOCTOU
+            //    between the clone-detection read above and this write. Under two
+            //    concurrent assertions only the FIRST to commit a strictly higher
+            //    counter affects a row; the loser sees 0 rows and is rejected as a
+            //    possible clone/replay rather than silently regressing the counter.
+            //    (When both counters are legitimately 0 the authenticator never
+            //    increments; signCount < 0 is impossible so we skip the guarded
+            //    write and just refresh usage metadata.)
+            if ($receivedCount > 0) {
+                Database::query(
+                    "UPDATE tblWebAuthnCredentials
+                     SET lastUsedAt = NOW(), usageCount = usageCount + 1, signCount = ?
+                     WHERE credentialID = ? AND signCount < ?",
+                    [$receivedCount, $credential['credentialID'], $receivedCount],
+                    'iii'
+                );
 
-            // 📊 Mark challenge as used
+                if (Database::getAffectedRows() !== 1) {
+                    // 🚨 A concurrent assertion already advanced (or matched) the
+                    //    counter — treat as a clone/replay and reject.
+                    ActivityLogger::log(
+                        (int)$credential['userID'],
+                        'login',
+                        'authentication',
+                        'high',
+                        'WebAuthn sign-count compare-and-set lost race (possible cloned authenticator)',
+                        [
+                            'result'         => 'failure',
+                            'method'         => 'webauthn',
+                            'credential_id'  => $credential['credentialID'],
+                            'stored_count'   => $storedCount,
+                            'received_count' => $receivedCount,
+                        ]
+                    );
+                    throw new RuntimeException('Sign count regression detected');
+                }
+            } else {
+                // 🔄 Both counters zero: no clone signal in the counter — just
+                //    refresh usage metadata without touching signCount.
+                Database::query(
+                    "UPDATE tblWebAuthnCredentials
+                     SET lastUsedAt = NOW(), usageCount = usageCount + 1
+                     WHERE credentialID = ?",
+                    [$credential['credentialID']],
+                    'i'
+                );
+            }
+
+            // 📊 Mark challenge as used (idempotent back-stop; verifyChallenge
+            //    already consumed it atomically — B-030).
             $this->markChallengeUsed($clientData['challenge']);
 
             // 📝 Log authentication (ActivityLogger::log signature:
@@ -796,46 +837,72 @@ class WebAuthnHandler
     }
 
     /**
-     * ✅ Verify Challenge
+     * ✅ Verify Challenge (atomic consume — B-030 TOCTOU fix)
      *
-     * Verifies a challenge is valid and not expired.
+     * Atomically validates AND consumes the challenge in a single statement so a
+     * challenge can never be accepted twice (replay) under concurrent requests.
      *
-     * @param string $challenge Challenge string
-     * @param int|null $userID User ID
-     * @param string $type Challenge type
-     * @return bool Challenge is valid
+     * The old design did `SELECT … isUsed = 0` here and a SEPARATE
+     * `UPDATE … isUsed = 1` later (markChallengeUsed) — a time-of-check /
+     * time-of-use window in which two parallel verifications could both pass the
+     * SELECT before either UPDATE ran. We now flip isUsed to 1 with a conditional
+     * UPDATE and treat success as "exactly one row transitioned 0→1". The first
+     * caller wins; any concurrent/replayed caller sees 0 affected rows and is
+     * rejected.
+     *
+     * 🐛 B-031: the previous `if ($userID)` guard was falsy for userID === 0,
+     *    which would silently drop the userID scope. We now bind whenever a
+     *    userID was supplied (including 0) using a strict null check.
+     *
+     * @see https://dev.mysql.com/doc/c-api/8.0/en/mysql-affected-rows.html
+     * @param string   $challenge Challenge string (exact match).
+     * @param int|null $userID    User ID (null = usernameless ceremony).
+     * @param string   $type      Challenge type ("registration"|"authentication").
+     * @return bool True only when this call consumed a still-valid challenge.
      */
     private function verifyChallenge(string $challenge, ?int $userID, string $type): bool
     {
+        // 🔒 Atomic compare-and-set: only an unused, unexpired, matching-type
+        //    challenge transitions to used. WHERE isUsed = 0 makes the flip the
+        //    point of mutual exclusion — a replay finds isUsed already 1.
         $query = "
-            SELECT * FROM tblWebAuthnChallenges
+            UPDATE tblWebAuthnChallenges
+            SET isUsed = 1, usedAt = NOW()
             WHERE challenge = ?
             AND challengeType = ?
             AND expiresAt > NOW()
             AND isUsed = 0
         ";
 
-        if ($userID) {
+        // 🐛 B-031: bind the userID scope whenever one was provided, INCLUDING 0.
+        if ($userID !== null) {
             $query .= " AND userID = ?";
-            $result = Database::fetchOne($query, [$challenge, $type, $userID], 'ssi');
+            Database::query($query, [$challenge, $type, $userID], 'ssi');
         } else {
-            $result = Database::fetchOne($query, [$challenge, $type], 'ss');
+            Database::query($query, [$challenge, $type], 'ss');
         }
 
-        return !empty($result);
+        // ✅ Exactly one row must have transitioned 0→1. Zero rows means the
+        //    challenge was missing, expired, wrong type/user, or ALREADY USED
+        //    (replay) — reject in every case.
+        return Database::getAffectedRows() === 1;
     }
 
     /**
      * 📊 Mark Challenge Used
      *
-     * Marks a challenge as used.
+     * Retained for API/back-compatibility. Challenge consumption is now performed
+     * atomically inside verifyChallenge() (B-030), so by the time this runs the
+     * challenge is already marked used. This remains a harmless idempotent
+     * back-stop (e.g. for any path that consumed a challenge without going through
+     * verifyChallenge); it never re-grants a challenge.
      *
      * @param string $challenge Challenge string
      */
     private function markChallengeUsed(string $challenge): void
     {
         Database::query(
-            "UPDATE tblWebAuthnChallenges SET isUsed = 1, usedAt = NOW() WHERE challenge = ?",
+            "UPDATE tblWebAuthnChallenges SET isUsed = 1, usedAt = NOW() WHERE challenge = ? AND isUsed = 0",
             [$challenge],
             's'
         );

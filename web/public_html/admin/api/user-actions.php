@@ -38,10 +38,38 @@ if (!$sessionManager->isLoggedIn()) {
 // 🛡️ Permission check — Super Admin only
 $accessControl->requireSuperAdmin();
 
+// 📖 Allowlist of READ-ONLY actions that may be served over GET.
+// Everything NOT in this list mutates state and MUST arrive via POST so it is
+// forced through the Content-Type guard + CSRF verification below. Without this
+// allowlist, a state-changing action reachable via GET (e.g.
+// ?action=reset_password&userID=5) would skip both checks entirely (issue #28).
+// @see https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html
+$readOnlyGetActions = [
+    'list_users',
+    'get_user',
+    'get_stats',
+    'get_reset_status',
+    'list_reset_operations',
+    'get_compliance_report',
+    'get_salt_history',
+];
+
 // 📥 Get request data based on method (GET for reads, POST for writes)
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $action = $_GET['action'] ?? '';
-} else {
+
+    // 🛡️ Reject state-changing actions smuggled in over GET — these bypass the
+    // CSRF/Content-Type gate and must use POST instead.
+    if (!in_array($action, $readOnlyGetActions, true)) {
+        http_response_code(405);
+        header('Allow: POST');
+        echo json_encode([
+            'success' => false,
+            'error'   => 'This action requires a POST request.',
+        ]);
+        exit;
+    }
+} elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // 🔐 Validate Content-Type for POST requests to prevent CSRF via form submissions
     // @see https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html
     $contentType = $_SERVER['CONTENT_TYPE'] ?? $_SERVER['HTTP_CONTENT_TYPE'] ?? '';
@@ -53,12 +81,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 
     $input = json_decode(file_get_contents('php://input'), true);
     $action = $input['action'] ?? '';
+} else {
+    // ❌ Any other method (PUT/DELETE/PATCH/…) is not supported here.
+    http_response_code(405);
+    header('Allow: GET, POST');
+    echo json_encode(['success' => false, 'error' => 'Method not allowed. Use GET or POST.']);
+    exit;
 }
 
 // 🛡️ Verify CSRF token for state-changing requests
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $csrfToken = $input['csrf_token'] ?? $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
     if (!SecurityUtils::verifyCSRFToken($csrfToken)) {
+        http_response_code(403);
         echo json_encode(['success' => false, 'error' => 'Invalid or expired CSRF token. Please refresh the page.']);
         exit;
     }

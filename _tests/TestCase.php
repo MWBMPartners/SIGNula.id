@@ -38,12 +38,35 @@ abstract class TestCase extends PHPUnitTestCase
     {
         parent::setUp();
 
-        // 🔑 Start session if not already started (guard against headers_sent in CLI)
-        if (session_status() === PHP_SESSION_NONE && !headers_sent()) {
+        // 🔑 Ensure an ACTIVE session for every test (hermetic-test fix).
+        //
+        // 🐞 bootstrap.php starts a real session before any output so that
+        //    session_status() is PHP_SESSION_ACTIVE process-wide. That keeps
+        //    production code (e.g. SecurityUtils::generateCSRFToken()) from ever
+        //    reaching its own session_start() call — which would otherwise emit
+        //    "session_start(): ... headers have already been sent" once the CLI
+        //    banner output flipped headers_sent() to true, failing the suite under
+        //    failOnWarning="true".
+        //
+        //    We deliberately do NOT gate this on !headers_sent(): the previous
+        //    version did, and that gate is what let the session stay unstarted
+        //    (headers were already sent by the banner) and produced the flaky
+        //    warning. If — for any reason — no session is active, re-establish one
+        //    using the isolated fallback path below so state cannot bleed and no
+        //    warning surfaces.
+        if (session_status() === PHP_SESSION_NONE) {
+            if (headers_sent()) {
+                // 🧰 Headers already flushed (e.g. banner printed): a normal
+                //    session_start() would warn. Use an isolated in-memory-ish
+                //    save path we control so the call succeeds silently.
+                @ini_set('session.use_cookies', '0');
+                @ini_set('session.use_only_cookies', '0');
+                @ini_set('session.cache_limiter', '');
+            }
             @session_start();
         }
 
-        // 🧹 Clear session data
+        // 🧹 Clear session data (session stays ACTIVE, only its contents reset).
         $_SESSION = [];
 
         // 🧹 Reset superglobals
@@ -52,6 +75,19 @@ abstract class TestCase extends PHPUnitTestCase
         $_COOKIE = [];
         $_FILES = [];
         $_REQUEST = [];
+
+        // 🧹 Reset request-scoped $_SERVER keys that CORS / header / routing code
+        //    reads, so no test can leak an Origin, method, URI or content-type
+        //    decision into another under random execution order. (Belt-and-braces:
+        //    the API header tests run in subprocesses, but unit tests that set
+        //    these in-process — e.g. RouterTest — must not bleed either.)
+        unset(
+            $_SERVER['HTTP_ORIGIN'],
+            $_SERVER['REQUEST_METHOD'],
+            $_SERVER['REQUEST_URI'],
+            $_SERVER['CONTENT_TYPE'],
+            $_SERVER['HTTP_AUTHORIZATION']
+        );
 
         // 🧹 Clear test settings and reload defaults
         clearTestSettings();
@@ -70,6 +106,21 @@ abstract class TestCase extends PHPUnitTestCase
         while (ob_get_level() > 1) {
             ob_end_clean();
         }
+
+        // 🧹 Symmetric cleanup: strip request-scoped $_SERVER keys a test may have
+        //    set (CORS Origin, method, URI, content-type, auth) so nothing leaks
+        //    into the next test before its setUp() runs. Keeps tests order-safe
+        //    under executionOrder="random".
+        unset(
+            $_SERVER['HTTP_ORIGIN'],
+            $_SERVER['REQUEST_METHOD'],
+            $_SERVER['REQUEST_URI'],
+            $_SERVER['CONTENT_TYPE'],
+            $_SERVER['HTTP_AUTHORIZATION']
+        );
+
+        // 🧹 Reset session contents (session itself stays active for the process).
+        $_SESSION = [];
 
         parent::tearDown();
     }

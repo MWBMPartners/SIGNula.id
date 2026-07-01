@@ -297,6 +297,86 @@ class EmailTemplateBuilderTest extends TestCase
     }
 
     /**
+     * Test AMP email drops unknown / unsafe component names (#32)
+     *
+     * Only allowlisted AMP components may emit a <script custom-element> tag.
+     * An unknown name (or an attempted breakout payload) must not appear in the
+     * output and must not produce a script tag.
+     */
+    public function testAmpEmailRejectsUnknownComponents(): void
+    {
+        $amp = \EmailTemplateBuilder::buildAMPEmail(
+            bodyContent: '<p>AMP Content</p>',
+            ampComponents: [
+                'amp-form',                                   // allowed
+                'amp-evil',                                   // unknown → dropped
+                'amp-form"></script><script>alert(1)</script>', // breakout attempt → dropped
+            ]
+        );
+
+        // ✅ Allowlisted component still emitted.
+        $this->assertStringContainsString('custom-element="amp-form"', $amp);
+        // ⛔ Unknown component name never reaches the document.
+        $this->assertStringNotContainsString('amp-evil', $amp);
+        // ⛔ No injected inline <script>alert tag survives.
+        $this->assertStringNotContainsString('alert(1)', $amp);
+        // 📝 Exactly one component <script custom-element=...> tag was produced.
+        $this->assertSame(1, substr_count($amp, 'custom-element='));
+    }
+
+    /**
+     * Test AMP component names are case-insensitively allowlisted and de-duped (#32)
+     */
+    public function testAmpEmailNormalisesAndDedupesComponents(): void
+    {
+        $amp = \EmailTemplateBuilder::buildAMPEmail(
+            bodyContent: '<p>AMP Content</p>',
+            ampComponents: ['AMP-FORM', ' amp-form ', 'amp-form']
+        );
+
+        // 📝 Three references to the same component collapse to one script tag.
+        $this->assertSame(1, substr_count($amp, 'custom-element='));
+        $this->assertStringContainsString('custom-element="amp-form"', $amp);
+    }
+
+    /**
+     * Test AMP custom CSS cannot break out of the style context (#31)
+     *
+     * A crafted $customCSS must not be able to close the <style> element or
+     * inject active content (expression(), @import, javascript:, url(), etc.).
+     */
+    public function testAmpEmailSanitisesCustomCss(): void
+    {
+        $malicious = '.x{color:red}</style><script>alert(1)</script>'
+            . '.y{width:expression(alert(2))}'
+            . '@import url("https://evil.example/x.css");'
+            . '.z{background:url(javascript:alert(3))}';
+
+        $amp = \EmailTemplateBuilder::buildAMPEmail(
+            bodyContent: '<p>AMP Content</p>',
+            customCSS: $malicious
+        );
+
+        // 🔍 Isolate the <style amp-custom> block where the sanitised CSS lands.
+        //    (The document legitimately contains the AMP runtime <script>; the
+        //    security property is that the custom CSS cannot inject one.)
+        $this->assertSame(1, preg_match('#<style amp-custom>(.*?)</style>#s', $amp, $m));
+        $styleBlock = $m[1];
+
+        // ⛔ The sanitised CSS contains no <script> (angle brackets stripped, so
+        //    the residue can never form a tag — leftover "scriptalert(1)" is inert).
+        $this->assertDoesNotMatchRegularExpression('/<\s*script/i', $styleBlock);
+        // ⛔ No early </style> breakout anywhere in the document.
+        $this->assertStringNotContainsString('</style><script>', $amp);
+        // ⛔ Active-content CSS constructs stripped from the custom block.
+        $this->assertStringNotContainsString('expression(', $styleBlock);
+        $this->assertStringNotContainsString('@import', $styleBlock);
+        $this->assertStringNotContainsString('javascript:', $styleBlock);
+        // ✅ Benign declarations are preserved.
+        $this->assertStringContainsString('.x{color:red}', $styleBlock);
+    }
+
+    /**
      * Test isAMPEnabled returns bool from settings
      */
     public function testIsAmpEnabledReturnsBool(): void
@@ -481,14 +561,22 @@ class EmailTemplateBuilderTest extends TestCase
     // ========================================================================
 
     /**
-     * Test getEmailHeaders includes X-Mailer
+     * Test getEmailHeaders X-Mailer does not disclose library/version (#33)
+     *
+     * The X-Mailer header must not reveal the mailer library name or a version
+     * number (information disclosure that aids stack fingerprinting). It is now
+     * a generic, version-less value defaulting to the application name.
      */
-    public function testGetEmailHeadersIncludesXMailer(): void
+    public function testGetEmailHeadersXMailerDoesNotDiscloseVersion(): void
     {
         $headers = \EmailTemplateBuilder::getEmailHeaders();
 
         $this->assertArrayHasKey('X-Mailer', $headers);
-        $this->assertStringContainsString('Email Service', $headers['X-Mailer']);
+        // 🔐 No version token and no "Email Service" library string leaked.
+        $this->assertDoesNotMatchRegularExpression('/\d+\.\d+/', $headers['X-Mailer'], 'X-Mailer must not contain a version number');
+        $this->assertStringNotContainsString('Email Service', $headers['X-Mailer'], 'X-Mailer must not disclose the mailer library');
+        // 📝 Defaults to the application name only.
+        $this->assertSame('SIGNula', $headers['X-Mailer']);
     }
 
     /**

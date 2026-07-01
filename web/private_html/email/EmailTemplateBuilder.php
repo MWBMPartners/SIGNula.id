@@ -111,6 +111,36 @@ class EmailTemplateBuilder
      */
     private const AMP_NOSCRIPT_BOILERPLATE = 'body{-webkit-animation:none;-moz-animation:none;-ms-animation:none;animation:none}';
 
+    /**
+     * @var array<string,string> Allowlist of AMP-for-Email components → script version.
+     *
+     * 🔐 #32: Only these officially-supported components may emit a
+     * <script custom-element> tag. An unknown / attacker-supplied name is
+     * dropped so it cannot be used to load an arbitrary script URL from the
+     * AMP CDN path or smuggle markup into <head>.
+     *
+     * @see https://amp.dev/documentation/components/?format=email
+     */
+    private const AMP_ALLOWED_COMPONENTS = [
+        'amp-accordion'       => '0.1',
+        'amp-anim'            => '0.1',
+        'amp-autocomplete'    => '0.1',
+        'amp-bind'            => '0.1',
+        'amp-carousel'        => '0.1',
+        'amp-fit-text'        => '0.1',
+        'amp-form'            => '0.1',
+        'amp-image-lightbox'  => '0.1',
+        'amp-img'             => '0.1',
+        'amp-layout'          => '0.1',
+        'amp-lightbox'        => '0.1',
+        'amp-list'            => '0.1',
+        'amp-mustache'        => '0.2',
+        'amp-selector'        => '0.1',
+        'amp-sidebar'         => '0.1',
+        'amp-state'           => '0.1',
+        'amp-timeago'         => '0.1',
+    ];
+
     // ========================================================================
     // 🎨 HTML EMAIL WRAPPER
     // ========================================================================
@@ -220,14 +250,33 @@ class EmailTemplateBuilder
         $appName = getSetting('app.name', 'SIGNula');
 
         // 📦 Build AMP component script tags
+        // 🔐 #32: Only allowlisted AMP components emit a <script> tag. Unknown
+        //    names are skipped entirely so they cannot drive an arbitrary CDN
+        //    script load or break out of the attribute context.
         $componentScripts = '';
+        $seenComponents = [];
         foreach ($ampComponents as $component) {
-            // 📝 Map component name to version
-            $version = '0.1'; // Default version
+            $component = strtolower(trim((string)$component));
+
+            // ⛔ Skip unknown components and duplicates.
+            if (!isset(self::AMP_ALLOWED_COMPONENTS[$component])
+                || isset($seenComponents[$component])
+            ) {
+                continue;
+            }
+            $seenComponents[$component] = true;
+
+            // 📝 Version comes from the trusted allowlist, never from caller input.
+            $version = self::AMP_ALLOWED_COMPONENTS[$component];
             $componentScripts .= '<script async custom-element="' . htmlspecialchars($component, ENT_QUOTES, 'UTF-8')
                 . '" src="https://cdn.ampproject.org/v0/' . htmlspecialchars($component, ENT_QUOTES, 'UTF-8')
                 . '-' . $version . '.js"></script>' . "\n";
         }
+
+        // 🔐 #31: Sanitise caller-supplied CSS before embedding it in the
+        //    <style amp-custom> block so it cannot break out of the style
+        //    context or inject active content.
+        $customCSS = self::sanitizeCustomCSS($customCSS);
 
         // 📧 Build AMP document (must follow strict spec)
         return '<!doctype html>' . "\n"
@@ -558,9 +607,14 @@ CSS;
     ): array {
         $headers = [];
 
-        // 🏷️ Feedback-ID for Gmail postmaster tools
-        $appName = getSetting('app.name', 'SIGNula');
-        $headers['X-Mailer'] = $appName . ' Email Service/1.0';
+        // 🏷️ #33: Do NOT advertise the mailer library or version in X-Mailer —
+        //    that is information disclosure that helps an attacker fingerprint
+        //    the stack and target known weaknesses. Emit a generic, version-less
+        //    value (configurable, defaulting to the application name only).
+        $xMailer = (string)getSetting('email.xmailer', getSetting('app.name', 'SIGNula'));
+        if ($xMailer !== '') {
+            $headers['X-Mailer'] = $xMailer;
+        }
 
         // 📋 Category for ISP filtering
         if ($category === 'transactional') {
@@ -717,6 +771,56 @@ CSS;
 
         // 🔐 Default fallback for invalid/malicious values
         return '#333333';
+    }
+
+    /**
+     * 🔐 Sanitise caller-supplied AMP custom CSS (#31)
+     *
+     * The string is embedded verbatim inside a <style amp-custom> block, so a
+     * crafted value could otherwise:
+     *   • close the style element early (`</style>`) and inject markup/script;
+     *   • run JavaScript via legacy `expression()` or `javascript:` URLs;
+     *   • pull in remote/active content via `@import`, `url(...)`, or IE
+     *     `behavior:` / `-moz-binding:`.
+     *
+     * This strips those dangerous constructs while leaving ordinary CSS intact.
+     * It is a defence-in-depth filter (AMP itself also rejects most of these);
+     * the goal is to make breaking out of the style context impossible.
+     *
+     * @param string $css Raw CSS supplied by the caller
+     * @return string CSS with dangerous constructs removed
+     *
+     * @see https://owasp.org/www-community/attacks/Cross_Site_Scripting_via_CSS
+     */
+    private static function sanitizeCustomCSS(string $css): string
+    {
+        if ($css === '') {
+            return '';
+        }
+
+        // 🚫 Neutralise any attempt to close the <style> element (or open a new
+        //    tag) and break out of the CSS context. Strip the angle brackets so
+        //    the residue can never form a tag.
+        $css = preg_replace('#</?\s*style[^>]*>#i', '', $css);
+        $css = str_replace(['<', '>'], '', $css);
+
+        // 🚫 Remove CSS comments — they are a common obfuscation vector
+        //    (e.g. `expr/* */ession(...)`).
+        $css = preg_replace('#/\*.*?\*/#s', '', $css);
+
+        // 🚫 Strip known active-content constructs (case-insensitive).
+        $dangerous = [
+            '/expression\s*\(/i',   // IE expression()
+            '/@import\b/i',          // remote stylesheet import
+            '/javascript\s*:/i',     // javascript: URLs
+            '/vbscript\s*:/i',       // vbscript: URLs
+            '/behaviou?r\s*:/i',     // IE behavior / behaviour
+            '/-moz-binding\s*:/i',   // legacy Firefox XBL binding
+            '/url\s*\(/i',           // any url(...) (blocks remote fetch + data: payloads)
+        ];
+        $css = preg_replace($dangerous, '', $css);
+
+        return trim((string)$css);
     }
 }
 

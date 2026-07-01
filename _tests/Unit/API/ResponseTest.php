@@ -14,8 +14,10 @@
  * - 🆔 Static config: setVersion(), setRequestId(), getRequestId()
  * - 📦 Response body SHAPE for success / error / validationError  ← anchors B-011
  *      (the "API error-key inconsistency" finding — we pin where errors live today)
- * - 🌐 setCorsHeaders() emitted headers                           ← anchors B-024
- *      (the "CORS '*' + credentials" finding — pinned so the fix is provably intentional)
+ * - 🌐 setCorsHeaders() emitted headers                           ← B-024 FIXED
+ *      (CORS '*' is NEVER paired with credentials; allowlisted origins are
+ *       echoed back WITH credentials; unknown origins get no Allow-Origin)
+ * - 🛡️ X-Frame-Options / CSP frame-ancestors on every response   ← issue #29
  *
  * Response::success()/error()/etc. call header() + exit, so they cannot be
  * invoked in-process under PHPUnit (would terminate the runner / emit header
@@ -230,14 +232,12 @@ class ResponseTest extends TestCase
     // ========================================================================
 
     /**
-     * Default CORS config emits Access-Control-Allow-Origin: * together with
-     * Access-Control-Allow-Credentials: true.
-     *
-     * ⚠️ This pins the CURRENT (insecure) behaviour. Wildcard origin combined
-     * with credentials is rejected by browsers and is the B-024 finding. The
-     * later fix MUST change this test deliberately.
+     * 🔒 B-024 FIX: the explicit wildcard setting ("*") emits
+     * `Access-Control-Allow-Origin: *` but MUST NOT emit
+     * `Access-Control-Allow-Credentials` — wildcard + credentials is invalid
+     * and insecure. Vary: Origin is always present.
      */
-    public function testDefaultCorsEmitsWildcardOriginWithCredentials(): void
+    public function testWildcardCorsNeverPairsWithCredentials(): void
     {
         $headers = $this->runResponseSubprocessHeaders('*');
 
@@ -247,10 +247,85 @@ class ResponseTest extends TestCase
 
         $joined = strtolower(implode("\n", $headers));
 
+        // Anonymous wildcard is allowed…
         $this->assertStringContainsString('access-control-allow-origin: *', $joined);
-        $this->assertStringContainsString('access-control-allow-credentials: true', $joined);
+        // …but credentials MUST NOT be advertised alongside it.
+        $this->assertStringNotContainsString('access-control-allow-credentials', $joined);
+        // Cache-safety + the shared CORS hints are still present.
+        $this->assertStringContainsString('vary: origin', $joined);
         $this->assertStringContainsString('access-control-allow-methods:', $joined);
         $this->assertStringContainsString('access-control-max-age: 86400', $joined);
+    }
+
+    /**
+     * 🔒 B-024 FIX: an origin present in the configured allowlist is echoed back
+     * EXACTLY and is the ONLY case where `Allow-Credentials: true` is sent.
+     */
+    public function testAllowlistedOriginIsEchoedWithCredentials(): void
+    {
+        $allowed = 'https://app.signula.id';
+        $headers = $this->runResponseSubprocessHeaders($allowed, $allowed);
+
+        if ($headers === null) {
+            $this->markTestSkipped('Could not boot php -S subprocess to observe CORS headers.');
+        }
+
+        $joined = strtolower(implode("\n", $headers));
+
+        // The exact origin is echoed back (NOT a wildcard)…
+        $this->assertStringContainsString('access-control-allow-origin: ' . strtolower($allowed), $joined);
+        $this->assertStringNotContainsString('access-control-allow-origin: *', $joined);
+        // …and ONLY here are credentials permitted.
+        $this->assertStringContainsString('access-control-allow-credentials: true', $joined);
+        $this->assertStringContainsString('vary: origin', $joined);
+    }
+
+    /**
+     * 🔒 B-024 FIX (fail-safe): a request Origin that is NOT in the allowlist
+     * receives NO `Access-Control-Allow-Origin` and NO credentials, so the
+     * browser blocks the cross-origin read.
+     */
+    public function testUnknownOriginGetsNoAllowOriginAndNoCredentials(): void
+    {
+        $headers = $this->runResponseSubprocessHeaders(
+            'https://app.signula.id',          // allowlist
+            'https://evil.example'             // request Origin (NOT allowlisted)
+        );
+
+        if ($headers === null) {
+            $this->markTestSkipped('Could not boot php -S subprocess to observe CORS headers.');
+        }
+
+        $joined = strtolower(implode("\n", $headers));
+
+        $this->assertStringNotContainsString('access-control-allow-origin:', $joined);
+        $this->assertStringNotContainsString('access-control-allow-credentials', $joined);
+        // Vary: Origin is still emitted so caches don't leak a decision.
+        $this->assertStringContainsString('vary: origin', $joined);
+    }
+
+    // ========================================================================
+    // 🛡️ SECURITY HEADERS (subprocess) — issue #29
+    // ========================================================================
+
+    /**
+     * 🛡️ Issue #29: every API response carries anti-clickjacking headers —
+     * `X-Frame-Options: DENY` AND `Content-Security-Policy: frame-ancestors 'none'`
+     * (plus `X-Content-Type-Options: nosniff`).
+     */
+    public function testApiResponsesCarryFrameDenyHeaders(): void
+    {
+        $headers = $this->runResponseSubprocessHeaders('*');
+
+        if ($headers === null) {
+            $this->markTestSkipped('Could not boot php -S subprocess to observe response headers.');
+        }
+
+        $joined = strtolower(implode("\n", $headers));
+
+        $this->assertStringContainsString('x-frame-options: deny', $joined);
+        $this->assertStringContainsString("content-security-policy: frame-ancestors 'none'", $joined);
+        $this->assertStringContainsString('x-content-type-options: nosniff', $joined);
     }
 
     // ========================================================================
@@ -292,10 +367,12 @@ class ResponseTest extends TestCase
      * Boot the REAL Response class behind `php -S` and return the emitted
      * HTTP response headers for a single GET request, or null on failure.
      *
-     * @param string $corsSetting Value to return for api.cors.allowed_origins
+     * @param string      $corsSetting   Value returned for api.cors.allowed_origins.
+     * @param string|null $requestOrigin Optional Origin request header to send,
+     *                                   so the allowlist-match path can be exercised.
      * @return array<int,string>|null Response headers or null if unavailable
      */
-    private function runResponseSubprocessHeaders(string $corsSetting): ?array
+    private function runResponseSubprocessHeaders(string $corsSetting, ?string $requestOrigin = null): ?array
     {
         $phpBinary = PHP_BINARY ?: 'php';
         $respPath  = self::responsePath();
@@ -308,6 +385,12 @@ class ResponseTest extends TestCase
 
         $tmp = tempnam(sys_get_temp_dir(), 'signula_cors_');
         file_put_contents($tmp, $router);
+
+        // 🌐 Build the HTTP request context (optionally sending an Origin header).
+        $httpOpts = ['method' => 'GET', 'timeout' => 3, 'ignore_errors' => true];
+        if ($requestOrigin !== null) {
+            $httpOpts['header'] = 'Origin: ' . $requestOrigin . "\r\n";
+        }
 
         // Pick an ephemeral-ish port; retry a couple times if it is busy.
         for ($attempt = 0; $attempt < 3; $attempt++) {
@@ -327,7 +410,7 @@ class ResponseTest extends TestCase
             // Give the server a moment to bind the port.
             usleep(700000);
 
-            $ctx = stream_context_create(['http' => ['method' => 'GET', 'timeout' => 3, 'ignore_errors' => true]]);
+            $ctx = stream_context_create(['http' => $httpOpts]);
             $body = @file_get_contents('http://127.0.0.1:' . $port . '/', false, $ctx);
             $headers = $http_response_header ?? null;
 

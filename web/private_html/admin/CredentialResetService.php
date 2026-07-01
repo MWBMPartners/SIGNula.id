@@ -144,7 +144,7 @@ class CredentialResetService
         string $scope = self::SCOPE_ALL_USERS,
         array $scopeFilter = []
     ): array {
-        // ✅ Validate parameters
+        // ✅ Validate parameters (pure, no DB access — keep this first)
         if (!in_array($resetType, self::VALID_TYPES, true)) {
             throw new InvalidArgumentException(
                 'Invalid reset type. Must be one of: ' . implode(', ', self::VALID_TYPES)
@@ -157,11 +157,25 @@ class CredentialResetService
             );
         }
 
+        // 🧼 Sanitise the free-text reason before any storage/logging/display (issue #23).
+        // It is persisted to tblCredentialResets.reason, copied into emails, the
+        // activity log and salt-rotation history, so strip tags + escape up front.
+        $reason = SecurityUtils::sanitizeString($reason);
+
         if (empty(trim($reason))) {
             throw new InvalidArgumentException('Reason is required for credential reset operations');
         }
 
         try {
+            // 🛡️ Validate the initiating admin BEFORE any side effect (issue #22).
+            // The adminUserID must resolve to a real, active Super Admin — never
+            // trust a caller-supplied ID blindly, even though the API controller
+            // currently sources it from the session. This makes the service safe
+            // by itself. Runs here (not before the pure parameter checks above) so
+            // the DB-free validation contract is preserved, but still strictly
+            // before the rate-limit read, the transaction, and any INSERT/UPDATE.
+            self::assertAuthorizedAdmin($adminUserID);
+
             // 🔐 Rate limit: prevent multiple concurrent reset operations
             $existingActive = Database::fetchOne(
                 "SELECT resetID FROM tblCredentialResets WHERE status IN ('pending', 'in_progress') LIMIT 1"
@@ -742,6 +756,11 @@ class CredentialResetService
      */
     public static function listResetOperations(int $page = 1, int $perPage = 20): array
     {
+        // 🔒 Clamp pagination to sane bounds so a caller cannot request unbounded
+        // rows or a negative offset (issue #24). page >= 1; 1 <= perPage <= 200.
+        $page    = max(1, $page);
+        $perPage = min(200, max(1, $perPage));
+
         $offset = ($page - 1) * $perPage;
 
         // 📊 Get total count
@@ -787,6 +806,9 @@ class CredentialResetService
      */
     public static function cancelReset(int $resetID, int $adminUserID): array
     {
+        // 🛡️ Validate the cancelling admin is a real, active Super Admin (issue #22).
+        self::assertAuthorizedAdmin($adminUserID);
+
         $reset = Database::fetchOne(
             "SELECT status, processedUsers, totalUsers FROM tblCredentialResets WHERE resetID = ?",
             [$resetID],
@@ -879,6 +901,9 @@ class CredentialResetService
      */
     public static function getSaltRotationHistory(int $limit = 20): array
     {
+        // 🔒 Clamp result count to sane bounds (issue #24): 1 <= limit <= 200.
+        $limit = min(200, max(1, $limit));
+
         return Database::fetchAll(
             "SELECT srh.*, u.username AS rotatedByUsername
              FROM tblSaltRotationHistory srh
@@ -893,6 +918,42 @@ class CredentialResetService
     // ========================================================================
     // 🔧 HELPER METHODS
     // ========================================================================
+
+    /**
+     * 🛡️ Assert the supplied admin ID is a real, active Super Admin
+     *
+     * Defence-in-depth for issue #22: callers pass an adminUserID that ends up
+     * persisted (as initiatedBy / rotatedBy) and recorded in the activity log.
+     * This guard makes sure a credential reset can never be attributed to — or
+     * triggered on behalf of — a non-existent, inactive, or non-admin account,
+     * regardless of how the caller obtained the ID.
+     *
+     * @param int $adminUserID Admin user ID to validate
+     * @return void
+     * @throws InvalidArgumentException If the ID is not a valid active Super Admin
+     */
+    private static function assertAuthorizedAdmin(int $adminUserID): void
+    {
+        // 🔢 Type-coerced bounds check — reject zero/negative IDs outright.
+        if ($adminUserID <= 0) {
+            throw new InvalidArgumentException('A valid initiating admin is required for credential reset operations');
+        }
+
+        // 🔍 Verify the account exists, is active, and holds Super Admin rights.
+        $admin = Database::fetchOne(
+            "SELECT userID
+             FROM tblUsers
+             WHERE userID = ?
+               AND isSuperAdmin = 1
+               AND accountStatus = 'active'",
+            [$adminUserID],
+            'i'
+        );
+
+        if (!$admin) {
+            throw new InvalidArgumentException('The initiating user is not an authorized active Super Admin');
+        }
+    }
 
     /**
      * 👥 Get Affected Users Based on Scope
@@ -1144,6 +1205,9 @@ class CredentialResetService
      */
     public static function getNonCompliantUsers(int $resetID, int $limit = 100): array
     {
+        // 🔒 Clamp result count to sane bounds (issue #24): 1 <= limit <= 200.
+        $limit = min(200, max(1, $limit));
+
         return Database::fetchAll(
             "SELECT cru.userID, u.username, u.email, u.displayName,
                     cru.emailSent, cru.processedAt, u.lastLoginAt

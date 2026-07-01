@@ -131,6 +131,7 @@ class Response
     {
         http_response_code(self::HTTP_NO_CONTENT);
         self::setCorsHeaders();
+        self::setSecurityHeaders();
         exit;
     }
 
@@ -269,6 +270,9 @@ class Response
         // 🌐 Set CORS headers
         self::setCorsHeaders();
 
+        // 🛡️ Set baseline security headers (clickjacking defence — issue #29)
+        self::setSecurityHeaders();
+
         // 📋 Set content type
         header('Content-Type: application/json; charset=utf-8');
 
@@ -308,27 +312,132 @@ class Response
     /**
      * 🌐 Set CORS headers for cross-origin requests
      *
+     * 🔒 B-024 fix: NEVER pair `Access-Control-Allow-Origin: *` with
+     * `Access-Control-Allow-Credentials: true`. That combination is both
+     * invalid per the Fetch standard (browsers reject it) AND a security risk.
+     *
+     * Behaviour (fail-safe):
+     *  - Read a configurable allowlist from settings
+     *    (`api.cors.allowed_origins`): a PHP array, a JSON array, or a
+     *    comma-separated string.
+     *  - If the request `Origin` is in the allowlist, echo it back EXACTLY and
+     *    THEN send `Allow-Credentials: true` (the spec-compliant way to allow
+     *    credentialed cross-origin requests).
+     *  - If the origin is not allowed (or no allowlist is configured), we do NOT
+     *    emit any `Access-Control-Allow-Origin` header and we do NOT send
+     *    `Allow-Credentials` — the browser blocks the cross-origin read. This is
+     *    the safe default; a wildcard with credentials is never emitted.
+     *  - `Vary: Origin` is always sent so caches don't serve one origin's CORS
+     *    decision to another.
+     *
+     * To intentionally allow ALL origins WITHOUT credentials, set the allowlist
+     * to the literal string "*"; we then send `Allow-Origin: *` and OMIT
+     * `Allow-Credentials` (valid, anonymous CORS).
+     *
+     * @see https://fetch.spec.whatwg.org/#cors-protocol-and-credentials
      * @return void
      */
     private static function setCorsHeaders(): void
     {
-        // Get allowed origins from settings or use default
-        $allowedOrigins = getSetting('api.cors.allowed_origins', '*');
+        // 🔁 Always vary on Origin so caches never cross-contaminate decisions.
+        header('Vary: Origin');
 
-        if (is_array($allowedOrigins)) {
-            // Check if request origin is allowed
-            $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
-            if (in_array($origin, $allowedOrigins, true)) {
-                header("Access-Control-Allow-Origin: $origin");
-            }
-        } else {
-            header("Access-Control-Allow-Origin: $allowedOrigins");
+        // 🌐 The browser-supplied request origin (may be absent for same-origin).
+        $requestOrigin = $_SERVER['HTTP_ORIGIN'] ?? '';
+
+        // ⚙️ Pull the configured allowlist. Default null = "no CORS configured".
+        $configured = getSetting('api.cors.allowed_origins', null);
+
+        // 🌍 Explicit anonymous wildcard: allow all, but NEVER with credentials.
+        if ($configured === '*') {
+            header('Access-Control-Allow-Origin: *');
+            // ❗ Deliberately NO Access-Control-Allow-Credentials here.
+            self::setCorsCommonHeaders();
+            return;
         }
 
+        // 📋 Normalise the allowlist into an array of exact origin strings.
+        $allowedOrigins = self::normaliseAllowedOrigins($configured);
+
+        // ✅ Echo back the origin ONLY if it is explicitly allowlisted, then —
+        //    and only then — permit credentials.
+        if ($requestOrigin !== '' && in_array($requestOrigin, $allowedOrigins, true)) {
+            header('Access-Control-Allow-Origin: ' . $requestOrigin);
+            header('Access-Control-Allow-Credentials: true');
+            self::setCorsCommonHeaders();
+            return;
+        }
+
+        // 🚫 Fail safe: origin not allowed / nothing configured. Emit the method,
+        //    header and max-age hints but NO Allow-Origin and NO credentials, so
+        //    the browser blocks any cross-origin read. (A wildcard-with-creds is
+        //    never produced by this method.)
+        self::setCorsCommonHeaders();
+    }
+
+    /**
+     * 🧰 Normalise the configured CORS allowlist into an array of origins.
+     *
+     * Accepts a PHP array, a JSON array string, or a comma-separated string.
+     * Each entry is trimmed; empties are dropped. Returns an empty array when
+     * nothing usable is configured (which makes the caller fail safe).
+     *
+     * @param mixed $configured Raw value from getSetting().
+     * @return array<int,string> Exact-match origin allowlist.
+     */
+    private static function normaliseAllowedOrigins(mixed $configured): array
+    {
+        if (is_array($configured)) {
+            $list = $configured;
+        } elseif (is_string($configured) && $configured !== '') {
+            // Try JSON array first, then fall back to a comma-separated list.
+            $decoded = json_decode($configured, true);
+            $list = is_array($decoded) ? $decoded : explode(',', $configured);
+        } else {
+            return [];
+        }
+
+        $origins = [];
+        foreach ($list as $origin) {
+            $origin = trim((string) $origin);
+            if ($origin !== '' && $origin !== '*') {
+                // A literal "*" in a list is ignored — wildcard+creds is unsafe.
+                $origins[] = $origin;
+            }
+        }
+
+        return array_values(array_unique($origins));
+    }
+
+    /**
+     * 🧩 Emit the non-origin CORS headers shared by every CORS response.
+     *
+     * @return void
+     */
+    private static function setCorsCommonHeaders(): void
+    {
         header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, PATCH, OPTIONS');
         header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With, X-API-Key');
-        header('Access-Control-Allow-Credentials: true');
         header('Access-Control-Max-Age: 86400'); // Cache preflight for 24 hours
+    }
+
+    /**
+     * 🛡️ Set baseline security headers on every API response (issue #29).
+     *
+     * API responses are JSON and must never be framed. Sending both the legacy
+     * `X-Frame-Options: DENY` and the modern CSP `frame-ancestors 'none'`
+     * directive covers old and new browsers. `X-Content-Type-Options: nosniff`
+     * stops the browser MIME-sniffing a JSON body into something executable.
+     *
+     * @see https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Frame-Options
+     * @see https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/frame-ancestors
+     * @return void
+     */
+    private static function setSecurityHeaders(): void
+    {
+        header('X-Frame-Options: DENY');
+        header("Content-Security-Policy: frame-ancestors 'none'");
+        header('X-Content-Type-Options: nosniff');
     }
 
     /**
@@ -376,6 +485,7 @@ class Response
         if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
             http_response_code(self::HTTP_NO_CONTENT);
             self::setCorsHeaders();
+            self::setSecurityHeaders();
             exit;
         }
     }
