@@ -13,6 +13,82 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Mobile apps (iOS, Android)
 - Advanced analytics and reporting dashboard
+- SIGNula as IdP — SAML 2.0 / OIDC provider (G-001, approved, not yet built)
+- Recurring billing engine with dunning (G-002, approved, not yet built)
+- JWT bearer-auth for API (G-003, approved, not yet built)
+- GDPR/compliance tooling — data export, right-to-erasure, consent log (G-004, approved, not yet built)
+
+---
+
+## [2.7.0-beta] — 2026-07-01
+
+> **Version note:** The `VERSION` file currently reads `2.6.0-beta`; all feature entries since the credential-reset phase have been logged under `2.7.0-beta`. The current working version is treated as **2.7.0-beta** pending a formal tag.
+
+### Fixed — Foundation Hardening (autopilot/2026-06-30, cycles 3-12)
+
+The automated hardening run on branch `autopilot/2026-06-30` discovered that several core subsystems were silently non-functional despite the unit-test suite (which stubs the database) reporting green. The following fixes were applied before the feature campaign could proceed.
+
+#### Core Flow Fixes
+
+- **User registration broken** — `tblUsers.organizationID` column was missing; registration INSERT failed for every new user. Fixed by migration `025_registration_fix.sql`.
+- **Email queue non-functional** — `EmailService::queueEmail()` had a bind-parameter count mismatch; every call silently failed. Fixed — email queuing now works end-to-end.
+- **Backup-code MFA broken** — ENUM value mismatch on backup-code verification path prevented successful MFA login via recovery codes.
+- **Error logging broken at 61 call sites** — `ErrorLogger::log()` was called at ~61 locations but the method was undefined; all server-side error logging was silently swallowed. Fixed.
+- **`Database::getAffectedRows()` always returned -1** — the accessor read `affected_rows` after `$stmt->close()` (mysqlnd returns -1 post-close). Fixed in `database.php` by capturing the value while the statement is still open. This repaired 12 silently-broken callers across WebAuthn, UsageTracker, PasswordlessLogin, WebhookService, and NotificationService.
+- **MFA and notification activity logging wrote garbage** — `MFA.php` (15 sites) and `NotificationService` (5 sites) had misordered `log()` arguments, writing the human-readable description into the `activityCategory` ENUM column. This caused data-truncation errors and corrupt audit entries. Fixed; `activityCategory` ENUM widened in migration `029_enum_widening.sql` to match all valid values written by the codebase.
+
+#### WebAuthn
+
+- **Registration non-functional** — `Database::insert()` method was missing entirely; WebAuthn credential saves and 6 other callers (PasswordlessLogin, AccountManager, 4 email-related) all failed silently. Added `Database::insert()` and `Database::insertId()` (cycle 5).
+- **Auth-bypass closed (FG-013 / security — see Security section below)** — challenge-consumption TOCTOU hardened with atomic compare-and-set (B-030).
+
+#### Fresh-install / Database
+
+- **Consolidated installer had 74 SQL errors** — INT/BIGINT FK type drift across 96 columns, `tblMigrations`/`tblSettings` schema drift, duplicate WebAuthn table definitions, missing FK targets. All resolved; installer now applies with **0 errors**. Migrations 025/026 added missing registration and MFA columns (cycle 7). Migrations 028 adds the 6 multi-org tables that `Organization.php` requires (cycle 11).
+- **Installer excluded from git** — `_database/*.sql` was in `.gitignore`, meaning the installer file was absent from a clean checkout. Unignored and committed (cycle 9).
+- **Install-wizard idempotency** — the wizard re-applied migrations 001-014 on every re-run because `tblMigrations` was seeded with only 3 filenames. Fixed by seeding all 17 baked migration filenames as `completed` (cycle 11).
+- **`setup_test_db.sh` silently skipped migration 014** — its 5 security tables were absent from the test DB; fixed so the test database now reflects the full 98-table schema (cycle 11).
+
+#### Integration Test Gate
+
+- **Suite was unreliable (B-037 flake)** — `ActivityLogger::log()` writes outside the test transaction on the shared DB singleton; tests used hard-coded `userID=1` which a prior test truncated, causing FK failures. Fixed with committed-test-user hermeticity and `AuthLoginTest` truncating `tblRateLimits` before each run. Integration gate is now deterministically green (5/5 independent runs + 20/20 builder runs, cycle 12).
+- **`session_start` warning flake** — root-caused and fixed; suite now runs with **0 warnings** across 30+ consecutive runs (cycle 8).
+
+#### Tooling
+
+- Fixed `composer analyze` / `check-style` invocations — paths to `private_html` were unresolved from repo root (B-001/B-002, cycle 3).
+- Added `SIGNULA_INIT` guard to 5 source files that were reachable without the bootstrap constant (cycle 3).
+
+### Added
+
+- Migrations `025_registration_fix.sql`, `026_mfa_columns.sql`, `027_credential_reset_indexes.sql` (composite indexes on credential-reset tables, cycle 8), `028_multi_org_tables.sql` (6 org tables, cycle 11), `029_enum_widening.sql` (activityCategory ENUM expansion, cycle 12).
+- `Database::insert()` and `Database::insertId()` methods.
+- `Database::getAffectedRows()` now returns the correct row count for prepared UPDATEs.
+
+### Security
+
+- **WebAuthn auth-bypass closed (FG-013)** — WebAuthn `auth-verify` previously accepted assertions without verifying the authenticator signature. Replaced with real CBOR/COSE decoding, PEM extraction, and `openssl_verify()`. Sign-count clone-detection added. Red-team verified across 7 attack vectors (cycle 6). Tracked by issue #73 (addressed on branch, not yet pushed).
+- **CORS `*` + credentials** — API CORS headers previously sent `Access-Control-Allow-Origin: *` combined with `Access-Control-Allow-Credentials: true` (invalid per spec; browsers may allow in some modes). Fixed: origin is now checked against an allowlist (`api.cors.allowed_origins` setting). Default: same-origin only (B-024, cycle 8).
+- **X-Frame-Options / CSP frame-ancestors / X-Content-Type-Options** — added to all API responses (issue #29, cycle 8).
+- **Admin CSRF — two holes** — primary admin CSRF fix applied; a second CSRF hole on the rate-limits unblock endpoint was found and also closed during cycle 8.
+- **13 deferred MEDIUM issues (#22-#34)** resolved (cycle 8):
+  - Email recipient validation before send (#22)
+  - AMP sender allowlist enforced (#23)
+  - SMTP encryption-before-AUTH enforced (no plain-text credential submission) (#24/#25)
+  - `email.xmailer` setting suppressed when blank (#26)
+  - Credential-reset authorisation tightened (non-super-admin paths blocked) (#27)
+  - Credential-reset pagination result-set bounded (#28)
+  - Credential-reset DB indexes added (migration 027) (#29 duplicate numbering — see B-030 above; tracked in backlog)
+  - Token URL-encoding applied at 4 sites where hex tokens appeared in URLs (defensive; B-039, cycle 12)
+- **WebAuthn challenge consumption hardened** — atomic compare-and-set prevents TOCTOU race on challenge records (B-030/B-031, cycle 8).
+
+### Tests
+
+- +48 characterisation tests added (cycles 3-4, 342 → 390 total).
+- Integration suite made reliable and runnable end-to-end (cycle 7); now 71 green / 0 failures (cycle 10).
+- Unit suite: 407 green / 0 warnings (cycle 8 onwards).
+
+---
 
 ### Added - Tier Expansion, Custom Tiers, Usage Export & Installation Wizard (v2.7.0-beta)
 

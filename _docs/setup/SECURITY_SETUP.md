@@ -904,3 +904,132 @@ WHERE service_name = 'abuseipdb';
 - [proxycheck.io API Docs](https://proxycheck.io/api/)
 - [CrawlerDetect GitHub](https://github.com/JayBizzle/Crawler-Detect)
 - [ip-api.com Docs](https://ip-api.com/docs) (used for impossible travel geo lookup)
+
+---
+
+## 🔐 Autopilot Hardening Pass — 2026-07-01 (cycles 3-12, branch `autopilot/2026-06-30`)
+
+This section documents additional security fixes applied during the automated foundation-hardening run. All changes are on `autopilot/2026-06-30` and require a push + merge before they reach production.
+
+### FG-013 — WebAuthn Authentication Bypass (CRITICAL, now closed)
+
+**What was wrong:** The WebAuthn `auth-verify` endpoint accepted assertions without performing cryptographic signature verification. Any attacker who could observe or replay a valid challenge response could authenticate as any passkey-registered user.
+
+**What was fixed:** Full CBOR/COSE decoding, public-key PEM extraction, and `openssl_verify()` signature check are now performed on every assertion. Sign-count clone-detection is also enforced (a credential whose sign-count does not advance is flagged).
+
+**Red-team status:** Verified across 7 distinct attack vectors — replay, forged signature, wrong key, zero sign-count, malformed CBOR, wrong RP ID, wrong origin. All hold as of cycle 6.
+
+**File:** `web/private_html/auth/WebAuthnHandler.php`
+
+### CORS Allowlist (`api.cors.allowed_origins`)
+
+**What was wrong:** API responses sent `Access-Control-Allow-Origin: *` together with `Access-Control-Allow-Credentials: true`. This combination is invalid per the CORS spec and, in some browser/proxy configurations, may allow cross-origin credentialed requests from any origin.
+
+**What was fixed:** Origin is now validated against a configurable allowlist before being reflected. If the request origin is not in the list, no `Access-Control-Allow-Origin` header is emitted.
+
+**Admin configuration required:**
+
+```sql
+-- Set the allowed origins (comma-separated, exact match)
+UPDATE tblSettings
+SET settingValue = 'https://signulo.id,https://app.signulo.id'
+WHERE settingKey = 'api.cors.allowed_origins';
+```
+
+If the setting is empty or absent, same-origin only is enforced (safest default).
+
+**File:** `web/private_html/api/BaseController.php`
+
+### X-Frame-Options / CSP frame-ancestors / X-Content-Type-Options on API
+
+All API responses now include:
+
+```http
+X-Frame-Options: DENY
+X-Content-Type-Options: nosniff
+Content-Security-Policy: frame-ancestors 'none'
+```
+
+These were missing from the API layer (though already present on page responses). No admin configuration required.
+
+### Admin CSRF — Two Holes Closed
+
+1. **Primary admin CSRF** — admin state-changing endpoints now verify the CSRF token before acting, consistent with the rest of the application.
+2. **Rate-limits unblock endpoint** — a second CSRF hole on the rate-limit management endpoint was found and closed in the same cycle.
+
+No admin configuration required; both fixes are code-level.
+
+### SMTP Encryption-Before-AUTH (issue #24/#25)
+
+**What was wrong:** The SMTP provider would attempt `AUTH LOGIN` / `AUTH PLAIN` even if the connection had not yet been upgraded to TLS, risking credential exposure on the wire.
+
+**What was fixed:** The provider now enforces `STARTTLS` before issuing any AUTH command. If STARTTLS negotiation fails, the send is aborted and an error is logged.
+
+**Admin note:** Ensure your SMTP server supports STARTTLS. The `email.smtp.encryption` setting must be set to `tls` or `ssl`; a value of `none` will now cause AUTH to be skipped entirely (mail sent without authentication — only appropriate for localhost relay).
+
+### `email.xmailer` Setting
+
+The `X-Mailer` header is now suppressed when the `email.xmailer` setting is blank or absent. Previously a default value was always emitted, exposing the mailer software version. Set it explicitly if you want a custom value, or leave it blank (recommended for production).
+
+```sql
+-- Suppress X-Mailer header entirely (recommended)
+UPDATE tblSettings SET settingValue = '' WHERE settingKey = 'email.xmailer';
+```
+
+### Credential-Reset Authorisation Tightened (issues #27-#29)
+
+- Non-super-admin paths in the credential-reset API are now blocked at the controller level before any DB work is performed.
+- Result sets in the list/status endpoints are now bounded (pagination enforced) to prevent unbounded queries on large datasets.
+- Composite indexes added via migration `027_credential_reset_indexes.sql` for performance on large `tblCredentialResets` / `tblCredentialResetUsers` queries.
+
+Run migration 027 if not already applied:
+
+```bash
+mysql -u your_username -p signula < _database/migrations/027_credential_reset_indexes.sql
+```
+
+### 13 Deferred MEDIUM Issues (#22-#34) — Summary
+
+| Issue | Fix |
+| ----- | --- |
+| #22 Email recipient validation | Recipients validated before send; malformed addresses rejected |
+| #23 AMP sender allowlist | AMP `from` address checked against configured allowlist |
+| #24/#25 SMTP encryption-before-AUTH | See above |
+| #26 X-Mailer suppression | See `email.xmailer` above |
+| #27 Credential-reset authz | Non-super-admin blocked before DB access |
+| #28 Credential-reset pagination | Result sets bounded |
+| #29 Credential-reset indexes | Migration 027 adds composite indexes |
+| #30-#31 WebAuthn challenge TOCTOU | Atomic compare-and-set on challenge consumption |
+| #32-#34 Token URL-encoding | `urlencode()` applied at 4 sites where hex tokens appear in URLs (defensive) |
+
+All 13 are addressed on the `autopilot/2026-06-30` branch. They are not yet closed on GitHub (branch not yet pushed).
+
+### New Settings Reference
+
+| Setting key | Default | Purpose |
+| ----------- | ------- | ------- |
+| `api.cors.allowed_origins` | _(empty = same-origin only)_ | Comma-separated list of allowed CORS origins |
+| `email.xmailer` | _(empty)_ | Value for `X-Mailer` header; blank = suppress header |
+| `email.smtp.encryption` | `tls` | SMTP encryption mode (`tls`, `ssl`, `none`) |
+
+### Migrations Added
+
+| Migration | Purpose |
+| --------- | ------- |
+| `025_registration_fix.sql` | Adds missing `tblUsers.organizationID` column (fixes user registration) |
+| `026_mfa_columns.sql` | Adds missing MFA columns referenced by `MFA.php` |
+| `027_credential_reset_indexes.sql` | Composite indexes for credential-reset performance |
+| `028_multi_org_tables.sql` | Creates 6 multi-org tables required by `Organization.php` |
+| `029_enum_widening.sql` | Widens `activityCategory` ENUM to include all values written by the codebase |
+
+Apply in sequence after migration 024:
+
+```bash
+for f in 025 026 027 028 029; do
+  mysql -u your_username -p signula < _database/migrations/${f}_*.sql
+done
+```
+
+### NEEDS-LEAD-REVIEW
+
+- The exact SMTP behaviour when `email.smtp.encryption = 'none'` (mail sent without AUTH) should be confirmed against your Dreamhost shared-hosting relay config before deploying to production. Dreamhost typically requires authentication; `none` may cause all outbound mail to fail silently.
