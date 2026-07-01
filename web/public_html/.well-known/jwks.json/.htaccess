@@ -1,0 +1,39 @@
+# ============================================================================
+# 🔑 SIGNula - JWKS endpoint access rules  (.well-known/jwks.json/)
+# ============================================================================
+#
+# The site-root .htaccess forbids dot-directories and applies clean-URL
+# rewriting. This directory is literally named `jwks.json`, so a request to
+# `/.well-known/jwks.json` maps here and must serve index.php. We therefore:
+#   1. Explicitly ALLOW access (undo any inherited deny for dot-paths).
+#   2. Turn OFF the inherited RewriteEngine so no clean-URL rule mangles the
+#      request before DirectoryIndex serves index.php.
+#   3. Point DirectoryIndex at index.php.
+# ============================================================================
+
+# 1️⃣ Allow access to this directory + its index (Apache 2.2 and 2.4).
+<IfModule mod_authz_core.c>
+    # Apache 2.4+
+    Require all granted
+</IfModule>
+<IfModule !mod_authz_core.c>
+    # Apache 2.2
+    Order allow,deny
+    Allow from all
+</IfModule>
+
+# 2️⃣ Disable inherited rewriting inside this directory so index.php is served
+#    directly for /.well-known/jwks.json (no .php-append / dot-file rules run).
+<IfModule mod_rewrite.c>
+    RewriteEngine Off
+</IfModule>
+
+# 3️⃣ Serve index.php for the bare directory URL.
+DirectoryIndex index.php
+
+# 4️⃣ Public key material is JSON and cacheable; never framed.
+<IfModule mod_headers.c>
+    Header always set Content-Type "application/json; charset=utf-8"
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set Cache-Control "public, max-age=3600"
+</IfModule>

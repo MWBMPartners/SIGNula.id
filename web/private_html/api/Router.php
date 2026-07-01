@@ -287,6 +287,18 @@ class Router
 
                 $controllerInstance = new $controller();
 
+                // 🔌 Inject THIS router so controllers can read the request body /
+                //    query / route params / bearer token via BaseController's
+                //    $this->router. Without this, any controller method that calls
+                //    $this->input()/validate()/query()/requireAuth() fatals with
+                //    "Typed property BaseController::$router must not be accessed
+                //    before initialization" (the property is non-nullable and only
+                //    set here). Guarded by method_exists so a controller that does
+                //    not extend BaseController is unaffected.
+                if (method_exists($controllerInstance, 'setRouter')) {
+                    $controllerInstance->setRouter($this);
+                }
+
                 if (!method_exists($controllerInstance, $method)) {
                     throw new Exception("Method '$method' not found in controller '$controller'");
                 }

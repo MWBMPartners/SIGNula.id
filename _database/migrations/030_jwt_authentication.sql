@@ -165,7 +165,15 @@ VALUES
     ('jwt.leeway_seconds',        '60',                       'integer', 0, 'jwt', 'Clock-skew leeway for exp/nbf/iat (seconds)'),
     ('jwt.key_bits',              '3072',                     'integer', 0, 'jwt', 'RSA signing-key size in bits (2048 min, 3072 recommended)'),
     ('jwt.signing_key.active_kid','',                         'string',  0, 'jwt', 'kid of the current signing key (set by KeyManager)'),
-    ('jwt.auto_rotate_days',      '90',                       'integer', 0, 'jwt', 'Warn/auto-mint when the active signing key is older than this');
+    ('jwt.auto_rotate_days',      '90',                       'integer', 0, 'jwt', 'Warn/auto-mint when the active signing key is older than this'),
+    -- 🚦 Rate-limit policy for the credential-verifying token endpoints (G-003
+    --    Stage 3). Read by JwtAuthController via getSetting() (these are the
+    --    on-disk DEFAULTS the controller already falls back to; seeding them just
+    --    makes them admin-tunable). Window is shared by token + refresh limits.
+    ('jwt.rate_limit.window_seconds',        '900', 'integer', 0, 'jwt', 'Rate-limit window (seconds) for /auth/token and /auth/refresh'),
+    ('jwt.rate_limit.token_per_ip',          '30',  'integer', 0, 'jwt', 'Max /auth/token requests per IP per window'),
+    ('jwt.rate_limit.token_per_identifier',  '10',  'integer', 0, 'jwt', 'Max /auth/token requests per login identifier per window (credential-stuffing guard)'),
+    ('jwt.rate_limit.refresh_per_ip',        '60',  'integer', 0, 'jwt', 'Max /auth/refresh requests per IP per window');
 -- jwt.signing_key.<kid>.private_pem  (isSensitive=1, encrypted)  — inserted by KeyManager::generateKey()
 -- jwt.signing_key.<kid>.public_jwk   (isSensitive=0)             — inserted by KeyManager::generateKey()
 

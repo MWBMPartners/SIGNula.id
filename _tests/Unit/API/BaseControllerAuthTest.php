@@ -4,12 +4,17 @@
  * 🧪 BaseController Auth-Seam Characterization Tests (STABILIZE-2 safety net)
  * ============================================================================
  *
- * Pins the CURRENT API authentication seam in BaseController — the exact code
- * the JWT/OIDC build (G-003) will replace. The two behaviours that matter:
+ * Pins the API authentication seam in BaseController. The two behaviours that
+ * matter:
  *
- *   1. 🎫 getUserByToken() is a STUB that returns null today (JWT not wired in).
- *      The build will implement real JWT validation here; this test makes the
- *      change loud. (Pure: no database, exercised via reflection.)
+ *   1. 🎫 getUserByToken() FAILS CLOSED: an unverifiable / garbage bearer token
+ *      resolves to null (so requireAuth() emits a 401). G-003 Stage 3 replaced
+ *      the old `return null` stub with real JWT verification via
+ *      TokenService::verifyAccessToken(); this pure test exercises the seam
+ *      WITHOUT the JWT stack loaded, so the guard (TokenService unavailable →
+ *      null) and the verify-failure path (garbage token → null) both hold. The
+ *      full accept/reject-on-real-tokens behaviour is covered in the DB-backed
+ *      Integration/API/JwtAuthEndpointsTest.php. (Pure: no database, reflection.)
  *
  *   2. 🔒 requireAuth() emits a 401 (Response::unauthorized) when no user can be
  *      resolved. Because requireAuth() ultimately calls Response::* which does
@@ -65,23 +70,30 @@ class BaseControllerAuthTest extends TestCase
     }
 
     // ========================================================================
-    // 🎫 JWT STUB — getUserByToken() returns null today
+    // 🎫 JWT SEAM — getUserByToken() fails closed on an unverifiable token
     // ========================================================================
 
     /**
-     * getUserByToken() is an unimplemented stub: any token resolves to null.
+     * getUserByToken() FAILS CLOSED: a forged / garbage bearer token resolves to
+     * null so requireAuth() emits a 401.
      *
-     * ⚠️ This is the G-003 seam. When JWT auth is implemented this test MUST be
-     * updated deliberately — its failure is the signal that the stub is gone.
+     * This pure test runs WITHOUT the JWT stack (Jwt/KeyManager/TokenService)
+     * loaded, so the method hits its "TokenService unavailable → null" guard for
+     * an untrusted input — the exact safe default. A token forged with HS256 and
+     * a fake signature (the classic alg-confusion probe) must NEVER authenticate;
+     * here it returns null even before real verification, and the DB-backed
+     * Integration/API/JwtAuthEndpointsTest proves the full-stack rejection of
+     * tampered/expired/none/HS256 tokens against a real signing key.
      */
-    public function testGetUserByTokenReturnsNullStub(): void
+    public function testGetUserByTokenFailsClosedOnForgedToken(): void
     {
         $controller = new TestableBaseController();
 
         $ref = new ReflectionMethod(\BaseController::class, 'getUserByToken');
         $ref->setAccessible(true);
 
-        // A well-formed-looking JWT must still resolve to null today.
+        // A well-formed-LOOKING JWT (HS256 header, fake signature) must resolve
+        // to null — never authenticate a token we cannot cryptographically trust.
         $fakeJwt = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.signature';
         $this->assertNull($ref->invoke($controller, $fakeJwt));
         // An empty-ish / garbage token: also null.

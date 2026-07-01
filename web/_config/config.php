@@ -415,11 +415,15 @@ spl_autoload_register(function($className) {
         INCLUDES_DIR . DIRECTORY_SEPARATOR . 'security' . DIRECTORY_SEPARATOR . $className . '.php',
         INCLUDES_DIR . DIRECTORY_SEPARATOR . 'utils' . DIRECTORY_SEPARATOR . $className . '.php',
         INCLUDES_DIR . DIRECTORY_SEPARATOR . 'api' . DIRECTORY_SEPARATOR . $className . '.php',
+        // 🎮 API controllers (AuthController, JwtAuthController, UserController, …)
+        INCLUDES_DIR . DIRECTORY_SEPARATOR . 'api' . DIRECTORY_SEPARATOR . 'controllers' . DIRECTORY_SEPARATOR . $className . '.php',
         INCLUDES_DIR . DIRECTORY_SEPARATOR . 'email' . DIRECTORY_SEPARATOR . $className . '.php',
         INCLUDES_DIR . DIRECTORY_SEPARATOR . 'database' . DIRECTORY_SEPARATOR . $className . '.php',
         // 📂 Search private_html/ subdirectories (security classes, API middleware, auth, utils)
         ROOT_DIR . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'security' . DIRECTORY_SEPARATOR . $className . '.php',
         ROOT_DIR . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'api' . DIRECTORY_SEPARATOR . $className . '.php',
+        // 🎮 API controllers in the in-repo private_html layout
+        ROOT_DIR . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'api' . DIRECTORY_SEPARATOR . 'controllers' . DIRECTORY_SEPARATOR . $className . '.php',
         ROOT_DIR . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'auth' . DIRECTORY_SEPARATOR . $className . '.php',
         ROOT_DIR . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'utils' . DIRECTORY_SEPARATOR . $className . '.php',
         ROOT_DIR . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'email' . DIRECTORY_SEPARATOR . $className . '.php',
