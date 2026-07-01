@@ -315,6 +315,16 @@ class KeyManager
      */
     public static function getPrivateKey(string $kid): ?string
     {
+        // 🛡️ G-003 §7.2 (FIX 1 / kid-traversal): the kid is attacker-controlled
+        //    (it arrives verbatim from the JWT header). Reject anything that is
+        //    not a strict, path-safe kid BEFORE it is ever concatenated into a
+        //    filesystem path below. This fails closed — an invalid kid can never
+        //    reach the DB-miss → file-fallback branch, so it can neither be used
+        //    to read an arbitrary *.key on disk nor to forge a token.
+        if (!self::isValidKid($kid)) {
+            return null;
+        }
+
         // 1️⃣ Database (already decrypted for us by config.php loadSettings() in
         //    production; in the test/override path we decrypt here since the
         //    override stores the encrypted blob exactly as the DB would).
@@ -326,8 +336,10 @@ class KeyManager
             }
         }
 
-        // 2️⃣ `_private` key-file fallback.
-        $file = self::keyDir() . DIRECTORY_SEPARATOR . $kid . '.key';
+        // 2️⃣ `_private` key-file fallback. basename() is defence-in-depth on top
+        //    of the isValidKid() gate above — the kid is already known path-safe,
+        //    but this guarantees the read can NEVER escape keyDir().
+        $file = self::keyDir() . DIRECTORY_SEPARATOR . basename($kid) . '.key';
         if (is_file($file) && is_readable($file)) {
             $pem = file_get_contents($file);
             if ($pem !== false && self::looksLikePrivatePem($pem)) {
@@ -349,6 +361,17 @@ class KeyManager
      */
     public static function getPublicKey(string $kid): ?string
     {
+        // 🛡️ G-003 §7.2 (FIX 1 / kid-traversal): the kid comes straight from the
+        //    JWT header and is fully attacker-controlled. Reject any non-path-safe
+        //    kid BEFORE it is concatenated into a filesystem path in the fallback
+        //    branch below. Without this gate an unknown/traversal kid misses the
+        //    DB lookup and the file-fallback would read any `../`-reachable *.pub —
+        //    letting an attacker who can write a .pub anywhere on disk supply their
+        //    own public key and forge tokens that verify. Fail closed.
+        if (!self::isValidKid($kid)) {
+            return null;
+        }
+
         // 1️⃣ Reconstruct from the stored JWK (authoritative in DB).
         $jwkJson = self::readSetting('jwt.signing_key.' . $kid . '.public_jwk');
         if ($jwkJson !== null && $jwkJson !== '') {
@@ -361,8 +384,10 @@ class KeyManager
             }
         }
 
-        // 2️⃣ `_private` .pub file fallback.
-        $file = self::keyDir() . DIRECTORY_SEPARATOR . $kid . '.pub';
+        // 2️⃣ `_private` .pub file fallback. basename() is defence-in-depth on top
+        //    of the isValidKid() gate above — the kid is already known path-safe,
+        //    but this guarantees the read can NEVER escape keyDir().
+        $file = self::keyDir() . DIRECTORY_SEPARATOR . basename($kid) . '.pub';
         if (is_file($file) && is_readable($file)) {
             $pem = file_get_contents($file);
             if ($pem !== false && str_contains($pem, 'PUBLIC KEY')) {
@@ -626,8 +651,14 @@ class KeyManager
      */
     private static function deleteKeyFiles(string $kid): void
     {
+        // 🛡️ FIX 1 (kid-traversal): guard here too so a hostile kid can never
+        //    compose a traversal path into an @unlink(). basename() adds a second
+        //    layer even though the charset gate already rejects traversal.
+        if (!self::isValidKid($kid)) {
+            return;
+        }
         foreach (['.key', '.pub'] as $ext) {
-            $f = self::keyDir() . DIRECTORY_SEPARATOR . $kid . $ext;
+            $f = self::keyDir() . DIRECTORY_SEPARATOR . basename($kid) . $ext;
             if (is_file($f)) {
                 @unlink($f);
             }
@@ -774,6 +805,31 @@ class KeyManager
     private static function looksLikePrivatePem(string $s): bool
     {
         return str_contains($s, 'PRIVATE KEY');
+    }
+
+    /**
+     * 🛡️ Validate a `kid` before it is EVER used to compose a filesystem path.
+     *
+     * The kid arrives verbatim from the untrusted JWT header, so it must be
+     * treated as attacker-controlled input. A legitimate kid is minted by
+     * generateKey() as `date('Ym') . '-' . bin2hex(random_bytes(6))`
+     * (e.g. `202607-1a2b3c4d5e6f`) — all of which is inside this charset.
+     *
+     * Rules (fail closed):
+     *   • First char must be alphanumeric (no leading dot/dash/underscore —
+     *     blocks tricks like `.ssh`, `-rf`, `_x`).
+     *   • Remaining chars limited to [A-Za-z0-9._-] with a hard 128-char cap.
+     *   • Explicitly reject any occurrence of `..` (parent-dir traversal) even
+     *     though the charset alone already forbids `/`, `\`, NUL, etc.
+     *
+     * @param string $kid Candidate key id (from the JWT header or a caller).
+     * @return bool True only if the kid is strictly path-safe.
+     * @link https://owasp.org/www-community/attacks/Path_Traversal
+     */
+    private static function isValidKid(string $kid): bool
+    {
+        return preg_match('/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/', $kid) === 1
+            && !str_contains($kid, '..');
     }
 
     /**

@@ -287,17 +287,26 @@ abstract class BaseController
     private function getUserByApiKey(string $apiKey): ?array
     {
         try {
+            // 🔑 B-050 FIX: API keys are stored HASHED, never in plaintext.
+            //    APIKeyManager::createKey() persists hash('sha256', $apiKey) into
+            //    tblAPIKeys.keyHash (there is no `apiKey` column — the previous
+            //    `WHERE k.apiKey = ?` referenced a non-existent column AND compared
+            //    a plaintext value, so this lookup always failed). Match the same
+            //    keyHash pattern used by APIKeyManager::validateKey() and
+            //    UsageController so this fallback actually resolves a key.
+            $keyHash = hash('sha256', $apiKey);
+
             $query = "
                 SELECT u.*
                 FROM tblUsers u
                 INNER JOIN tblAPIKeys k ON u.userID = k.userID
-                WHERE k.apiKey = ?
+                WHERE k.keyHash = ?
                 AND k.isActive = 1
                 AND (k.expiresAt IS NULL OR k.expiresAt > NOW())
                 AND u.accountStatus = 'active'
             ";
 
-            $result = Database::query($query, [$apiKey], 's');
+            $result = Database::query($query, [$keyHash], 's');
 
             if ($result && $user = $result->fetch_assoc()) {
                 return $user;

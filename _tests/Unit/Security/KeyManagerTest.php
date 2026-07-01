@@ -241,6 +241,89 @@ class KeyManagerTest extends TestCase
     }
 
     /**
+     * 🛡️ FIX 1 (kid path traversal): a hostile `kid` must NEVER let the file
+     * fallback read a file outside keyDir.
+     *
+     * Reproduces the red-team PoC (rt_kid_e2e / rt_kid_path / rt_kid_priv): plant
+     * a decoy PEM-looking file OUTSIDE the key directory, then craft a `../`
+     * traversal kid that (pre-fix) resolved keyDir/<kid>.pub|.key to the decoy.
+     * With isValidKid() gating both getters, every hostile kid returns null and
+     * the arbitrary-file-read / token-forgery primitive is closed.
+     */
+    public function testHostileKidCannotTraverseOutOfKeyDir(): void
+    {
+        // Plant a decoy .pub and .key OUTSIDE the key dir (sibling temp dir).
+        $decoyDir = sys_get_temp_dir() . DIRECTORY_SEPARATOR
+            . 'signula_km_decoy_' . bin2hex(random_bytes(6));
+        @mkdir($decoyDir, 0700, true);
+        file_put_contents(
+            $decoyDir . DIRECTORY_SEPARATOR . 'evil.pub',
+            "-----BEGIN PUBLIC KEY-----\nEVILINJECTEDPUBLICKEY\n-----END PUBLIC KEY-----\n"
+        );
+        file_put_contents(
+            $decoyDir . DIRECTORY_SEPARATOR . 'evil.key',
+            "-----BEGIN PRIVATE KEY-----\nARBITRARYFILECONTENT\n-----END PRIVATE KEY-----\n"
+        );
+
+        // Build a traversal kid pointing at the decoy (absolute-ish traversal like
+        // the PoC), plus a set of other malicious/malformed kids.
+        $up = str_repeat('..' . DIRECTORY_SEPARATOR, 20);
+        $hostileKids = [
+            $up . ltrim($decoyDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'evil',
+            '../../etc/passwd',
+            '..\\..\\evil',
+            '.ssh',
+            '-rf',
+            'kid with spaces',
+            "nul\x00byte",
+            'a/b',
+            'x' . str_repeat('y', 200), // > 128 chars
+            '',
+        ];
+
+        foreach ($hostileKids as $kid) {
+            $this->assertNull(
+                \KeyManager::getPublicKey($kid),
+                'getPublicKey must reject hostile kid: ' . json_encode($kid)
+            );
+            $this->assertNull(
+                \KeyManager::getPrivateKey($kid),
+                'getPrivateKey must reject hostile kid: ' . json_encode($kid)
+            );
+        }
+
+        // 🧹 Clean up the decoy files.
+        @unlink($decoyDir . DIRECTORY_SEPARATOR . 'evil.pub');
+        @unlink($decoyDir . DIRECTORY_SEPARATOR . 'evil.key');
+        @rmdir($decoyDir);
+    }
+
+    /**
+     * 🛡️ FIX 1 sanity: a well-formed, legitimate kid (YYYYMM-<12 hex>) STILL
+     * passes the isValidKid() gate and resolves normally via the file fallback —
+     * the guard must not break the happy path.
+     */
+    public function testLegitimateKidStillPassesGuardViaFileFallback(): void
+    {
+        $kid = \KeyManager::generateKey(true);
+
+        // Confirm the real kid shape.
+        $this->assertMatchesRegularExpression('/^\d{6}-[0-9a-f]{12}$/', $kid);
+
+        // Wipe the DB rows so ONLY the file fallback (gated by isValidKid) can serve it.
+        \KeyManager::setStorageOverride([]);
+
+        $this->assertNotNull(
+            \KeyManager::getPublicKey($kid),
+            'a legit kid must still resolve via the guarded file fallback'
+        );
+        $this->assertNotNull(
+            \KeyManager::getPrivateKey($kid),
+            'a legit kid must still resolve via the guarded file fallback'
+        );
+    }
+
+    /**
      * The mirrored private-key file is created with 0600 permissions.
      */
     public function testPrivateKeyFilePermissions(): void
