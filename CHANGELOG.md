@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Advanced analytics and reporting dashboard
 - SIGNula as IdP — SAML 2.0 / OIDC provider (G-001, approved, not yet built)
 - Recurring billing engine with dunning (G-002, approved, not yet built)
-- JWT bearer-auth for API (G-003, approved, not yet built)
+- JWT bearer-auth for API (G-003, **shipped in v2.8.0-beta** — see below)
 - GDPR/compliance tooling — data export, right-to-erasure, consent log (G-004, approved, not yet built)
 
 ---
@@ -87,6 +87,32 @@ The automated hardening run on branch `autopilot/2026-06-30` discovered that sev
 - +48 characterisation tests added (cycles 3-4, 342 → 390 total).
 - Integration suite made reliable and runnable end-to-end (cycle 7); now 71 green / 0 failures (cycle 10).
 - Unit suite: 407 green / 0 warnings (cycle 8 onwards).
+
+---
+
+### Added - JWT Bearer Authentication for REST API (v2.8.0-beta, G-003)
+
+**JWT Bearer Authentication — RS256, JWKS, rotating refresh tokens, revocation (closes #41)**
+
+- `web/private_html/security/Jwt.php` — RS256 sign/verify facade over vendored `firebase/php-jwt` v6.x. Algorithm pinned to RS256 on both sign and verify; `alg:none` and RS256→HS256 confusion attacks are rejected by design (the `Key` object ties key and algorithm together before signature verification). `kid` emitted in the JWT header; denylist checker injectable for unit-test isolation. Single swap point for the underlying library.
+- `web/private_html/security/KeyManager.php` — RSA keypair lifecycle (`generateKey`, `rotateKey`, `retireKey`, `getActiveKey`, `getPublicKey`, `getJwks`). Private PEM stored AES-256-CBC encrypted (`isSensitive=1`) in `tblSettings`, with a `_private/keys/jwt/<kid>.key` (0600) file fallback. Public JWK stored unencrypted in `tblSettings` for cheap JWKS reads. `kid` validated against a strict charset before any filesystem use (path-traversal defence). In-memory storage override for unit tests (no DB required).
+- `web/private_html/security/TokenService.php` — Stateful token lifecycle: `issueTokens()` (new family), `refresh()` (single-use rotation + **reuse detection** — replaying a spent or revoked refresh token revokes the entire family and raises a `TYPE_SESSION_HIJACK` HIGH security alert), `revokeAccessJti()` (self-expiring denylist entry), `revokeFamily()`, `revokeAllForUser()` (bumps `tblUsers.tokensInvalidBefore`), `verifyAccessToken()` (wires denylist + `tokensInvalidBefore` cutoff). Refresh-token plaintext is returned once and never stored — only the SHA-256 hash persists (mirrors `tblAPIKeys.keyHash` / C5).
+- `web/private_html/api/controllers/JwtAuthController.php` — HTTP surface: `POST /api/v1/auth/token` (session bootstrap or email+password grant; MFA gate; per-IP + per-identifier rate limiting), `POST /api/v1/auth/refresh` (rotation; per-IP rate limiting), `POST /api/v1/auth/revoke` (RFC 7009 shape; idempotent 200). `userID` is **always** resolved from a server-verified identity — no client-supplied `sub` ever reaches token issuance. `Cache-Control: no-store` on all token responses.
+- `web/public_html/.well-known/jwks.json/index.php` — JWKS public-key document. Unauthenticated; `Cache-Control: public, max-age=3600`. Strips any private JWK component (`d`, `p`, `q`, `dp`, `dq`, `qi`) as a defence-in-depth measure before output. Shared contract for G-001 relying parties.
+- `web/_lib/jwt/src/` — Vendored `firebase/php-jwt` v6.x source (MIT licence, zero runtime Composer deps). Version pinned in `web/_lib/jwt/VERSION`; loaded via `require_once` with `file_exists()` guards per house style.
+- `_database/migrations/030_jwt_authentication.sql` — New tables `tblRefreshTokens` (rotating, family-based; SHA-256 hashed) and `tblRevokedTokens` (self-expiring `jti` denylist). New column `tblUsers.tokensInvalidBefore` (mass-revocation lever). 14 `jwt.*` policy settings seeded via `INSERT IGNORE`. Daily `cleanup_jwt_tokens` MySQL EVENT purges expired denylist rows.
+- `BaseController::getUserByToken()` stub replaced with full implementation: `Jwt::verify()` + `sub` user load + `accountStatus` + `tokensInvalidBefore` check. Sets `auth_method='jwt'`, `scope`, and `jti` on `currentUser`. API-key and session auth paths unchanged (regression-safe).
+- OpenAPI spec (`web/public_html/api/docs/openapi.yaml`) updated with `POST /auth/token`, updated `POST /auth/refresh`, `POST /auth/revoke`, `GET /.well-known/jwks.json`, and new schemas (`JwtTokenRequest`, `JwtTokenResponse`, `JwtRefreshRequest`, `JwtRefreshResponse`, `JwtRevokeRequest`, `JwksResponse`, `JwksKey`).
+
+**Security — red-team hardening (G-003 §7, closes #41)**
+
+- Algorithm pinned (`alg:none` rejected; RS256→HS256 confusion rejected) — highest-priority defence per CVE class.
+- `kid` injection blocked — `kid` from JWT header used only to select from our own JWKS set; `isValidKid()` rejects non-path-safe values before any filesystem concatenation.
+- Refresh-token reuse detection — family-wide revocation on replay; raises `SecurityAlertManager::TYPE_SESSION_HIJACK` HIGH alert.
+- `jti` denylist with self-expiring rows — bounded table size (access TTL ≤ 15 min).
+- `tokensInvalidBefore` mass-revocation lever on `tblUsers` — "log out everywhere" without enumerating jtis.
+- No token material (access tokens, refresh tokens, signing keys, `Authorization` header) in any log output.
+- Windowed rate limiting on `/auth/token` (per-IP + per-identifier) and `/auth/refresh` (per-IP) using existing `SecurityUtils::checkRateLimit()`.
 
 ---
 

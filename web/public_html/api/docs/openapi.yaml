@@ -132,6 +132,26 @@ tags:
     description: |
       Webhook event reference and signature verification guide.
       Partners can configure webhook endpoints via the dashboard or Partner API.
+  - name: JWT Auth
+    description: |
+      RS256 JWT bearer-token issuance, rotation, and revocation for SPA and mobile
+      clients (G-003). Endpoints issue short-lived RS256 access tokens (15 min, typ
+      `at+jwt`) and long-lived opaque rotating refresh tokens (30 days, single-use
+      with automatic reuse detection).
+
+      **Key properties:**
+      - Algorithm pinned to RS256; `alg:none` and RS256→HS256 confusion attacks rejected.
+      - Refresh-token rotation is single-use: replaying a spent or revoked refresh token
+        revokes the entire token family and triggers a security alert.
+      - Access-token revocation via a self-expiring `jti` denylist (`tblRevokedTokens`).
+      - Public signing keys published at `GET /.well-known/jwks.json` (shared contract
+        with G-001 relying parties).
+
+      **Client token storage guidance:**
+      - Access token: keep in memory; do not persist to `localStorage`.
+      - Refresh token: store in an `httpOnly; Secure; SameSite=Strict` cookie or
+        OS-level secure storage. Never `localStorage`.
+      - Transmit over HTTPS only.
 
 # ============================================================================
 # Security Schemes
@@ -1193,6 +1213,201 @@ components:
         meta:
           $ref: "#/components/schemas/Meta"
 
+    # -- JWT Auth schemas (G-003) ---------------------------------------------
+
+    JwtTokenRequest:
+      type: object
+      description: |
+        Request body for `POST /auth/token`. Two grants are accepted (in precedence order):
+
+        1. **Session grant** — no body needed; an existing authenticated browser session
+           bootstraps a JWT pair.
+        2. **Password grant** — supply `email` (or `username`) and `password`. On MFA-required
+           a `401` with `mfa_required: true` is returned; complete MFA before retrying.
+      properties:
+        email:
+          type: string
+          format: email
+          description: User email address (password grant). Accepts `username` as an alias.
+          example: "john@example.com"
+        username:
+          type: string
+          description: Username alias for `email` (password grant).
+          example: "johndoe"
+        password:
+          type: string
+          format: password
+          description: User password (password grant). Never logged.
+          example: "SecurePass123!"
+        scope:
+          type: string
+          description: >
+            Space-delimited requested scope subset. Silently restricted to
+            `user:read user:write`. Omit to receive the full default set.
+          example: "user:read user:write"
+
+    JwtTokenResponse:
+      type: object
+      description: Successful token issuance response from `POST /auth/token` or `POST /auth/refresh`.
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "Token issued"
+        data:
+          type: object
+          required:
+            - access_token
+            - token_type
+            - expires_in
+            - refresh_token
+            - scope
+          properties:
+            access_token:
+              type: string
+              description: >
+                RS256 JWT access token. Header carries `typ: at+jwt` (RFC 9068) and `kid`.
+                Lifetime controlled by `jwt.access_ttl` setting (default 900 s / 15 min).
+              example: "eyJhbGciOiJSUzI1NiIsInR5cCI6ImF0K2p3dCIsImtpZCI6IjIwMjYwNy0xYTJiM2M0ZCJ9..."
+            token_type:
+              type: string
+              enum: [Bearer]
+              example: "Bearer"
+            expires_in:
+              type: integer
+              description: Access-token lifetime in seconds.
+              example: 900
+            refresh_token:
+              type: string
+              description: >
+                Opaque, high-entropy (256-bit) refresh token. Single-use: consumed on
+                the next `POST /auth/refresh`, which issues a new pair. Never log or
+                store in localStorage.
+              example: "a3f8c2d1e4b5..."
+            scope:
+              type: string
+              description: Space-delimited scopes granted.
+              example: "user:read user:write"
+        meta:
+          $ref: "#/components/schemas/Meta"
+
+    JwtMfaRequiredResponse:
+      type: object
+      description: >
+        Returned by `POST /auth/token` when the supplied credentials are correct but
+        MFA verification is required before tokens are issued. Complete the MFA step
+        via the existing MFA endpoints, then retry `POST /auth/token`.
+      properties:
+        success:
+          type: boolean
+          example: false
+        message:
+          type: string
+          example: "MFA verification required"
+        data:
+          type: object
+          properties:
+            mfa_required:
+              type: boolean
+              example: true
+        meta:
+          $ref: "#/components/schemas/Meta"
+
+    JwtRefreshRequest:
+      type: object
+      required:
+        - refresh_token
+      description: Request body for `POST /auth/refresh`.
+      properties:
+        refresh_token:
+          type: string
+          description: >
+            The opaque refresh token received from the most recent `POST /auth/token`
+            or `POST /auth/refresh`. Single-use: the presented token is invalidated and
+            a new pair is returned. Replaying a spent token revokes the entire family.
+          example: "a3f8c2d1e4b5..."
+
+    JwtRevokeRequest:
+      type: object
+      description: >
+        RFC 7009 revocation request. Supply a `token` in the body, or omit it to revoke
+        the caller's own Bearer access token from the Authorization header.
+      properties:
+        token:
+          type: string
+          description: The token to revoke (access JWT or opaque refresh token).
+          example: "eyJhbGciOiJSUzI1NiIs..."
+        token_type_hint:
+          type: string
+          enum: [access_token, refresh_token]
+          description: >
+            Optional hint for faster processing. If omitted, the server infers the type
+            from the token shape (three dot-delimited segments = access; 64 lowercase
+            hex chars = refresh).
+          example: "access_token"
+
+    JwksKey:
+      type: object
+      description: A single RSA public JWK entry in the JWKS document.
+      required:
+        - kty
+        - use
+        - alg
+        - kid
+        - "n"
+        - e
+      properties:
+        kty:
+          type: string
+          enum: [RSA]
+          example: "RSA"
+        use:
+          type: string
+          enum: [sig]
+          description: Key use — always `sig` (signature verification).
+          example: "sig"
+        alg:
+          type: string
+          enum: [RS256]
+          description: Algorithm — always RS256.
+          example: "RS256"
+        kid:
+          type: string
+          description: Key ID. Matches the `kid` header in access-token JWTs.
+          example: "202607-1a2b3c4d5e6f"
+        "n":
+          type: string
+          description: RSA modulus, base64url-encoded (RFC 7518 §6.3.1).
+          example: "0vx7agoebGcQSuuPiLJXZp..."
+        e:
+          type: string
+          description: RSA public exponent, base64url-encoded.
+          example: "AQAB"
+
+    JwksResponse:
+      type: object
+      description: >
+        JSON Web Key Set (RFC 7517). Published at `GET /.well-known/jwks.json`.
+        Contains all currently-valid RS256 public keys (active plus recently-retired keys
+        still covering live tokens). Used by verifiers to validate SIGNula JWT signatures
+        without holding a shared secret. No private key material is ever included.
+      required:
+        - keys
+      properties:
+        keys:
+          type: array
+          items:
+            $ref: "#/components/schemas/JwksKey"
+          example:
+            - kty: "RSA"
+              use: "sig"
+              alg: "RS256"
+              kid: "202607-1a2b3c4d5e6f"
+              n: "0vx7agoebGcQSuuPiLJXZp..."
+              e: "AQAB"
+
   # --------------------------------------------------------------------------
   # Reusable Parameters
   # --------------------------------------------------------------------------
@@ -1531,33 +1746,193 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /auth/token:
+    post:
+      tags: [JWT Auth]
+      operationId: issueJwtToken
+      summary: Issue JWT bearer tokens
+      description: |
+        Issue a short-lived RS256 access token and a long-lived opaque refresh token.
+
+        Two grants are accepted (in precedence order):
+
+        1. **Session grant** — an existing authenticated browser session (cookie). No
+           body required. The SPA calls this to bootstrap a token from its session.
+        2. **Password grant** — `email` (or `username`) + `password`. Internally
+           verified via `Auth::login()` — lockout, account-status, and MFA gate all
+           apply. On MFA-required, a `401` with `mfa_required: true` is returned;
+           complete MFA, then retry.
+
+        The token `sub` (userID) is **always** resolved from a server-verified identity.
+        No client-supplied `sub` or `userID` ever reaches token issuance.
+
+        **Token properties:**
+        - Access token: RS256 JWT, `typ: at+jwt` (RFC 9068), `kid` header, default
+          15-min lifetime (`jwt.access_ttl`), `scope` claim.
+        - Refresh token: 256-bit opaque string, single-use rotating, 30-day default
+          lifetime (`jwt.refresh_ttl`). Only its SHA-256 hash is stored server-side.
+
+        **Security headers on response:** `Cache-Control: no-store`, `Pragma: no-cache`.
+
+        **Rate limits:**
+        - Per IP: `jwt.rate_limit.token_per_ip` / `jwt.rate_limit.window_seconds`
+          (default 30 / 15 min).
+        - Per identifier: `jwt.rate_limit.token_per_identifier` / window
+          (default 10 / 15 min). Credential-stuffing guard.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JwtTokenRequest"
+            examples:
+              password_grant:
+                summary: Email + password
+                value:
+                  email: "john@example.com"
+                  password: "SecurePass123!"
+                  scope: "user:read user:write"
+              session_grant:
+                summary: Session bootstrap (no body needed)
+                value: {}
+      responses:
+        "200":
+          description: Tokens issued successfully
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: "no-store"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JwtTokenResponse"
+        "401":
+          description: |
+            Invalid credentials, account locked/suspended, or MFA required.
+            When MFA is required, `data.mfa_required` is `true`.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - $ref: "#/components/schemas/JwtMfaRequiredResponse"
+              examples:
+                invalid_credentials:
+                  summary: Wrong email or password
+                  value:
+                    success: false
+                    message: "Invalid credentials"
+                mfa_required:
+                  summary: MFA verification required
+                  value:
+                    success: false
+                    message: "MFA verification required"
+                    data:
+                      mfa_required: true
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /auth/revoke:
+    post:
+      tags: [JWT Auth]
+      operationId: revokeJwtToken
+      summary: Revoke access or refresh token (RFC 7009)
+      description: |
+        Revoke an access token (adds its `jti` to the self-expiring denylist) and/or
+        revoke a refresh token family.
+
+        **RFC 7009 semantics:** always returns `200` — revocation is idempotent and
+        must not leak whether the token was valid.
+
+        **What gets revoked:**
+        - Body `token` with `token_type_hint: access_token` (or JWT shape) → access-token
+          `jti` denylisted until the token's original `exp`.
+        - Body `token` with `token_type_hint: refresh_token` (or 64-char hex shape) →
+          entire refresh-token family revoked.
+        - No body token → the caller's own Bearer access token (from `Authorization`
+          header) is denylisted.
+
+        Only tokens the caller presents are revoked — there is no cross-user revocation
+        on this endpoint.
+      security:
+        - BearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JwtRevokeRequest"
+            examples:
+              revoke_access:
+                summary: Revoke an access token
+                value:
+                  token: "eyJhbGciOiJSUzI1NiIs..."
+                  token_type_hint: "access_token"
+              revoke_refresh:
+                summary: Revoke a refresh token family
+                value:
+                  token: "a3f8c2d1e4b5..."
+                  token_type_hint: "refresh_token"
+      responses:
+        "200":
+          description: Revocation accepted (always — per RFC 7009 §2.2)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessMessage"
+              example:
+                success: true
+                message: "Token revoked"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
   /auth/refresh:
     post:
-      tags: [Authentication]
+      tags: [Authentication, JWT Auth]
       operationId: refreshToken
-      summary: Refresh access token
+      summary: Rotate refresh token (JWT)
       description: |
-        Exchange a valid refresh token for a new access token.
-        The refresh token itself is not rotated on each call.
+        Exchange a valid opaque refresh token for a new RS256 access token + refresh
+        token pair. **Single-use rotation** — the presented refresh token is invalidated
+        atomically and a new pair (same rotation family) is returned.
+
+        **Reuse detection:** replaying an already-spent or revoked refresh token revokes
+        the entire token family, raises a HIGH security alert, and returns `401`. Both
+        the attacker and the legitimate client are logged out.
+
+        **Rate limit:** `jwt.rate_limit.refresh_per_ip` requests per
+        `jwt.rate_limit.window_seconds` per IP (default 60 / 15 min).
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/RefreshRequest"
+              $ref: "#/components/schemas/JwtRefreshRequest"
       responses:
         "200":
-          description: Token refreshed
+          description: New access + refresh token pair issued
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/RefreshResponse"
-        "401":
-          description: Invalid or expired refresh token
+                $ref: "#/components/schemas/JwtTokenResponse"
+        "400":
+          description: Missing `refresh_token` field
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: >
+            Invalid, expired, or reused refresh token. Reason is not disclosed
+            (no validity signal per RFC 7009 principles). On reuse, the entire
+            token family is revoked server-side.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          $ref: "#/components/responses/RateLimited"
 
   /auth/verify-email:
     get:
@@ -3129,6 +3504,70 @@ paths:
   # ==========================================================================
   # Webhook endpoints are configured via the partner dashboard.
   # This section documents the event types and payload format.
+
+  # ==========================================================================
+  # JWT AUTH — JWKS (public signing keys, well-known path)
+  # ==========================================================================
+
+  /.well-known/jwks.json:
+    get:
+      tags: [JWT Auth]
+      operationId: getJwks
+      summary: JSON Web Key Set (public signing keys)
+      description: |
+        Returns the public JWK Set (RFC 7517) for SIGNula's JWT signing keys.
+        Use this endpoint to fetch the RS256 public key(s) needed to **verify**
+        SIGNula access tokens without holding any shared secret.
+
+        **Key properties:**
+        - Contains all currently-valid public keys: the active key plus any recently
+          rotated key still within the maximum access-token TTL window.
+        - Only public RSA components (`kty`, `use`, `alg`, `kid`, `n`, `e`) are
+          published. Private key material is never included.
+        - No authentication required — public verifiability is the design intent.
+        - Cacheable: `Cache-Control: public, max-age=3600`. Verifiers should refetch
+          on encountering an unknown `kid` in a token header.
+
+        **Shared contract with G-001:** this endpoint is the foundation for future
+        OIDC/OAuth 2.0 relying-party integrations. The JWK structure is stable.
+
+        **Verifying a token (example with `firebase/php-jwt`):**
+        ```php
+        $jwks = json_decode(file_get_contents('https://signulo.id/.well-known/jwks.json'), true);
+        $keySet = Firebase\JWT\JWK::parseKeySet($jwks);
+        $claims = Firebase\JWT\JWT::decode($accessToken, $keySet);
+        ```
+      security: []
+      responses:
+        "200":
+          description: Public JWKS document
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: "public, max-age=3600"
+            X-Content-Type-Options:
+              schema:
+                type: string
+                example: "nosniff"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JwksResponse"
+              example:
+                keys:
+                  - kty: "RSA"
+                    use: "sig"
+                    alg: "RS256"
+                    kid: "202607-1a2b3c4d5e6f"
+                    n: "0vx7agoebGcQSuuPiLJXZp..."
+                    e: "AQAB"
+        "405":
+          description: Method not allowed (only GET and HEAD are accepted)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
 # ============================================================================
 # Webhook Event Catalogue (x-webhooks extension for documentation)

@@ -1030,6 +1030,297 @@ for f in 025 026 027 028 029; do
 done
 ```
 
+---
+
+## 🔑 JWT API Authentication (G-003)
+
+**Introduced in:** v2.8.0-beta · **Migration:** `030_jwt_authentication.sql`
+**Source files:**
+- `web/private_html/security/Jwt.php` — RS256 sign/verify facade (alg-pinned)
+- `web/private_html/security/KeyManager.php` — RSA keypair lifecycle, JWKS assembly
+- `web/private_html/security/TokenService.php` — issuance, rotation, reuse detection, revocation
+- `web/private_html/api/controllers/JwtAuthController.php` — HTTP endpoints
+- `web/public_html/.well-known/jwks.json/index.php` — JWKS public-key document
+
+---
+
+### Overview
+
+G-003 provides **RS256 JWT bearer authentication** for the SIGNula REST API, giving
+SPAs and mobile apps a short-lived, cryptographically verifiable access token plus a
+rotating opaque refresh token. It coexists with the existing API-key (`X-API-Key`) and
+browser-session paths; it does not replace them.
+
+The implementation is built on a locally-vendored `firebase/php-jwt` v6.x (placed in
+`web/_lib/jwt/src/`), wrapped by a thin project-owned `Jwt` facade that enforces
+SIGNula token policy. Composer is **not** required at runtime — all files are loaded
+via `require_once` with `file_exists()` guards, matching the established `_lib/`
+pattern.
+
+---
+
+### 1. Policy Settings (`jwt.*` in `tblSettings`)
+
+All policy settings are seeded by migration 030 (`INSERT IGNORE`) and are
+admin-tunable via the backend settings UI without code changes.
+
+| `settingKey` | Default | Type | Sensitive | Notes |
+|---|---|---|---|---|
+| `jwt.enabled` | `1` | boolean | no | Master switch — set to `0` to disable JWT bearer auth entirely |
+| `jwt.issuer` | `https://signula.id` | string | no | `iss` claim; verified on every decode |
+| `jwt.audience` | `https://signula.id/api` | string | no | Default `aud` claim for first-party API tokens |
+| `jwt.algorithm` | `RS256` | string | no | Signing algorithm — RS256 only; HS256/none are rejected |
+| `jwt.access_ttl` | `900` | integer | no | Access-token lifetime in seconds (default 15 min) |
+| `jwt.refresh_ttl` | `2592000` | integer | no | Refresh-token lifetime in seconds (default 30 days, sliding via rotation) |
+| `jwt.leeway_seconds` | `60` | integer | no | Clock-skew tolerance for `exp`/`nbf`/`iat` — keep small (60 s max recommended) |
+| `jwt.key_bits` | `3072` | integer | no | RSA key size (2048 min; 3072 default for longevity) |
+| `jwt.signing_key.active_kid` | _(empty)_ | string | no | `kid` of the current signing key; set by `KeyManager::generateKey()` |
+| `jwt.auto_rotate_days` | `90` | integer | no | Warn/auto-mint a new key when the active key is older than this |
+| `jwt.rate_limit.window_seconds` | `900` | integer | no | Rate-limit window (seconds) shared by `/auth/token` and `/auth/refresh` |
+| `jwt.rate_limit.token_per_ip` | `30` | integer | no | Max `/auth/token` requests per IP per window |
+| `jwt.rate_limit.token_per_identifier` | `10` | integer | no | Max `/auth/token` requests per login identifier per window (credential-stuffing guard) |
+| `jwt.rate_limit.refresh_per_ip` | `60` | integer | no | Max `/auth/refresh` requests per IP per window |
+
+The two signing-key rows are **NOT seeded by the migration** — they are written at
+runtime by `KeyManager::generateKey()`:
+
+| `settingKey` pattern | Sensitive | Description |
+|---|---|---|
+| `jwt.signing_key.<kid>.private_pem` | **YES** (`isSensitive=1`) | AES-256-CBC-encrypted private-key PEM |
+| `jwt.signing_key.<kid>.public_jwk` | no | JSON-encoded public JWK (`{kty,use,alg,kid,n,e}`) served by the JWKS endpoint |
+
+#### Quick-reference SQL snippet (check current state)
+
+```sql
+SELECT settingKey, settingValue, isSensitive
+FROM tblSettings
+WHERE settingKey LIKE 'jwt.%'
+ORDER BY settingKey;
+```
+
+---
+
+### 2. RS256 Signing Keys — Generation, Storage, and Rotation
+
+#### 2.1 Key Storage Model
+
+Private keys are stored using a **DB-first, `_private`-file fallback** pattern that
+mirrors how `ENCRYPTION_KEY` lives in `web/_private/auth.php`:
+
+1. **Primary (tblSettings, encrypted):** `KeyManager::generateKey()` calls
+   `SecurityUtils::encrypt()` (AES-256-CBC, random IV per call) and stores the
+   encrypted PEM in `tblSettings` with `isSensitive=1`. The per-call random IV
+   provides per-row confidentiality — no additional per-row salt is needed.
+   `ENCRYPTION_KEY` (from `_private/auth.php`) encrypts the signing private key at
+   rest; it does **not** sign tokens.
+
+2. **Fallback (`_private` key files):** `KeyManager` mirrors the plaintext private and
+   public PEM to `web/_private/keys/jwt/<kid>.key` and `<kid>.pub` (directory `0700`,
+   files `0600`, outside the web root). This fallback is used when the DB row is absent
+   or unreadable, providing operational resilience on Dreamhost shared hosting.
+
+Public keys are **not sensitive** and are stored in `tblSettings` (`isSensitive=0`)
+as JSON-encoded JWKs so the JWKS endpoint is a cheap read.
+
+**Important:** `ENCRYPTION_KEY` and the JWT signing key are distinct secrets.
+`ENCRYPTION_KEY` encrypts the signing key at rest; the signing private key signs tokens.
+
+#### 2.2 Generating the First Key (Admin Action)
+
+Before any tokens can be issued, an operator must generate the first signing keypair.
+This is done via `KeyManager::generateKey()`, which can be called from the admin UI
+or a one-time setup script:
+
+```php
+// _scripts/generate_jwt_key.php  (run once, from the web root, NOT web-accessible)
+define('SIGNULA_INIT', true);
+require_once dirname(__DIR__) . DIRECTORY_SEPARATOR . 'web' . DIRECTORY_SEPARATOR
+    . '_config' . DIRECTORY_SEPARATOR . 'config.php';
+
+$kid = KeyManager::generateKey(makeActive: true);
+echo "Generated signing key kid: {$kid}\n";
+echo "Set jwt.signing_key.active_kid = {$kid} in tblSettings\n";
+```
+
+After running, verify in the database:
+
+```sql
+-- Confirm the active kid is set
+SELECT settingKey, settingValue FROM tblSettings
+WHERE settingKey IN ('jwt.signing_key.active_kid')
+   OR settingKey LIKE 'jwt.signing_key.%.public_jwk';
+
+-- Confirm the private key row is marked sensitive
+SELECT settingKey, isSensitive FROM tblSettings
+WHERE settingKey LIKE 'jwt.signing_key.%.private_pem';
+-- isSensitive MUST be 1 for that row
+```
+
+Also verify the `_private` key files were mirrored:
+
+```bash
+ls -la web/_private/keys/jwt/
+# Expected: <kid>.key (0600) and <kid>.pub (0600) in a 0700 directory
+```
+
+#### 2.3 Key Rotation
+
+Routine rotation should be performed every `jwt.auto_rotate_days` days (default 90).
+
+**Procedure:**
+
+1. **Generate a new key** (while keeping the old one active):
+   ```php
+   $newKid = KeyManager::rotateKey(); // mints a new key AND promotes it to active
+   ```
+   `rotateKey()` is an alias for `generateKey(makeActive: true)`. The old key's
+   **public JWK stays in the JWKS document** so tokens signed by it continue to verify
+   until they expire (access tokens: ≤15 min; allow slightly longer for clock skew).
+
+2. **Verify the rotation:**
+   ```sql
+   SELECT settingValue FROM tblSettings WHERE settingKey = 'jwt.signing_key.active_kid';
+   -- Must show the new kid
+   ```
+   Also verify `GET /.well-known/jwks.json` returns both the old and new public keys.
+
+3. **Retire the old key** (after all tokens signed by it have expired):
+   ```php
+   KeyManager::retireKey($oldKid); // removes public JWK from JWKS; deletes encrypted private PEM
+   ```
+   Do **not** retire a key until `now > rotation_time + jwt.access_ttl + jwt.leeway_seconds`.
+   For the default 15-min access TTL + 60-s leeway, wait at least 16 minutes after
+   rotation before retiring. In practice, waiting 30–60 minutes is safer.
+
+4. **Confirm retirement:**
+   ```sql
+   SELECT COUNT(*) FROM tblSettings
+   WHERE settingKey LIKE 'jwt.signing_key.<old_kid>.%';
+   -- Must return 0 rows
+   ```
+
+**Emergency rotation (suspected key compromise):**
+
+1. Run `KeyManager::rotateKey()` immediately to generate a new active key.
+2. Run `KeyManager::retireKey($compromisedKid)` to drop the compromised key from JWKS.
+   Tokens signed by it will now **fail to verify immediately** (unknown `kid`), acting
+   as an instant revocation for all outstanding access tokens signed by that key.
+3. Run `TokenService::revokeAllForUser($userID)` for any users whose tokens are
+   believed to be compromised — this also bumps `tblUsers.tokensInvalidBefore`.
+4. Ensure the incident is logged in `tblAdminAuditLog`.
+
+---
+
+### 3. JWKS Endpoint (`GET /.well-known/jwks.json`)
+
+`KeyManager::getJwks()` assembles `{ "keys": [ {kty, use, alg, kid, n, e}, ... ] }`
+from every `jwt.signing_key.*.public_jwk` row in `tblSettings`. Only public RSA keys
+are published; the handler strips any JWK carrying a private exponent (`d`, `p`, `q`,
+`dp`, `dq`, `qi`) as a defence-in-depth measure before output.
+
+The endpoint is:
+- **Unauthenticated** — public verifiability is the entire point.
+- **Cacheable** — `Cache-Control: public, max-age=3600`. Verifiers refetch on
+  encountering an unknown `kid`.
+- Served by `web/public_html/.well-known/jwks.json/index.php` (a directory literally
+  named `jwks.json`; the co-located `.htaccess` permits the dot-path and disables
+  the API router rewriting inside `.well-known/`).
+
+This endpoint is the **shared contract with G-001** (SIGNula as IdP). Do not change
+the JWK structure without a compatibility review.
+
+---
+
+### 4. Security Properties Enforced
+
+| Property | Mechanism |
+|---|---|
+| **Algorithm pinned to RS256** | `Jwt::verify()` builds a `Firebase\JWT\Key($publicPem, 'RS256')` object. The library rejects any token whose header `alg` ≠ the key's algorithm **before** checking the signature. `alg:none` is rejected (the library has no `none` handler). The RS256→HS256 confusion attack (RSA public key used as HMAC secret) is rejected because the key type and algorithm are tied together in the `Key` object. The `Jwt` facade **never reads `alg` from the token header to choose the verification path.** |
+| **`kid` validation** | The `kid` from the JWT header is used only to select a key from SIGNula's own JWKS. `KeyManager::isValidKid()` validates the `kid` against a strict charset (`[A-Za-z0-9._-]`, max 128 chars, no `..`) before any filesystem or DB use — prevents path traversal and SQL injection via `kid`. Unknown `kid` → reject. |
+| **`iss` and `aud` validation** | Every decode verifies `iss == jwt.issuer` and `aud` contains the expected audience string. Constant-time compare (`hash_equals()`) used throughout. |
+| **Clock-skew leeway** | `jwt.leeway_seconds` (default 60 s) applied to `exp`/`nbf`/`iat`. The leeway is capped at the configured value; a large leeway is a configuration problem, not a code change. |
+| **`jti` denylist (access-token revocation)** | `Jwt::verify()` accepts an injectable denylist checker. `TokenService::verifyAccessToken()` wires `TokenService::isJtiRevoked()` into this checker so every verify hits `tblRevokedTokens` (indexed, self-expiring; rows purged after `expiresAt < NOW()`). |
+| **Refresh-token single-use rotation** | `TokenService::refresh()` spends the presented token with an atomic `UPDATE ... SET rotatedAt=NOW() WHERE tokenID=? AND rotatedAt IS NULL AND revoked=0` and reads `getAffectedRows()`. Exactly one concurrent refresh wins; the loser is treated as reuse. |
+| **Refresh-token reuse detection → family revoke** | If a rotated or revoked refresh token is replayed, `TokenService::handleReuse()` sets `revoked=1` for all rows in the family, raises a `SecurityAlertManager::TYPE_SESSION_HIJACK` HIGH alert, and logs to `tblActivityLog`. The client receives a generic 401 with no reason. |
+| **`tokensInvalidBefore` mass revocation** | `tblUsers.tokensInvalidBefore` (added by migration 030) lets an admin or "log out everywhere" flow bump a user-level cutoff. `TokenService::verifyAccessToken()` rejects any access token whose `iat` is before this cutoff, without needing to enumerate jtis. |
+| **No token material in logs** | Access tokens, refresh tokens, signing keys, and the `Authorization` header are **never** logged. Only `jti`, `userID`, `kid`, and outcome are recorded in `tblActivityLog`/`tblErrorLog`. |
+| **`Cache-Control: no-store` on token responses** | Set by `JwtAuthController::sendNoStore()` before every token issuance/rotation response so intermediaries never cache tokens. |
+| **Windowed rate limiting** | `/auth/token` is rate-limited per-IP (`jwt.rate_limit.token_per_ip`) **and** per-identifier (`jwt.rate_limit.token_per_identifier`). `/auth/refresh` is rate-limited per-IP (`jwt.rate_limit.refresh_per_ip`). Uses the existing `SecurityUtils::checkRateLimit()` infrastructure. |
+| **Subject from server-verified identity only** | `JwtAuthController::resolveSubject()` obtains the `userID` exclusively from `Auth::isAuthenticated()` (session) or `Auth::login()` (password grant). No client-supplied `userID`/`sub` ever reaches token issuance. |
+
+---
+
+### 5. Token Client Storage Guidance (for API integrators)
+
+Document this for integrators — not enforced server-side:
+
+- **Access token** — store in memory (JS variable); do not persist to `localStorage` or
+  `sessionStorage`.
+- **Refresh token** — store in an `httpOnly; Secure; SameSite=Strict` cookie (browser)
+  or in secure OS-level key storage (native apps). **Never** store in `localStorage`.
+- **HTTPS** — tokens must only be transmitted over HTTPS. The production
+  `.htaccess` HTTPS-force must be enabled before go-live.
+
+---
+
+### 6. Migration 030 — Summary
+
+```
+File: _database/migrations/030_jwt_authentication.sql
+```
+
+| Object | Type | Notes |
+|---|---|---|
+| `tblRefreshTokens` | New table | Rotating, family-based refresh tokens; SHA-256 hash only (plaintext never stored) |
+| `tblRevokedTokens` | New table | Self-expiring `jti` denylist for revoked access tokens |
+| `tblUsers.tokensInvalidBefore` | New column (nullable DATETIME) | User-level mass-revocation lever |
+| `jwt.*` settings (14 rows) | `INSERT IGNORE` into `tblSettings` | Policy defaults; signing-key rows inserted at runtime by `KeyManager` |
+| `cleanup_jwt_tokens` | Daily MySQL EVENT | Purges `tblRevokedTokens WHERE expiresAt < NOW()` to keep the denylist bounded |
+
+Apply after migration 029:
+
+```bash
+mysql -u your_username -p signula < _database/migrations/030_jwt_authentication.sql
+```
+
+Verify:
+
+```sql
+-- All three should return 1
+SELECT COUNT(*) FROM information_schema.TABLES
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN ('tblRefreshTokens','tblRevokedTokens');
+
+SELECT COUNT(*) FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tblUsers'
+  AND COLUMN_NAME = 'tokensInvalidBefore';
+
+-- Should return 14 jwt.* rows
+SELECT COUNT(*) FROM tblSettings WHERE settingKey LIKE 'jwt.%';
+```
+
+---
+
+### 7. Vendored Library (`firebase/php-jwt`)
+
+`web/_lib/jwt/src/` contains the vendored source of `firebase/php-jwt` v6.x (MIT
+licence). The version is pinned in `web/_lib/jwt/VERSION`.
+
+**Updating the library (dev machine, Composer available):**
+
+```bash
+php composer require firebase/php-jwt:^6.10
+# Copy the updated source files:
+cp vendor/firebase/php-jwt/src/*.php web/_lib/jwt/src/
+# Update the version marker:
+echo "6.10.x" > web/_lib/jwt/VERSION
+```
+
+**Subscribe to security advisories** for `firebase/php-jwt` at
+https://github.com/firebase/php-jwt/security/advisories and the GitHub Security
+Advisory Database (GHSA). Update promptly for any JWT-related CVE.
+
+---
+
 ### NEEDS-LEAD-REVIEW
 
 - The exact SMTP behaviour when `email.smtp.encryption = 'none'` (mail sent without AUTH) should be confirmed against your Dreamhost shared-hosting relay config before deploying to production. Dreamhost typically requires authentication; `none` may cause all outbound mail to fail silently.
