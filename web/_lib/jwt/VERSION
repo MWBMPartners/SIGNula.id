@@ -1,0 +1,40 @@
+firebase/php-jwt 6.11.1
+=======================
+
+Vendored (source-only, no Composer runtime) from:
+  https://github.com/firebase/php-jwt/releases/tag/v6.11.1
+
+Vendored on: 2026-07-01
+Licence:     BSD-3-Clause (see LICENSE)
+PHP require: ^8.0 (project runs 8.4) — depends only on ext-openssl, ext-json,
+             ext-mbstring (all present on Dreamhost shared hosting).
+
+Files vendored under src/ (7 files):
+  JWT.php                             — encode()/decode(), alg allow-listing via Key
+  Key.php                             — (keyMaterial, algorithm) pair — the alg pin
+  JWK.php                             — parseKeySet()/parseKey() for JWKS consumers
+  BeforeValidException.php            — nbf/iat-in-future
+  ExpiredException.php                — exp-in-past
+  SignatureInvalidException.php       — bad signature
+  JWTExceptionWithPayloadInterface.php— implemented by the two payload exceptions
+
+Files DELIBERATELY NOT vendored:
+  CachedKeySet.php  — pulls in psr/cache + psr/http-client + psr/http-factory,
+                      none of which are needed (SIGNula serves its own JWKS from
+                      tblSettings; it never fetches a remote JWKS). JWT::getKey()
+                      guards it with `instanceof CachedKeySet`, which safely
+                      evaluates to false when the class is absent (verified), so
+                      omitting it changes no behaviour for our single-Key /
+                      Key-array decode paths.
+
+⚠️ SECURITY MAINTENANCE: this is security-critical crypto. Track upstream
+   advisories at https://github.com/firebase/php-jwt/security/advisories and the
+   GHSA feed, and bump this vendored copy when a fixed release ships. Record the
+   new version here and in _docs/setup/SECURITY_SETUP.md.
+
+How it is loaded (no Composer autoload in prod):
+  web/private_html/security/JwtLibLoader.php require_once's these files
+  explicitly (with file_exists() guards) in dependency order. The project-owned
+  facade web/private_html/security/Jwt.php is the ONLY class the rest of the
+  codebase calls — Firebase\JWT\* is never referenced directly outside the
+  loader/facade/KeyManager.
