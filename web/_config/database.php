@@ -47,6 +47,21 @@ class Database
     /** @var bool Connection status */
     private static bool $connected = false;
 
+    /**
+     * @var int Rows affected by the most recent query().
+     *
+     * 🐛 B-040 fix: query() closes the mysqli_stmt (line ~247) before any caller
+     * can inspect it. Under mysqlnd, reading $connection->affected_rows AFTER a
+     * prepared statement is closed returns -1, NOT the real count — so any
+     * getAffectedRows() call (e.g. verifyChallenge()'s atomic 0→1 compare-and-set,
+     * B-030) saw -1 and treated a perfectly valid single-row UPDATE as "0 rows /
+     * failed". We therefore capture $stmt->affected_rows INSIDE query() while the
+     * statement is still open and surface it via getAffectedRows().
+     *
+     * @see https://www.php.net/manual/en/mysqli-stmt.affected-rows.php
+     */
+    private static int $lastAffectedRows = 0;
+
     /** @var array Connection statistics */
     private static array $stats = [
         'queries' => 0,
@@ -240,6 +255,12 @@ class Database
             // 📊 Get result
             $result = $stmt->get_result();
 
+            // 📊 Capture affected rows WHILE the statement is still open. After
+            //    $stmt->close() the connection's affected_rows reads back as -1
+            //    under mysqlnd, so getAffectedRows() must return this snapshot,
+            //    not $connection->affected_rows. (B-040 — see $lastAffectedRows.)
+            self::$lastAffectedRows = $stmt->affected_rows;
+
             // 📈 Update statistics
             self::$stats['queries']++;
             self::$stats['execution_time'] += (microtime(true) - $startTime);
@@ -405,7 +426,10 @@ class Database
      */
     public static function getAffectedRows(): int
     {
-        return self::getConnection()->affected_rows;
+        // 🐛 B-040: return the count captured inside query() BEFORE the statement
+        //    was closed. Reading $connection->affected_rows here would return -1
+        //    for the (now-closed) prepared statement under mysqlnd.
+        return self::$lastAffectedRows;
     }
 
     /**
