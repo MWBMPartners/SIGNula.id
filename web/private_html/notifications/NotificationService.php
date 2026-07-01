@@ -182,11 +182,18 @@ class NotificationService
                 $notificationID = Database::getLastInsertId();
 
                 // 📋 Log the notification creation to the activity log
+                // 🔧 B-043: ActivityLogger::log signature is
+                //    (userID, activityType, category, severity, description).
+                //    Previously the description sat in the category slot and
+                //    'success' in the severity slot — both truncated under
+                //    STRICT_ALL_TABLES. Corrected to category 'account' +
+                //    severity 'info' with the message in the description arg.
                 ActivityLogger::log(
                     $userID,
                     'notification_created',
-                    'Notification created: [' . $type . '] ' . $title,
-                    'success'
+                    'account',
+                    'info',
+                    'Notification created: [' . $type . '] ' . $title
                 );
 
                 return (int) $notificationID;
@@ -418,11 +425,14 @@ class NotificationService
 
             // 📋 Log the bulk action
             if ($affectedRows > 0) {
+                // 🔧 B-043: corrected arg order — category 'account', severity
+                //    'info', message moved to the description parameter.
                 ActivityLogger::log(
                     $userID,
                     'notifications_marked_read',
-                    'Marked ' . $affectedRows . ' notification(s) as read',
-                    'success'
+                    'account',
+                    'info',
+                    'Marked ' . $affectedRows . ' notification(s) as read'
                 );
             }
 
@@ -463,11 +473,13 @@ class NotificationService
             Database::query($sql, [$notificationID, $userID], 'ii');
 
             // 📋 Log the archive action
+            // 🔧 B-043: corrected arg order — category 'account', severity 'info'.
             ActivityLogger::log(
                 $userID,
                 'notification_archived',
-                'Archived notification #' . $notificationID,
-                'success'
+                'account',
+                'info',
+                'Archived notification #' . $notificationID
             );
 
             return true;
@@ -505,11 +517,13 @@ class NotificationService
             Database::query($sql, [$notificationID, $userID], 'ii');
 
             // 📋 Log the deletion
+            // 🔧 B-043: corrected arg order — category 'account', severity 'info'.
             ActivityLogger::log(
                 $userID,
                 'notification_deleted',
-                'Deleted notification #' . $notificationID,
-                'success'
+                'account',
+                'info',
+                'Deleted notification #' . $notificationID
             );
 
             return true;
@@ -564,11 +578,15 @@ class NotificationService
 
             // 📋 Log the cleanup results if any notifications were removed
             if ($totalDeleted > 0) {
+                // 🔧 B-043: corrected arg order — system-level cleanup so
+                //    category 'system', severity 'info', message in description.
                 ActivityLogger::log(
-                    0, // System-level action (no specific user)
+                    null, // System-level action (no specific user; NULL, not 0,
+                          // so the userID FK to tblUsers is satisfied)
                     'notification_cleanup',
-                    'Cleaned up ' . $totalDeleted . ' expired/old notification(s)',
-                    'success'
+                    'system',
+                    'info',
+                    'Cleaned up ' . $totalDeleted . ' expired/old notification(s)'
                 );
             }
 

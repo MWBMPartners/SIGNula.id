@@ -565,7 +565,12 @@ class WebAuthnHandler
                         (int)$credential['userID'],
                         'login',
                         'authentication',
-                        'high',
+                        // 🔧 B-043: severity ENUM is
+                        //    ('info','notice','warning','error','critical') — 'high'
+                        //    is not a member and truncated to '' under
+                        //    STRICT_ALL_TABLES. A clone-detection reject is a
+                        //    security warning, so use the canonical 'warning'.
+                        'warning',
                         'WebAuthn sign-count regression (possible cloned authenticator)',
                         [
                             'result'        => 'failure',
@@ -604,7 +609,9 @@ class WebAuthnHandler
                         (int)$credential['userID'],
                         'login',
                         'authentication',
-                        'high',
+                        // 🔧 B-043: 'high' is not a valid severity ENUM member
+                        //    (see note above) — use canonical 'warning'.
+                        'warning',
                         'WebAuthn sign-count compare-and-set lost race (possible cloned authenticator)',
                         [
                             'result'         => 'failure',

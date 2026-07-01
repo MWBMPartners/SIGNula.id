@@ -148,7 +148,11 @@ class MFA
             $provisioningUri = TOTP::getProvisioningUri($secret, $accountName, $issuer);
 
             // 📊 Log activity
-            ActivityLogger::log($userID, 'mfa_totp_setup_started', 'User started TOTP setup');
+            // 🔧 B-043: signature is (userID, activityType, category, severity,
+            //    description). Previously the description sat in the category
+            //    slot and truncated to '' under STRICT_ALL_TABLES. MFA is a
+            //    security-domain event → category 'security'.
+            ActivityLogger::log($userID, 'mfa_totp_setup_started', 'security', 'info', 'User started TOTP setup');
 
             return [
                 'success' => true,
@@ -203,7 +207,9 @@ class MFA
             // ✅ Verify TOTP code
             if (!TOTP::verifyCode($secret, $code)) {
                 // 📊 Log failed verification
-                ActivityLogger::log($userID, 'mfa_totp_verification_failed', 'Failed TOTP verification attempt');
+                // 🔧 B-043: corrected arg order — category 'security',
+                //    severity 'warning' (a failed verification attempt).
+                ActivityLogger::log($userID, 'mfa_totp_verification_failed', 'security', 'warning', 'Failed TOTP verification attempt');
 
                 return ['success' => false, 'message' => 'Invalid verification code'];
             }
@@ -219,7 +225,8 @@ class MFA
             );
 
             // 📊 Log successful activation
-            ActivityLogger::log($userID, 'mfa_totp_activated', 'TOTP authentication activated successfully');
+            // 🔧 B-043: corrected arg order — category 'security', severity 'info'.
+            ActivityLogger::log($userID, 'mfa_totp_activated', 'security', 'info', 'TOTP authentication activated successfully');
 
             return [
                 'success' => true,
@@ -264,9 +271,11 @@ class MFA
 
             // 📊 Log verification attempt
             if ($isValid) {
-                ActivityLogger::log($userID, 'mfa_totp_verified', 'TOTP code verified successfully');
+                // 🔧 B-043: corrected arg order — category 'security', severity 'info'.
+                ActivityLogger::log($userID, 'mfa_totp_verified', 'security', 'info', 'TOTP code verified successfully');
             } else {
-                ActivityLogger::log($userID, 'mfa_totp_failed', 'Invalid TOTP code entered');
+                // 🔧 B-043: corrected arg order — category 'security', severity 'warning'.
+                ActivityLogger::log($userID, 'mfa_totp_failed', 'security', 'warning', 'Invalid TOTP code entered');
             }
 
             return $isValid;
@@ -335,7 +344,8 @@ class MFA
 
             // 📊 Log activity
             $action = $regenerate ? 'mfa_backup_codes_regenerated' : 'mfa_backup_codes_generated';
-            ActivityLogger::log($userID, $action, 'Backup codes ' . ($regenerate ? 'regenerated' : 'generated'));
+            // 🔧 B-043: corrected arg order — category 'security', severity 'info'.
+            ActivityLogger::log($userID, $action, 'security', 'info', 'Backup codes ' . ($regenerate ? 'regenerated' : 'generated'));
 
             // ✅ Return plain codes (display to user only once!)
             return $backupCodes;
@@ -388,7 +398,8 @@ class MFA
                     );
 
                     // 📊 Log usage
-                    ActivityLogger::log($userID, 'mfa_backup_code_used', 'Backup code used successfully');
+                    // 🔧 B-043: corrected arg order — category 'security', severity 'info'.
+                    ActivityLogger::log($userID, 'mfa_backup_code_used', 'security', 'info', 'Backup code used successfully');
 
                     // ⚠️ Check remaining codes and warn if low
                     $remaining = Database::fetchOne(
@@ -399,7 +410,9 @@ class MFA
 
                     if ($remaining['count'] < 3) {
                         // 🚨 Log warning about low backup codes
-                        ActivityLogger::log($userID, 'mfa_backup_codes_low', "Only {$remaining['count']} backup codes remaining");
+                        // 🔧 B-043: corrected arg order — category 'security',
+                        //    severity 'warning' (low remaining backup codes).
+                        ActivityLogger::log($userID, 'mfa_backup_codes_low', 'security', 'warning', "Only {$remaining['count']} backup codes remaining");
                     }
 
                     return true;
@@ -407,7 +420,8 @@ class MFA
             }
 
             // 📊 Log failed attempt
-            ActivityLogger::log($userID, 'mfa_backup_code_failed', 'Invalid backup code entered');
+            // 🔧 B-043: corrected arg order — category 'security', severity 'warning'.
+            ActivityLogger::log($userID, 'mfa_backup_code_failed', 'security', 'warning', 'Invalid backup code entered');
 
             return false;
 
@@ -507,7 +521,8 @@ class MFA
             }
 
             // 📊 Log activity
-            ActivityLogger::log($userID, 'mfa_email_otp_sent', 'Email OTP sent to ' . $user['email']);
+            // 🔧 B-043: corrected arg order — category 'security', severity 'info'.
+            ActivityLogger::log($userID, 'mfa_email_otp_sent', 'security', 'info', 'Email OTP sent to ' . $user['email']);
 
             return [
                 'success' => true,
@@ -550,7 +565,8 @@ class MFA
             $tokens = Database::fetchAll($query, [$userID], 'i');
 
             if (empty($tokens)) {
-                ActivityLogger::log($userID, 'mfa_email_otp_failed', 'No valid email OTP found');
+                // 🔧 B-043: corrected arg order — category 'security', severity 'warning'.
+                ActivityLogger::log($userID, 'mfa_email_otp_failed', 'security', 'warning', 'No valid email OTP found');
                 return false;
             }
 
@@ -572,14 +588,16 @@ class MFA
                     );
 
                     // 📊 Log success
-                    ActivityLogger::log($userID, 'mfa_email_otp_verified', 'Email OTP verified successfully');
+                    // 🔧 B-043: corrected arg order — category 'security', severity 'info'.
+                    ActivityLogger::log($userID, 'mfa_email_otp_verified', 'security', 'info', 'Email OTP verified successfully');
 
                     return true;
                 }
             }
 
             // 📊 Log failure
-            ActivityLogger::log($userID, 'mfa_email_otp_failed', 'Invalid email OTP entered');
+            // 🔧 B-043: corrected arg order — category 'security', severity 'warning'.
+            ActivityLogger::log($userID, 'mfa_email_otp_failed', 'security', 'warning', 'Invalid email OTP entered');
 
             return false;
 
@@ -667,7 +685,9 @@ class MFA
             );
 
             // 📊 Log activity
-            ActivityLogger::log($userID, 'mfa_method_disabled', "MFA method '{$method}' disabled");
+            // 🔧 B-043: corrected arg order — category 'security',
+            //    severity 'warning' (disabling an MFA method reduces protection).
+            ActivityLogger::log($userID, 'mfa_method_disabled', 'security', 'warning', "MFA method '{$method}' disabled");
 
             return true;
 
@@ -728,7 +748,8 @@ class MFA
             );
 
             // 📊 Log activity
-            ActivityLogger::log($userID, 'mfa_device_trusted', 'Device marked as trusted');
+            // 🔧 B-043: corrected arg order — category 'security', severity 'info'.
+            ActivityLogger::log($userID, 'mfa_device_trusted', 'security', 'info', 'Device marked as trusted');
 
             return true;
 

@@ -654,7 +654,10 @@ class CredentialResetService
         $baseURL = getSetting('site.url', 'https://SIGNula.id');
         $appName = getSetting('app.name', 'SIGNula');
         $supportUrl = $baseURL . '/support';
-        $resetUrl = $baseURL . '/reset-password?token=' . $token;
+        // 🔒 B-039: rawurlencode() the token in the query string (hardening;
+        //    no-op for current hex tokens, safe against future formats, no
+        //    double-encoding since hex is unchanged by rawurlencode()).
+        $resetUrl = $baseURL . '/reset-password?token=' . rawurlencode($token);
         $expiryTime = (new DateTime())->modify("+{$expiryHours} hours")->format('d M Y \a\t H:i T');
 
         // 🎯 Choose template based on reset type

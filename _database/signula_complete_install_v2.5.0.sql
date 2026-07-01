@@ -458,7 +458,12 @@ CREATE TABLE IF NOT EXISTS `tblActivityLog` (
     `userID` BIGINT UNSIGNED NULL COMMENT 'Reference to tblUsers (NULL for system events)',
     `sessionID` BIGINT UNSIGNED NULL COMMENT 'Reference to tblUserSessions',
     `activityType` VARCHAR(100) NOT NULL COMMENT 'Activity type (e.g., login, logout, registration, password_change)',
-    `activityCategory` ENUM('auth', 'account', 'security', 'payment', 'api', 'admin', 'system', 'other') NOT NULL DEFAULT 'other' COMMENT 'Activity category',
+    -- 🏷️ B-043/B-037: ENUM widened to accept the additional semantically-valid
+    --    categories that in-production ActivityLogger::log() callers already
+    --    write ('authentication','organization','billing','email','webhooks',
+    --    'api_keys'). Kept in sync with migration 029. Original members retained
+    --    in position so this is a strict superset (additive, non-destructive).
+    `activityCategory` ENUM('auth', 'account', 'security', 'payment', 'api', 'admin', 'system', 'other', 'authentication', 'organization', 'billing', 'email', 'webhooks', 'api_keys') NOT NULL DEFAULT 'other' COMMENT 'Activity category',
     `severity` ENUM('info', 'notice', 'warning', 'error', 'critical') NOT NULL DEFAULT 'info' COMMENT 'Log severity level',
     `description` TEXT NULL COMMENT 'Activity description',
     `metadata` TEXT NULL COMMENT 'Additional activity data (JSON)',

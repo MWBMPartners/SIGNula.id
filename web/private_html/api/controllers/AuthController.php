@@ -101,8 +101,11 @@ class AuthController extends BaseController
             Database::query($tokenQuery, [$userId, $tokenHash, $expiresAt], 'iss');
 
             // 📧 Send verification email
+            // 🔒 B-039: rawurlencode() the token in the query string (hardening;
+            //    a no-op for the current hex tokens, safe against future formats,
+            //    no double-encoding since hex is unchanged by rawurlencode()).
             $verificationLink = getSetting('app.url', 'https://SIGNula.id')
-                . '/api/v1/auth/verify-email?token=' . $token;
+                . '/api/v1/auth/verify-email?token=' . rawurlencode($token);
 
             EmailService::sendTemplate(
                 $data['email'],
@@ -395,8 +398,11 @@ class AuthController extends BaseController
             Database::query($tokenQuery, [$user['userID'], $tokenHash, $expiresAt], 'iss');
 
             // 📧 Send reset email
+            // 🔒 B-039: rawurlencode() the token in the query string (hardening;
+            //    no-op for current hex tokens, safe against future formats, no
+            //    double-encoding since hex is unchanged by rawurlencode()).
             $resetLink = getSetting('app.url', 'https://SIGNula.id')
-                . '/auth/reset-password?token=' . $token;
+                . '/auth/reset-password?token=' . rawurlencode($token);
 
             EmailService::sendTemplate(
                 $user['email'],

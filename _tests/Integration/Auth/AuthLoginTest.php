@@ -45,8 +45,24 @@ class AuthLoginTest extends DatabaseTestCase
 {
     /**
      * Tables to truncate before each test
+     *
+     * 🔧 B-043 (hermeticity): tblRateLimits MUST be included. Auth::login()
+     *    rate-limits by client IP via SecurityUtils::checkRateLimit(), which
+     *    reads/writes tblRateLimits through the Database SINGLETON connection —
+     *    a DIFFERENT connection from the one DatabaseTestCase wraps in a
+     *    rolled-back transaction. Those rate-limit rows are therefore committed
+     *    autonomously and are NOT undone by tearDown()'s rollback, so under
+     *    PHPUnit's random execution order they accumulate for the fixed test IP
+     *    (127.0.0.1) across tests until the 'login' bucket exceeds maxAttempts.
+     *    Once that happens, subsequent logins short-circuit with
+     *    "Too many login attempts" BEFORE credential validation, causing
+     *    testFailedLoginIncrementsAttemptCount / testAccountLockoutAfterMaxAttempts
+     *    / testLoginWithSuspendedAccount to fail order-dependently. Truncating
+     *    tblRateLimits per test (TRUNCATE is DDL → implicit cross-connection
+     *    commit, so it clears the singleton's committed rows too) makes each
+     *    test hermetic without weakening any assertion.
      */
-    protected array $truncateTables = ['tblUsers', 'tblActivityLog', 'tblUserSessions'];
+    protected array $truncateTables = ['tblUsers', 'tblActivityLog', 'tblUserSessions', 'tblRateLimits'];
 
     /**
      * Default test password used across tests
