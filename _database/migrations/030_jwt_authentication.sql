@@ -60,8 +60,8 @@
 -- @see web/private_html/security/Jwt.php          (reads jwt.* policy settings)
 -- ============================================================================
 
--- Use the signula database
-USE signula;
+-- (No `USE <db>;` — migrations apply to the connected/target DB via the runner,
+--  wizard, and setup_test_db.sh; a hardcoded USE mis-targets non-`signula` DBs.)
 
 -- ============================================================================
 -- 1️⃣ Refresh tokens (rotating, family-based, reuse-detected)

@@ -109,6 +109,15 @@ perl -0777 -pe 's/CREATE DATABASE IF NOT EXISTS `signula`.*?;//s; s/^USE `signul
 # 3️⃣ Apply post-installer migrations (014 and above) in numeric order.
 #    Migrations 001..013 are already baked into the consolidated installer;
 #    014_security_enhancements.sql onwards are applied on top (see header note).
+#
+#    ⚠️ Some migrations begin with `USE `signula`;` (e.g. 030_jwt_authentication).
+#       If a REAL `signula` database co-exists on the dev machine, that directive
+#       silently redirects the migration's DDL into `signula` instead of the
+#       throwaway `${DB_NAME}` — the tables get created in the WRONG database and
+#       the test DB is left missing them. We therefore strip the DB-selection
+#       line from each migration before piping it in (exactly as step 2️⃣ already
+#       does for the consolidated installer), so a migration's objects always land
+#       in `${DB_NAME}` regardless of what other databases exist locally.
 echo "3️⃣  Applying post-installer migrations (014+) ..."
 for num in $(seq -w 14 99); do
     for migration in "${MIGRATIONS_DIR}"/0${num}_*.sql; do
@@ -116,7 +125,12 @@ for num in $(seq -w 14 99); do
         [[ -f "${migration}" ]] || continue
         base="$(basename "${migration}")"
         echo "   → ${base}"
-        "${MYSQL_STRICT[@]}" "${DB_NAME}" < "${migration}"
+        # 🎯 Strip any `USE `signula`;` / `USE signula;` line so the migration
+        #    targets ${DB_NAME} (the connection is already scoped to it).
+        TMP_MIGRATION="$(mktemp -t signula_migration.XXXXXX.sql)"
+        perl -pe 's/^\s*USE\s+`?signula`?\s*;\s*$//i;' "${migration}" > "${TMP_MIGRATION}"
+        "${MYSQL_STRICT[@]}" "${DB_NAME}" < "${TMP_MIGRATION}"
+        rm -f "${TMP_MIGRATION}"
     done
 done
 
