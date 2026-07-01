@@ -21,10 +21,19 @@
 #        tblEmailQueue, tblEmailTemplates, tblUserSessions and
 #        tblVerificationTokens (restored during B-033) — with internally
 #        consistent BIGINT identity columns and valid MySQL 8/9 syntax.
-#     3. Apply the post-installer migrations (015..) in numeric order. Migrations
-#        001..014 are baked into the installer; 015+ add the newer feature
-#        tables (usage billing, notifications, i18n, webhooks, etc.) and apply
-#        cleanly on top.
+#     3. Apply the post-installer migrations (014..) in numeric order. Migrations
+#        001..013 are baked into the installer; 014_security_enhancements.sql and
+#        015+ add the newer feature tables (IP reputation / blocked IPs / security
+#        alerts, usage billing, notifications, i18n, webhooks, organizations, etc.)
+#        and apply cleanly on top.
+#
+#   ⚠️ B-041 (cycle 11): the loop below starts at 014, NOT 015. Only 001..013 are
+#      actually baked into the consolidated installer — 014's five security tables
+#      (tblIPReputationCache, tblBlockedIPs, tblSecurityAlerts,
+#      tblSessionFingerprints, tblCircuitBreaker) are NOT baked, so starting the
+#      loop at 015 previously left them out of the test DB. This mirrors the
+#      install-wizard path, which records 001..013 as completed (skipping them) and
+#      applies 014+ on top.
 #
 #   The previous incarnation of this script loaded the v1.0 archive base schema,
 #   dropped installer-owned tables, hot-patched the WebAuthn + email tables and
@@ -97,10 +106,11 @@ perl -0777 -pe 's/CREATE DATABASE IF NOT EXISTS `signula`.*?;//s; s/^USE `signul
     "${INSTALLER}" > "${TMP_INSTALLER}"
 "${MYSQL_STRICT[@]}" "${DB_NAME}" < "${TMP_INSTALLER}"
 
-# 3️⃣ Apply post-v2.5.0 migrations (015 and above) in numeric order.
-#    Migrations 001..014 are already baked into the consolidated installer.
-echo "3️⃣  Applying post-v2.5.0 migrations (015+) ..."
-for num in $(seq -w 15 99); do
+# 3️⃣ Apply post-installer migrations (014 and above) in numeric order.
+#    Migrations 001..013 are already baked into the consolidated installer;
+#    014_security_enhancements.sql onwards are applied on top (see header note).
+echo "3️⃣  Applying post-installer migrations (014+) ..."
+for num in $(seq -w 14 99); do
     for migration in "${MIGRATIONS_DIR}"/0${num}_*.sql; do
         # Guard against the no-match literal glob
         [[ -f "${migration}" ]] || continue

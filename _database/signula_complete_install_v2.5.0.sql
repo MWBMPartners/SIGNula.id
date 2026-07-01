@@ -785,11 +785,43 @@ INSERT INTO `tblSettings` (`settingKey`, `settingValue`, `settingType`, `setting
 -- 📋 MIGRATION RECORDS
 -- ============================================================================
 
--- Record migrations included in this install
+-- 🧩 [B-041 fix] Seed tblMigrations with EVERY migration whose schema this
+--    consolidated installer already bakes in (migrations 001–013 — all 17 files,
+--    including the duplicate-numbered ones). The install wizard
+--    (web/public_html/install/index.php → handleAjaxRunMigration) SKIPS any
+--    migration whose FILENAME is already recorded here as status='completed':
+--        SELECT migrationID FROM tblMigrations WHERE migrationName=? AND status='completed'
+--    …where `?` is the migration file's BASENAME (e.g. '001_email_system_upgrade.sql').
+--    Recording the canonical FILENAMES (not friendly aliases) makes the wizard skip
+--    001–013 on a fresh install instead of RE-APPLYING their already-baked schema,
+--    which previously produced ~44 "table/column/key already exists" errors.
+--
+--    ⚠️ Only 001–013 are baked in. Migration 014_security_enhancements.sql and all
+--    015+ feature migrations are NOT baked here, so they are deliberately LEFT OUT
+--    of this seed — the wizard must still apply them on top. (Notably, the MFA/admin
+--    tblUsers columns that 005/009 could not add cleanly are backfilled later by
+--    025_user_mfa_flags.sql, which the wizard still runs.)
+--
+--    ON DUPLICATE KEY UPDATE keeps this idempotent if the installer is ever re-run.
 INSERT INTO `tblMigrations` (`migrationName`, `migrationDescription`, `appliedBy`, `status`) VALUES
-('001_initial_schema', 'Initial database schema with core tables', 'system', 'completed'),
-('002_webauthn_passkeys', 'WebAuthn/PassKey support (Phase 1.5)', 'system', 'completed'),
-('003_oauth_multi_account_support', 'OAuth multi-account enhancement with accountType and emailDomain', 'system', 'completed');
+('001_email_system_upgrade.sql',        'Baked into consolidated installer v2.5.0', 'installer', 'completed'),
+('002_email_ab_testing.sql',            'Baked into consolidated installer v2.5.0', 'installer', 'completed'),
+('003_email_drip_campaigns.sql',        'Baked into consolidated installer v2.5.0', 'installer', 'completed'),
+('003_oauth_multi_account_support.sql', 'Baked into consolidated installer v2.5.0', 'installer', 'completed'),
+('004_contact_submissions.sql',         'Baked into consolidated installer v2.5.0', 'installer', 'completed'),
+('004_email_recurring_schedules.sql',   'Baked into consolidated installer v2.5.0', 'installer', 'completed'),
+('005_blog_system.sql',                 'Baked into consolidated installer v2.5.0', 'installer', 'completed'),
+('005_webauthn_passkeys.sql',           'Baked into consolidated installer v2.5.0', 'installer', 'completed'),
+('006_delegate_mailbox_support.sql',    'Baked into consolidated installer v2.5.0', 'installer', 'completed'),
+('006_support_system.sql',              'Baked into consolidated installer v2.5.0', 'installer', 'completed'),
+('007_rate_limiting.sql',               'Baked into consolidated installer v2.5.0', 'installer', 'completed'),
+('008_partner_api_keys.sql',            'Baked into consolidated installer v2.5.0', 'installer', 'completed'),
+('009_multi_tier_admin.sql',            'Baked into consolidated installer v2.5.0', 'installer', 'completed'),
+('010_webhooks_and_payments.sql',       'Baked into consolidated installer v2.5.0', 'installer', 'completed'),
+('011_payment_providers.sql',           'Baked into consolidated installer v2.5.0', 'installer', 'completed'),
+('012_payment_expansion.sql',           'Baked into consolidated installer v2.5.0', 'installer', 'completed'),
+('013_kofi_patreon_providers.sql',      'Baked into consolidated installer v2.5.0', 'installer', 'completed')
+ON DUPLICATE KEY UPDATE `status` = 'completed', `appliedBy` = 'installer';
 
 -- ============================================================================
 -- ✅ FINALIZATION
