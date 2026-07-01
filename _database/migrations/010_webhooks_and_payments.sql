@@ -33,8 +33,8 @@
 -- Partners register URLs to receive event notifications
 -- Each endpoint has its own HMAC secret for signature verification
 CREATE TABLE IF NOT EXISTS `tblWebhookEndpoints` (
-    `endpointID` INT UNSIGNED NOT NULL AUTO_INCREMENT,
-    `partnerID` INT UNSIGNED NOT NULL,
+    `endpointID` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `partnerID` BIGINT UNSIGNED NOT NULL,
     `url` VARCHAR(2048) NOT NULL COMMENT 'HTTPS URL to deliver webhooks to',
     `description` VARCHAR(255) DEFAULT NULL COMMENT 'Human-readable description of this endpoint',
     `secret` VARCHAR(128) NOT NULL COMMENT 'HMAC-SHA256 signing secret (encrypted at rest)',
@@ -67,8 +67,8 @@ COMMENT='Partner webhook endpoint configuration with HMAC-SHA256 signing';
 -- Tracks every outbound webhook attempt for auditing and debugging
 CREATE TABLE IF NOT EXISTS `tblWebhookDeliveries` (
     `deliveryID` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    `endpointID` INT UNSIGNED NOT NULL,
-    `partnerID` INT UNSIGNED NOT NULL,
+    `endpointID` BIGINT UNSIGNED NOT NULL,
+    `partnerID` BIGINT UNSIGNED NOT NULL,
     `eventType` VARCHAR(100) NOT NULL COMMENT 'Event type (e.g. user.created, payment.completed)',
     `eventID` VARCHAR(64) NOT NULL COMMENT 'Unique event identifier for idempotency',
     `payload` JSON NOT NULL COMMENT 'JSON payload delivered',
@@ -99,7 +99,7 @@ CREATE TABLE IF NOT EXISTS `tblWebhookDeliveries` (
 COMMENT='Outbound webhook delivery log with retry tracking';
 
 -- Default webhook event types in tblSettings
-INSERT INTO `tblSettings` (`settingKey`, `settingValue`, `settingCategory`, `settingDescription`, `isSensitive`)
+INSERT INTO `tblSettings` (`settingKey`, `settingValue`, `settingCategory`, `description`, `isSensitive`)
 VALUES
     ('webhook.enabled', '1', 'webhooks', 'Enable outbound webhook system', 0),
     ('webhook.max_endpoints_per_partner', '10', 'webhooks', 'Maximum webhook endpoints per partner', 0),
@@ -129,7 +129,7 @@ DO
 -- Subscription tier definitions
 -- Defines available pricing tiers for services
 CREATE TABLE IF NOT EXISTS `tblSubscriptionTiers` (
-    `tierID` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `tierID` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     `tierName` VARCHAR(100) NOT NULL COMMENT 'Display name (e.g. Free, Basic, Premium, Enterprise)',
     `tierSlug` VARCHAR(50) NOT NULL COMMENT 'URL-safe identifier (e.g. free, basic, premium)',
     `tierDescription` TEXT DEFAULT NULL COMMENT 'Description of tier benefits',
@@ -170,10 +170,10 @@ VALUES
 
 -- User/partner subscriptions
 CREATE TABLE IF NOT EXISTS `tblSubscriptions` (
-    `subscriptionID` INT UNSIGNED NOT NULL AUTO_INCREMENT,
-    `userID` INT UNSIGNED NOT NULL COMMENT 'Account owner',
-    `partnerID` INT UNSIGNED DEFAULT NULL COMMENT 'Partner organisation (if applicable)',
-    `tierID` INT UNSIGNED NOT NULL,
+    `subscriptionID` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `userID` BIGINT UNSIGNED NOT NULL COMMENT 'Account owner',
+    `partnerID` BIGINT UNSIGNED DEFAULT NULL COMMENT 'Partner organisation (if applicable)',
+    `tierID` BIGINT UNSIGNED NOT NULL,
     `subscriptionStatus` ENUM('active', 'cancelled', 'expired', 'paused', 'trial', 'pending', 'past_due') NOT NULL DEFAULT 'pending',
     `billingCycle` ENUM('monthly', 'quarterly', 'yearly', 'lifetime', 'one_time') NOT NULL DEFAULT 'monthly',
     `amount` DECIMAL(10, 2) NOT NULL DEFAULT 0.00 COMMENT 'Current billing amount',
@@ -216,9 +216,9 @@ COMMENT='User and partner subscriptions with billing cycle management';
 
 -- Payment transaction records
 CREATE TABLE IF NOT EXISTS `tblPayments` (
-    `paymentID` INT UNSIGNED NOT NULL AUTO_INCREMENT,
-    `userID` INT UNSIGNED NOT NULL,
-    `subscriptionID` INT UNSIGNED DEFAULT NULL COMMENT 'Linked subscription (NULL for one-off payments)',
+    `paymentID` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `userID` BIGINT UNSIGNED NOT NULL,
+    `subscriptionID` BIGINT UNSIGNED DEFAULT NULL COMMENT 'Linked subscription (NULL for one-off payments)',
     `transactionID` VARCHAR(255) DEFAULT NULL COMMENT 'External transaction ID from payment provider',
     `paymentMethod` ENUM('paypal', 'apple_pay', 'google_pay', 'crypto_btc', 'crypto_eth', 'crypto_usdt', 'stripe', 'manual') NOT NULL,
     `paymentProvider` VARCHAR(100) NOT NULL COMMENT 'Provider name (PayPal, Stripe, Coinbase, etc.)',
@@ -266,8 +266,8 @@ COMMENT='Payment transaction records with multi-provider support';
 
 -- Stored payment methods (tokenised - never stores raw card numbers)
 CREATE TABLE IF NOT EXISTS `tblPaymentMethods` (
-    `methodID` INT UNSIGNED NOT NULL AUTO_INCREMENT,
-    `userID` INT UNSIGNED NOT NULL,
+    `methodID` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `userID` BIGINT UNSIGNED NOT NULL,
     `paymentMethod` ENUM('paypal', 'apple_pay', 'google_pay', 'crypto_btc', 'crypto_eth', 'crypto_usdt', 'stripe') NOT NULL,
     `provider` VARCHAR(100) NOT NULL COMMENT 'Payment provider name',
     `providerMethodID` VARCHAR(255) DEFAULT NULL COMMENT 'Provider token/method ID',
@@ -293,7 +293,7 @@ COMMENT='Stored payment methods (tokenised, never stores raw credentials)';
 
 -- Discount/promo codes
 CREATE TABLE IF NOT EXISTS `tblDiscountCodes` (
-    `discountID` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `discountID` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     `code` VARCHAR(50) NOT NULL COMMENT 'Unique promo code',
     `description` VARCHAR(255) DEFAULT NULL,
     `discountType` ENUM('percentage', 'fixed_amount', 'free_trial_days') NOT NULL DEFAULT 'percentage',
@@ -308,7 +308,7 @@ CREATE TABLE IF NOT EXISTS `tblDiscountCodes` (
     `validFrom` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `validUntil` DATETIME DEFAULT NULL COMMENT 'NULL = no expiry',
     `isActive` TINYINT(1) NOT NULL DEFAULT 1,
-    `createdBy` INT UNSIGNED DEFAULT NULL COMMENT 'Admin who created this code',
+    `createdBy` BIGINT UNSIGNED DEFAULT NULL COMMENT 'Admin who created this code',
     `createdAt` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `updatedAt` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (`discountID`),
@@ -318,7 +318,7 @@ CREATE TABLE IF NOT EXISTS `tblDiscountCodes` (
 COMMENT='Discount and promotional codes for payment discounts';
 
 -- Payment settings
-INSERT INTO `tblSettings` (`settingKey`, `settingValue`, `settingCategory`, `settingDescription`, `isSensitive`)
+INSERT INTO `tblSettings` (`settingKey`, `settingValue`, `settingCategory`, `description`, `isSensitive`)
 VALUES
     ('payment.enabled', '0', 'payment', 'Enable payment processing (set to 1 when ready)', 0),
     ('payment.default_currency', 'GBP', 'payment', 'Default currency (ISO 4217)', 0),
@@ -345,8 +345,6 @@ ON DUPLICATE KEY UPDATE `settingKey` = VALUES(`settingKey`);
 -- MIGRATION TRACKING
 -- ============================================================================
 
-INSERT INTO `tblMigrations` (`migrationName`, `migrationVersion`, `description`)
-VALUES ('010_webhooks_and_payments', '2.3.0-beta', 'Outbound webhook signatures and payment/subscription system')
-ON DUPLICATE KEY UPDATE `migrationName` = VALUES(`migrationName`);
+-- [mig-fix] removed incompatible tblMigrations self-bookkeeping (the migration runner records migrations)
 
 -- ============================================================================

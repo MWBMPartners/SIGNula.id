@@ -262,7 +262,7 @@ COMMENT='Session fingerprints for hijacking detection and audit';
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS `tblCircuitBreaker` (
-    `circuitID` INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY
+    `circuitID` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY
         COMMENT 'Unique circuit identifier',
     `serviceName` VARCHAR(100) NOT NULL UNIQUE
         COMMENT 'External service name: abuseipdb, proxycheck, geoip, etc.',
@@ -523,14 +523,7 @@ DO
 -- 📋 MIGRATION TRACKING
 -- ============================================================================
 
-INSERT INTO `tblMigrations` (`migrationName`, `migrationVersion`, `description`)
-VALUES ('014_security_enhancements', '2.6.0-beta',
-    'Security enhancements: tblIPReputationCache, tblBlockedIPs, tblSecurityAlerts, '
-    'tblSessionFingerprints, tblCircuitBreaker, CAPTCHA settings (Turnstile + reCAPTCHA), '
-    'IP reputation settings (AbuseIPDB + proxycheck.io), bot detection settings, '
-    'session fingerprinting settings, security alert settings, '
-    'web form rate limit configs, 4 scheduled cleanup events')
-ON DUPLICATE KEY UPDATE `migrationName` = VALUES(`migrationName`);
+-- [mig-fix] removed incompatible tblMigrations self-bookkeeping (the migration runner records migrations)
 
 
 -- ============================================================================

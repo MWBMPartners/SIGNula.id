@@ -29,7 +29,7 @@
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS `tblEmailDripCampaigns` (
-    `campaignID` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `campaignID` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     `campaignName` VARCHAR(255) NOT NULL COMMENT 'Campaign name',
     `description` TEXT NULL COMMENT 'Campaign description',
 
@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS `tblEmailDripCampaigns` (
 
     -- 📅 Timestamps
     `createdAt` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Campaign created',
-    `createdBy` INT UNSIGNED NULL COMMENT 'User who created campaign',
+    `createdBy` BIGINT UNSIGNED NULL COMMENT 'User who created campaign',
     `updatedAt` DATETIME NULL ON UPDATE CURRENT_TIMESTAMP COMMENT 'Last updated',
 
     PRIMARY KEY (`campaignID`),
@@ -65,8 +65,8 @@ CREATE TABLE IF NOT EXISTS `tblEmailDripCampaigns` (
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS `tblEmailDripCampaignSteps` (
-    `stepID` INT UNSIGNED NOT NULL AUTO_INCREMENT,
-    `campaignID` INT UNSIGNED NOT NULL COMMENT 'Parent campaign',
+    `stepID` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `campaignID` BIGINT UNSIGNED NOT NULL COMMENT 'Parent campaign',
     `stepOrder` INT UNSIGNED NOT NULL COMMENT 'Step sequence order',
     `stepName` VARCHAR(255) NOT NULL COMMENT 'Step name',
 
@@ -76,7 +76,7 @@ CREATE TABLE IF NOT EXISTS `tblEmailDripCampaignSteps` (
     `delayFromPrevious` TINYINT(1) NOT NULL DEFAULT 1 COMMENT '1 = from previous step, 0 = from campaign start',
 
     -- 📧 Email Content
-    `templateID` INT UNSIGNED NULL COMMENT 'Email template ID',
+    `templateID` BIGINT UNSIGNED NULL COMMENT 'Email template ID',
     `subject` VARCHAR(500) NULL COMMENT 'Email subject (if no template)',
     `bodyHTML` LONGTEXT NULL COMMENT 'HTML body (if no template)',
     `bodyText` TEXT NULL COMMENT 'Plain text body (if no template)',
@@ -116,9 +116,9 @@ CREATE TABLE IF NOT EXISTS `tblEmailDripCampaignSteps` (
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS `tblEmailDripSubscribers` (
-    `subscriberID` INT UNSIGNED NOT NULL AUTO_INCREMENT,
-    `campaignID` INT UNSIGNED NOT NULL COMMENT 'Campaign ID',
-    `userID` INT UNSIGNED NULL COMMENT 'User ID (if registered user)',
+    `subscriberID` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `campaignID` BIGINT UNSIGNED NOT NULL COMMENT 'Campaign ID',
+    `userID` BIGINT UNSIGNED NULL COMMENT 'User ID (if registered user)',
     `email` VARCHAR(255) NOT NULL COMMENT 'Subscriber email',
 
     -- 📊 Subscriber Status
@@ -126,7 +126,7 @@ CREATE TABLE IF NOT EXISTS `tblEmailDripSubscribers` (
     `customData` JSON NULL COMMENT 'Custom subscriber data for personalization',
 
     -- 📍 Progress Tracking
-    `currentStepID` INT UNSIGNED NULL COMMENT 'Current step in sequence',
+    `currentStepID` BIGINT UNSIGNED NULL COMMENT 'Current step in sequence',
     `nextEmailDue` DATETIME NULL COMMENT 'When next email should be sent',
 
     -- 📅 Timestamps
@@ -167,9 +167,9 @@ CREATE TABLE IF NOT EXISTS `tblEmailDripSubscribers` (
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS `tblEmailDripProgress` (
-    `progressID` INT UNSIGNED NOT NULL AUTO_INCREMENT,
-    `subscriberID` INT UNSIGNED NOT NULL COMMENT 'Subscriber ID',
-    `stepID` INT UNSIGNED NOT NULL COMMENT 'Step ID',
+    `progressID` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `subscriberID` BIGINT UNSIGNED NOT NULL COMMENT 'Subscriber ID',
+    `stepID` BIGINT UNSIGNED NOT NULL COMMENT 'Step ID',
 
     -- 📊 Progress Status
     `status` ENUM('sent', 'skipped', 'failed') NOT NULL COMMENT 'Processing status',
@@ -199,7 +199,7 @@ CREATE TABLE IF NOT EXISTS `tblEmailDripProgress` (
 -- ============================================================================
 
 -- Mark migration as complete
-INSERT INTO tblSettings (settingKey, settingValue, settingDescription, category)
+INSERT INTO tblSettings (settingKey, settingValue, description, settingCategory)
 VALUES (
     'email.drip_campaigns.migration_version',
     '2.2.0',
@@ -208,7 +208,7 @@ VALUES (
 ) ON DUPLICATE KEY UPDATE settingValue = '2.2.0';
 
 -- Enable drip campaigns feature
-INSERT INTO tblSettings (settingKey, settingValue, settingDescription, category)
+INSERT INTO tblSettings (settingKey, settingValue, description, settingCategory)
 VALUES (
     'email.drip_campaigns.enabled',
     '1',
@@ -217,7 +217,7 @@ VALUES (
 ) ON DUPLICATE KEY UPDATE settingValue = VALUES(settingValue);
 
 -- Processing batch size
-INSERT INTO tblSettings (settingKey, settingValue, settingDescription, category)
+INSERT INTO tblSettings (settingKey, settingValue, description, settingCategory)
 VALUES (
     'email.drip_campaigns.batch_size',
     '100',

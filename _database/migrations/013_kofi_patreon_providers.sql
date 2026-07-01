@@ -64,7 +64,7 @@ ALTER TABLE `tblPayments`
 -- Ko-fi Gold accounts unlock recurring subscription/membership features
 -- @see https://ko-fi.com/manage/webhooks — Ko-fi Webhook Configuration
 -- @see https://help.ko-fi.com/hc/en-us/articles/115004002614 — Ko-fi API Overview
-INSERT INTO `tblSettings` (`settingKey`, `settingValue`, `settingCategory`, `settingDescription`, `isSensitive`)
+INSERT INTO `tblSettings` (`settingKey`, `settingValue`, `settingCategory`, `description`, `isSensitive`)
 VALUES
     -- ☕ Ko-fi Provider — Core Settings
     -- These control whether Ko-fi is available as a payment/donation method
@@ -95,7 +95,7 @@ ON DUPLICATE KEY UPDATE `settingKey` = VALUES(`settingKey`);
 -- @see https://docs.patreon.com/#apiv2-oauth — Patreon OAuth 2.0
 -- @see https://docs.patreon.com/#webhooks — Patreon Webhooks
 -- @see https://www.patreon.com/portal/registration/register-clients — Patreon Platform Client Registration
-INSERT INTO `tblSettings` (`settingKey`, `settingValue`, `settingCategory`, `settingDescription`, `isSensitive`)
+INSERT INTO `tblSettings` (`settingKey`, `settingValue`, `settingCategory`, `description`, `isSensitive`)
 VALUES
     -- 🎨 Patreon Provider — Core Settings
     -- These control whether Patreon is available as a subscription/pledge provider
@@ -225,12 +225,7 @@ VALUES
 -- 📋 MIGRATION TRACKING
 -- ============================================================================
 
-INSERT INTO `tblMigrations` (`migrationName`, `migrationVersion`, `description`)
-VALUES ('013_kofi_patreon_providers', '2.5.0-beta',
-    'Ko-fi and Patreon provider integration: expanded provider/payment ENUMs, '
-    'settings for both providers, provider discounts, 2 feature toggles, '
-    '4 email templates (donation received, subscription started, pledge created, pledge cancelled)')
-ON DUPLICATE KEY UPDATE `migrationName` = VALUES(`migrationName`);
+-- [mig-fix] removed incompatible tblMigrations self-bookkeeping (the migration runner records migrations)
 
 
 -- ============================================================================

@@ -50,13 +50,13 @@
 --    lets InnoDB walk the index in PK order and avoids a filesort.
 -- 📊 Also covers getNonCompliantUsers() / getComplianceReport(), which scope
 --    by resetID and then test processedAt / passwordChangedAt.
-ALTER TABLE `tblCredentialResetUsers`
-    ADD INDEX IF NOT EXISTS `idx_cru_reset_processed_id`
-        (`resetID`, `processedAt`, `id`),
-    ADD INDEX IF NOT EXISTS `idx_cru_reset_password_changed`
-        (`resetID`, `passwordChangedAt`),
-    ADD INDEX IF NOT EXISTS `idx_cru_reset_email_sent`
-        (`resetID`, `emailSent`);
+-- [mig-fix] guarded ADD INDEX (MySQL has no ADD INDEX IF NOT EXISTS)
+SET @__c := (SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='tblCredentialResetUsers' AND INDEX_NAME='idx_cru_reset_processed_id');
+SET @__s := IF(@__c=0, 'ALTER TABLE `tblCredentialResetUsers` ADD INDEX `idx_cru_reset_processed_id` (`resetID`, `processedAt`, `id`)', 'DO 0'); PREPARE __s FROM @__s; EXECUTE __s; DEALLOCATE PREPARE __s;
+SET @__c := (SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='tblCredentialResetUsers' AND INDEX_NAME='idx_cru_reset_password_changed');
+SET @__s := IF(@__c=0, 'ALTER TABLE `tblCredentialResetUsers` ADD INDEX `idx_cru_reset_password_changed` (`resetID`, `passwordChangedAt`)', 'DO 0'); PREPARE __s FROM @__s; EXECUTE __s; DEALLOCATE PREPARE __s;
+SET @__c := (SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='tblCredentialResetUsers' AND INDEX_NAME='idx_cru_reset_email_sent');
+SET @__s := IF(@__c=0, 'ALTER TABLE `tblCredentialResetUsers` ADD INDEX `idx_cru_reset_email_sent` (`resetID`, `emailSent`)', 'DO 0'); PREPARE __s FROM @__s; EXECUTE __s; DEALLOCATE PREPARE __s;
 
 -- ----------------------------------------------------------------------------
 -- 2️⃣ tblCredentialResets — list view & concurrent-operation guard
@@ -65,9 +65,9 @@ ALTER TABLE `tblCredentialResetUsers`
 --      WHERE status IN ('pending','in_progress') LIMIT 1
 --    and the listResetOperations() ordering (ORDER BY createdAt DESC), letting
 --    a status-scoped lookup return most-recent-first without a separate sort.
-ALTER TABLE `tblCredentialResets`
-    ADD INDEX IF NOT EXISTS `idx_cr_status_created`
-        (`status`, `createdAt`);
+-- [mig-fix] guarded ADD INDEX (MySQL has no ADD INDEX IF NOT EXISTS)
+SET @__c := (SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='tblCredentialResets' AND INDEX_NAME='idx_cr_status_created');
+SET @__s := IF(@__c=0, 'ALTER TABLE `tblCredentialResets` ADD INDEX `idx_cr_status_created` (`status`, `createdAt`)', 'DO 0'); PREPARE __s FROM @__s; EXECUTE __s; DEALLOCATE PREPARE __s;
 
 -- ----------------------------------------------------------------------------
 -- 3️⃣ tblSaltRotationHistory — history listing
@@ -76,9 +76,9 @@ ALTER TABLE `tblCredentialResets`
 --      ORDER BY createdAt DESC LIMIT ?
 --    scoped by the rotating admin where relevant; the composite supports
 --    "this admin's rotations, newest first" without a filesort.
-ALTER TABLE `tblSaltRotationHistory`
-    ADD INDEX IF NOT EXISTS `idx_srh_rotated_by_created`
-        (`rotatedBy`, `createdAt`);
+-- [mig-fix] guarded ADD INDEX (MySQL has no ADD INDEX IF NOT EXISTS)
+SET @__c := (SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='tblSaltRotationHistory' AND INDEX_NAME='idx_srh_rotated_by_created');
+SET @__s := IF(@__c=0, 'ALTER TABLE `tblSaltRotationHistory` ADD INDEX `idx_srh_rotated_by_created` (`rotatedBy`, `createdAt`)', 'DO 0'); PREPARE __s FROM @__s; EXECUTE __s; DEALLOCATE PREPARE __s;
 
 -- ============================================================================
 -- ✅ MIGRATION COMPLETE

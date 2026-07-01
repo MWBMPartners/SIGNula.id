@@ -46,7 +46,7 @@
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS `tblUsageMetrics` (
-    `metricID` INT UNSIGNED NOT NULL AUTO_INCREMENT
+    `metricID` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT
         COMMENT '🔑 Unique metric identifier (PK)',
 
     `metricCode` VARCHAR(50) NOT NULL
@@ -67,7 +67,7 @@ CREATE TABLE IF NOT EXISTS `tblUsageMetrics` (
     `aggregationType` ENUM('sum', 'max', 'avg') NOT NULL DEFAULT 'sum'
         COMMENT '📈 How to aggregate usage within a billing cycle — sum (total), max (peak), avg (average)',
 
-    `partnerID` INT UNSIGNED DEFAULT NULL
+    `partnerID` BIGINT UNSIGNED DEFAULT NULL
         COMMENT '🏢 FK to tblPartners — NULL = global metric, set = partner-specific',
 
     `isActive` TINYINT(1) NOT NULL DEFAULT 1
@@ -117,13 +117,13 @@ CREATE TABLE IF NOT EXISTS `tblUsageMetrics` (
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS `tblUsageRates` (
-    `rateID` INT UNSIGNED NOT NULL AUTO_INCREMENT
+    `rateID` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT
         COMMENT '🔑 Unique rate record identifier (PK)',
 
-    `metricID` INT UNSIGNED NOT NULL
+    `metricID` BIGINT UNSIGNED NOT NULL
         COMMENT '📊 FK to tblUsageMetrics — which metric this rate applies to',
 
-    `tierID` INT UNSIGNED NOT NULL
+    `tierID` BIGINT UNSIGNED NOT NULL
         COMMENT '🏷️ FK to tblSubscriptionTiers or tblPartnerSubscriptionTiers',
 
     `tierType` ENUM('global', 'partner') NOT NULL DEFAULT 'global'
@@ -198,13 +198,13 @@ CREATE TABLE IF NOT EXISTS `tblUsageRecords` (
     `recordID` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT
         COMMENT '🔑 Unique record identifier (PK) — BIGINT for high-volume data',
 
-    `userID` INT UNSIGNED NOT NULL
+    `userID` BIGINT UNSIGNED NOT NULL
         COMMENT '👤 FK to tblUsers — who generated this usage',
 
-    `partnerID` INT UNSIGNED DEFAULT NULL
+    `partnerID` BIGINT UNSIGNED DEFAULT NULL
         COMMENT '🏢 FK to tblPartners — partner context (NULL = SIGNula direct)',
 
-    `metricID` INT UNSIGNED NOT NULL
+    `metricID` BIGINT UNSIGNED NOT NULL
         COMMENT '📊 FK to tblUsageMetrics — which metric was consumed',
 
     `quantity` DECIMAL(12,4) NOT NULL DEFAULT 1.0000
@@ -282,16 +282,16 @@ CREATE TABLE IF NOT EXISTS `tblUsageRecords` (
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS `tblUsageBillingSummary` (
-    `summaryID` INT UNSIGNED NOT NULL AUTO_INCREMENT
+    `summaryID` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT
         COMMENT '🔑 Unique billing summary identifier (PK)',
 
-    `subscriptionID` INT UNSIGNED NOT NULL
+    `subscriptionID` BIGINT UNSIGNED NOT NULL
         COMMENT '📋 FK to tblSubscriptions — which subscription this summary is for',
 
-    `userID` INT UNSIGNED NOT NULL
+    `userID` BIGINT UNSIGNED NOT NULL
         COMMENT '👤 FK to tblUsers — the billed user (denormalised for query performance)',
 
-    `partnerID` INT UNSIGNED DEFAULT NULL
+    `partnerID` BIGINT UNSIGNED DEFAULT NULL
         COMMENT '🏢 FK to tblPartners — partner context (NULL = SIGNula direct)',
 
     `billingPeriodStart` DATE NOT NULL
@@ -324,10 +324,10 @@ CREATE TABLE IF NOT EXISTS `tblUsageBillingSummary` (
     `lineItems` JSON NOT NULL
         COMMENT '📋 Itemised breakdown per metric: [{metricCode, metricName, quantity, freeAllowance, billableQuantity, rate, subtotal}]',
 
-    `invoiceID` INT UNSIGNED DEFAULT NULL
+    `invoiceID` BIGINT UNSIGNED DEFAULT NULL
         COMMENT '🧾 FK to tblInvoices — linked invoice (set when invoice is generated)',
 
-    `paymentID` INT UNSIGNED DEFAULT NULL
+    `paymentID` BIGINT UNSIGNED DEFAULT NULL
         COMMENT '💳 FK to tblPayments — linked payment record',
 
     `calculatedAt` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -426,16 +426,20 @@ ALTER TABLE `tblPartnerSubscriptionTiers`
         AFTER `supportsUsageBilling`;
 
 -- 📋 Extend tblInvoices invoiceType ENUM to include 'usage' type
-ALTER TABLE `tblInvoices`
-    MODIFY COLUMN `invoiceType` ENUM(
-        'subscription',
-        'one_time',
-        'credit_topup',
-        'service_fee',
-        'remittance',
-        'usage'
-    ) NOT NULL DEFAULT 'subscription'
-        COMMENT '📋 Invoice type — includes new "usage" type for usage-based billing';
+-- [mig-fix] tblInvoices did not previously define an `invoiceType` column
+-- (neither the base install nor migration 012 created it), so a bare
+-- MODIFY COLUMN failed with "Unknown column 'invoiceType'". We ADD the column
+-- if it is missing, otherwise MODIFY it — both guarded via information_schema
+-- so this is idempotent and additive.
+SET @__hasInvoiceType := (SELECT COUNT(*) FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tblInvoices' AND COLUMN_NAME = 'invoiceType');
+SET @__invTypeDDL := CONCAT(
+    'ALTER TABLE `tblInvoices` ',
+    IF(@__hasInvoiceType = 0, 'ADD COLUMN', 'MODIFY COLUMN'),
+    " `invoiceType` ENUM('subscription','one_time','credit_topup','service_fee','remittance','usage') ",
+    "NOT NULL DEFAULT 'subscription' COMMENT 'Invoice type - includes usage type for usage-based billing'"
+);
+PREPARE __invStmt FROM @__invTypeDDL; EXECUTE __invStmt; DEALLOCATE PREPARE __invStmt;
 
 -- 📋 Extend tblBillingSchedule taskType ENUM to include usage billing tasks
 -- Note: The exact ENUM values depend on the existing column definition.
@@ -463,7 +467,7 @@ ALTER TABLE `tblBillingSchedule`
 -- @see web/_config/config.php for getSetting() retrieval
 -- ============================================================================
 
-INSERT INTO `tblSettings` (`settingKey`, `settingValue`, `settingType`, `settingCategory`, `settingDescription`, `isSensitive`, `isEditable`)
+INSERT INTO `tblSettings` (`settingKey`, `settingValue`, `settingType`, `settingCategory`, `description`, `isSensitive`, `isEditable`)
 VALUES
     -- 🔀 Master toggle for usage-based billing
     ('billing.usage.enabled', 'false', 'boolean', 'Billing',
@@ -575,14 +579,17 @@ ON DUPLICATE KEY UPDATE
 
 DELIMITER //
 
--- 🗑️ Archive/delete old processed usage records (runs daily at 03:00)
+-- [mig-fix] Archive/delete old processed usage records (runs daily at 03:00) (emoji removed)
 CREATE EVENT IF NOT EXISTS `evt_archive_old_usage_records`
 ON SCHEDULE EVERY 1 DAY
 STARTS CURRENT_TIMESTAMP + INTERVAL 3 HOUR
 COMMENT 'Daily cleanup: delete processed usage records older than retention period'
 DO
 BEGIN
-    -- 📋 Get retention period from settings (default 365 days)
+    -- [mig-fix] Get retention period from settings (default 365 days)
+    -- (emoji removed from this comment: a 4-byte UTF-8 char inside a stored
+    --  EVENT body triggers MySQL 8/9 error 3507 "Failed to update events
+    --  dictionary object")
     DECLARE retention_days INT DEFAULT 365;
 
     SELECT CAST(`settingValue` AS UNSIGNED) INTO retention_days
@@ -590,7 +597,7 @@ BEGIN
     WHERE `settingKey` = 'billing.usage.retention_days'
     LIMIT 1;
 
-    -- 🗑️ Delete processed records older than retention period
+    -- [mig-fix] Delete processed records older than retention period (emoji removed; see note above)
     -- Only deletes records that have been processed (isProcessed = 1)
     -- Unprocessed records are never auto-deleted regardless of age
     DELETE FROM `tblUsageRecords`

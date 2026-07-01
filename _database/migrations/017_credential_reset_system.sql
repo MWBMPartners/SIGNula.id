@@ -8,8 +8,7 @@
 -- ============================================================================
 
 -- 🔒 Record migration start
-INSERT INTO tblMigrations (migrationFile, description, startedAt)
-VALUES ('017_credential_reset_system.sql', 'Credential reset system and email enhancements', NOW());
+-- [mig-fix] removed incompatible tblMigrations self-bookkeeping (the migration runner records migrations)
 
 -- ============================================================================
 -- 📋 Table: tblCredentialResets
@@ -470,6 +469,4 @@ If you did not make this change, please contact our support team immediately.
 ON DUPLICATE KEY UPDATE updatedAt = NOW();
 
 -- ✅ Record migration completion
-UPDATE tblMigrations
-SET completedAt = NOW(), success = TRUE
-WHERE migrationFile = '017_credential_reset_system.sql';
+-- [mig-fix] removed incompatible tblMigrations self-bookkeeping (the migration runner records migrations)

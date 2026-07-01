@@ -48,7 +48,7 @@ COMMENT='Tracks rate limit usage and violations';
 -- =====================================================
 
 CREATE TABLE IF NOT EXISTS tblRateLimitConfig (
-    configID INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    configID BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
     identifierType ENUM('ip', 'user', 'api_key') NOT NULL,
     endpoint VARCHAR(255) NOT NULL COMMENT '"global" or specific endpoint like /api/v1/auth/login',
     tier VARCHAR(50) DEFAULT 'default' COMMENT 'Rate limit tier: default, free, basic, premium, enterprise',
@@ -105,7 +105,7 @@ INSERT INTO tblRateLimitConfig (identifierType, endpoint, tier, requestsPerHour,
 -- =====================================================
 
 -- Insert rate limiting settings if they do not exist
-INSERT IGNORE INTO tblSettings (settingKey, settingValue, settingType, isSensitive, category, description) VALUES
+INSERT IGNORE INTO tblSettings (settingKey, settingValue, settingType, isSensitive, settingCategory, description) VALUES
 ('rate_limiting.enabled', '1', 'boolean', 0, 'security', 'Enable/disable rate limiting globally'),
 ('rate_limiting.cleanup_interval_hours', '24', 'integer', 0, 'security', 'How often to clean up old rate limit records (hours)'),
 ('rate_limiting.progressive_blocking', '1', 'boolean', 0, 'security', 'Enable progressive blocking (increasing ban duration on repeated violations)'),
@@ -137,8 +137,7 @@ AND blockedUntil < DATE_SUB(NOW(), INTERVAL 7 DAY);
 -- 6. Record Migration
 -- =====================================================
 
-INSERT INTO tblMigrations (migrationFile, migrationDescription, appliedAt) VALUES
-('007_rate_limiting.sql', 'Rate limiting system for API abuse prevention', NOW());
+-- [mig-fix] removed incompatible tblMigrations self-bookkeeping (the migration runner records migrations)
 
 -- =====================================================
 -- 7. Verification Queries

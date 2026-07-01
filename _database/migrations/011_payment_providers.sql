@@ -61,7 +61,7 @@ ALTER TABLE `tblPaymentMethods`
 -- @see https://docs.stripe.com/api (Stripe API Reference)
 -- @see https://docs.stripe.com/payments/link (Stripe Link Documentation)
 -- @see https://docs.stripe.com/payments/payment-element (Payment Element — unified UI)
-INSERT INTO `tblSettings` (`settingKey`, `settingValue`, `settingCategory`, `settingDescription`, `isSensitive`)
+INSERT INTO `tblSettings` (`settingKey`, `settingValue`, `settingCategory`, `description`, `isSensitive`)
 VALUES
     -- 🔵 Stripe Core Settings
     ('payment.stripe.enabled', '0', 'payment', 'Enable Stripe payment processing', 0),
@@ -88,7 +88,7 @@ ON DUPLICATE KEY UPDATE `settingKey` = VALUES(`settingKey`);
 
 -- 🟠 Coinbase Commerce webhook verification and currency support
 -- @see https://docs.cdp.coinbase.com/commerce-onchain/docs/webhooks (Webhook Verification)
-INSERT INTO `tblSettings` (`settingKey`, `settingValue`, `settingCategory`, `settingDescription`, `isSensitive`)
+INSERT INTO `tblSettings` (`settingKey`, `settingValue`, `settingCategory`, `description`, `isSensitive`)
 VALUES
     ('payment.crypto.webhook_secret', '', 'payment', 'Coinbase Commerce webhook shared secret for signature verification', 1),
     ('payment.crypto.supported_currencies', '["BTC","ETH","USDT","USDC"]', 'payment', 'Supported cryptocurrency types (JSON array)', 0)
@@ -178,9 +178,7 @@ DO
 -- MIGRATION TRACKING
 -- ============================================================================
 
-INSERT INTO `tblMigrations` (`migrationName`, `migrationVersion`, `description`)
-VALUES ('011_payment_providers', '2.3.0-beta', 'Payment provider integration: Stripe (with Link), PayPal enhancements, Coinbase Commerce, inbound webhook logging')
-ON DUPLICATE KEY UPDATE `migrationName` = VALUES(`migrationName`);
+-- [mig-fix] removed incompatible tblMigrations self-bookkeeping (the migration runner records migrations)
 
 -- ============================================================================
 -- END OF MIGRATION 011

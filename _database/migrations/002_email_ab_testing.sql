@@ -37,7 +37,7 @@ SET @migration_exists = (
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS `tblEmailABTests` (
-    `testID` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `testID` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     `testName` VARCHAR(255) NOT NULL COMMENT 'Descriptive test name',
     `testType` ENUM('subject', 'content', 'from_name', 'send_time', 'multi') NOT NULL DEFAULT 'subject' COMMENT 'Type of A/B test',
     `description` TEXT NULL COMMENT 'Test description',
@@ -49,11 +49,11 @@ CREATE TABLE IF NOT EXISTS `tblEmailABTests` (
 
     -- 📊 Test Status
     `status` ENUM('draft', 'running', 'completed', 'cancelled') NOT NULL DEFAULT 'draft' COMMENT 'Current test status',
-    `winnerVariantID` INT UNSIGNED NULL COMMENT 'ID of winning variant (when completed)',
+    `winnerVariantID` BIGINT UNSIGNED NULL COMMENT 'ID of winning variant (when completed)',
 
     -- 📅 Timestamps
     `createdAt` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Test created timestamp',
-    `createdBy` INT UNSIGNED NULL COMMENT 'User ID who created test',
+    `createdBy` BIGINT UNSIGNED NULL COMMENT 'User ID who created test',
     `startedAt` DATETIME NULL COMMENT 'When test was started',
     `completedAt` DATETIME NULL COMMENT 'When test was completed',
 
@@ -74,8 +74,8 @@ CREATE TABLE IF NOT EXISTS `tblEmailABTests` (
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS `tblEmailABTestVariants` (
-    `variantID` INT UNSIGNED NOT NULL AUTO_INCREMENT,
-    `testID` INT UNSIGNED NOT NULL COMMENT 'Parent test ID',
+    `variantID` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `testID` BIGINT UNSIGNED NOT NULL COMMENT 'Parent test ID',
     `variantName` VARCHAR(50) NOT NULL COMMENT 'Variant identifier (A, B, C, etc.)',
     `variantLabel` VARCHAR(255) NOT NULL COMMENT 'Human-readable variant label',
 
@@ -183,7 +183,7 @@ INSERT INTO tblEmailABTestVariants (
 -- ============================================================================
 
 -- Mark migration as complete
-INSERT INTO tblSettings (settingKey, settingValue, settingDescription, category)
+INSERT INTO tblSettings (settingKey, settingValue, description, settingCategory)
 VALUES (
     'email.ab_testing.migration_version',
     '2.1.0',
@@ -192,7 +192,7 @@ VALUES (
 ) ON DUPLICATE KEY UPDATE settingValue = '2.1.0';
 
 -- Enable A/B testing feature
-INSERT INTO tblSettings (settingKey, settingValue, settingDescription, category)
+INSERT INTO tblSettings (settingKey, settingValue, description, settingCategory)
 VALUES (
     'email.ab_testing.enabled',
     '1',
@@ -201,7 +201,7 @@ VALUES (
 ) ON DUPLICATE KEY UPDATE settingValue = VALUES(settingValue);
 
 -- Minimum sample size for statistical significance
-INSERT INTO tblSettings (settingKey, settingValue, settingDescription, category)
+INSERT INTO tblSettings (settingKey, settingValue, description, settingCategory)
 VALUES (
     'email.ab_testing.min_sample_size',
     '100',
@@ -210,7 +210,7 @@ VALUES (
 ) ON DUPLICATE KEY UPDATE settingValue = VALUES(settingValue);
 
 -- Confidence level threshold
-INSERT INTO tblSettings (settingKey, settingValue, settingDescription, category)
+INSERT INTO tblSettings (settingKey, settingValue, description, settingCategory)
 VALUES (
     'email.ab_testing.confidence_level',
     '95',

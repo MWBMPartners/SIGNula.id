@@ -273,7 +273,7 @@ WHERE NOT EXISTS (
 -- 9. ADD SETTINGS FOR PARTNER DIRECTORY
 -- ============================================================================
 
-INSERT INTO tblSettings (settingCategory, settingKey, settingValue, dataType, isPublic, isSensitive, description, modifiedBy)
+INSERT INTO tblSettings (settingCategory, settingKey, settingValue, settingType, isEditable, isSensitive, description, updatedBy)
 VALUES
 ('partners', 'enable_public_directory', '0', 'boolean', 0, 0, 'Enable public partner directory on website', NULL),
 ('partners', 'directory_approval_required', '1', 'boolean', 0, 0, 'Require partners to approve before appearing in directory', NULL),

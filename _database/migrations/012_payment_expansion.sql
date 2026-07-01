@@ -53,10 +53,10 @@
 -- @see https://docs.stripe.com/connect (Stripe Connect for marketplace payments)
 -- @see https://developer.paypal.com/docs/platforms/ (PayPal Commerce Platform)
 CREATE TABLE IF NOT EXISTS `tblPartnerPaymentConfig` (
-    `configID` INT UNSIGNED NOT NULL AUTO_INCREMENT
+    `configID` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT
         COMMENT 'Unique configuration record ID',
 
-    `partnerID` INT UNSIGNED NOT NULL
+    `partnerID` BIGINT UNSIGNED NOT NULL
         COMMENT 'FK to tblPartners — the partner this config belongs to',
 
     `provider` ENUM('stripe', 'paypal', 'coinbase') NOT NULL
@@ -117,7 +117,7 @@ COMMENT='Partner-specific payment provider credentials for Level 2 payments';
 -- Supports the 30-day minimum notice requirement for fee changes
 -- @see User requirement: "service fees for 2a & 2b can be set within settings"
 CREATE TABLE IF NOT EXISTS `tblServiceFees` (
-    `feeID` INT UNSIGNED NOT NULL AUTO_INCREMENT
+    `feeID` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT
         COMMENT 'Unique fee schedule ID',
 
     `feeType` ENUM('partner_own_keys', 'partner_signula_keys') NOT NULL
@@ -153,7 +153,7 @@ CREATE TABLE IF NOT EXISTS `tblServiceFees` (
     `isActive` TINYINT(1) NOT NULL DEFAULT 1
         COMMENT 'Whether this fee schedule is currently active',
 
-    `createdBy` INT UNSIGNED DEFAULT NULL
+    `createdBy` BIGINT UNSIGNED DEFAULT NULL
         COMMENT 'Admin userID who created this fee schedule',
 
     `createdAt` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -173,13 +173,13 @@ CREATE TABLE IF NOT EXISTS `tblServiceFeeTransactions` (
     `feeTransactionID` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT
         COMMENT 'Unique fee transaction ID',
 
-    `paymentID` INT UNSIGNED NOT NULL
+    `paymentID` BIGINT UNSIGNED NOT NULL
         COMMENT 'FK to tblPayments — the payment that triggered this fee',
 
-    `partnerID` INT UNSIGNED NOT NULL
+    `partnerID` BIGINT UNSIGNED NOT NULL
         COMMENT 'FK to tblPartners — the partner charged this fee',
 
-    `feeID` INT UNSIGNED NOT NULL
+    `feeID` BIGINT UNSIGNED NOT NULL
         COMMENT 'FK to tblServiceFees — the fee schedule applied',
 
     `grossAmount` DECIMAL(10, 2) NOT NULL
@@ -230,10 +230,10 @@ COMMENT='Individual service fee records for each partner transaction';
 -- 💸 Partner payout/remittance tracking
 -- Records batch payouts to partners after deducting service fees
 CREATE TABLE IF NOT EXISTS `tblRemittances` (
-    `remittanceID` INT UNSIGNED NOT NULL AUTO_INCREMENT
+    `remittanceID` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT
         COMMENT 'Unique remittance ID',
 
-    `partnerID` INT UNSIGNED NOT NULL
+    `partnerID` BIGINT UNSIGNED NOT NULL
         COMMENT 'FK to tblPartners — the partner receiving this payout',
 
     `amount` DECIMAL(10, 2) NOT NULL
@@ -278,7 +278,7 @@ CREATE TABLE IF NOT EXISTS `tblRemittances` (
     `processedAt` DATETIME DEFAULT NULL
         COMMENT 'When the payout was processed',
 
-    `processedBy` INT UNSIGNED DEFAULT NULL
+    `processedBy` BIGINT UNSIGNED DEFAULT NULL
         COMMENT 'Admin userID who processed the payout',
 
     `metadata` JSON DEFAULT NULL
@@ -309,16 +309,16 @@ COMMENT='Partner payout/remittance tracking';
 --   - user credits within partner: ownerType='user', ownerID=<userID>, partnerID=<partnerID>
 --   - user credits at SIGNula:    ownerType='user', ownerID=<userID>, partnerID=NULL
 CREATE TABLE IF NOT EXISTS `tblCreditBalances` (
-    `balanceID` INT UNSIGNED NOT NULL AUTO_INCREMENT
+    `balanceID` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT
         COMMENT 'Unique balance record ID',
 
     `ownerType` ENUM('user', 'partner') NOT NULL
         COMMENT 'Type of balance owner',
 
-    `ownerID` INT UNSIGNED NOT NULL
+    `ownerID` BIGINT UNSIGNED NOT NULL
         COMMENT 'userID or partnerID depending on ownerType',
 
-    `partnerID` INT UNSIGNED DEFAULT NULL
+    `partnerID` BIGINT UNSIGNED DEFAULT NULL
         COMMENT 'Partner context (NULL = SIGNula-level balance)',
 
     `balance` DECIMAL(12, 2) NOT NULL DEFAULT 0.00
@@ -349,7 +349,7 @@ CREATE TABLE IF NOT EXISTS `tblCreditTransactions` (
     `creditTransactionID` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT
         COMMENT 'Unique credit transaction ID',
 
-    `balanceID` INT UNSIGNED NOT NULL
+    `balanceID` BIGINT UNSIGNED NOT NULL
         COMMENT 'FK to tblCreditBalances',
 
     `type` ENUM('deposit', 'withdrawal', 'payment', 'refund', 'adjustment', 'remittance', 'promotional') NOT NULL
@@ -370,13 +370,13 @@ CREATE TABLE IF NOT EXISTS `tblCreditTransactions` (
     `referenceType` VARCHAR(50) DEFAULT NULL
         COMMENT 'Type of linked record (payment, subscription, remittance, manual, topup)',
 
-    `referenceID` INT UNSIGNED DEFAULT NULL
+    `referenceID` BIGINT UNSIGNED DEFAULT NULL
         COMMENT 'ID in the referenced table',
 
     `description` VARCHAR(500) DEFAULT NULL
         COMMENT 'Human-readable transaction description',
 
-    `performedBy` INT UNSIGNED DEFAULT NULL
+    `performedBy` BIGINT UNSIGNED DEFAULT NULL
         COMMENT 'userID who triggered this transaction',
 
     `ipAddress` VARCHAR(45) DEFAULT NULL
@@ -408,19 +408,19 @@ COMMENT='Credit balance transaction audit trail';
 -- PDF generated via TCPDF library stored at web/private_html/invoices/
 -- @see TCPDF: https://tcpdf.org/ (Pure PHP PDF generation, no Composer needed)
 CREATE TABLE IF NOT EXISTS `tblInvoices` (
-    `invoiceID` INT UNSIGNED NOT NULL AUTO_INCREMENT
+    `invoiceID` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT
         COMMENT 'Unique invoice record ID',
 
     `invoiceNumber` VARCHAR(50) NOT NULL
         COMMENT 'Formatted invoice number (e.g. SIG-20260213-00001)',
 
-    `paymentID` INT UNSIGNED DEFAULT NULL
+    `paymentID` BIGINT UNSIGNED DEFAULT NULL
         COMMENT 'FK to tblPayments — linked payment (NULL for proforma invoices)',
 
-    `userID` INT UNSIGNED DEFAULT NULL
+    `userID` BIGINT UNSIGNED DEFAULT NULL
         COMMENT 'FK to tblUsers — the user being invoiced',
 
-    `partnerID` INT UNSIGNED DEFAULT NULL
+    `partnerID` BIGINT UNSIGNED DEFAULT NULL
         COMMENT 'FK to tblPartners — the partner being invoiced (or partner context)',
 
     -- 📋 Invoice parties
@@ -521,13 +521,13 @@ COMMENT='Invoice records with PDF generation support';
 -- Supports discounts at SIGNula level (global) and per-partner level
 -- Example: 10% off crypto payments, 3% off PayPal, 1% off Stripe Link
 CREATE TABLE IF NOT EXISTS `tblProviderDiscounts` (
-    `discountID` INT UNSIGNED NOT NULL AUTO_INCREMENT
+    `discountID` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT
         COMMENT 'Unique provider discount ID',
 
     `scope` ENUM('global', 'partner') NOT NULL DEFAULT 'global'
         COMMENT 'global = SIGNula-level discount, partner = per-partner discount for their customers',
 
-    `partnerID` INT UNSIGNED DEFAULT NULL
+    `partnerID` BIGINT UNSIGNED DEFAULT NULL
         COMMENT 'FK to tblPartners (NULL for global discounts)',
 
     `paymentMethod` VARCHAR(50) NOT NULL
@@ -541,7 +541,7 @@ CREATE TABLE IF NOT EXISTS `tblProviderDiscounts` (
 
     `isActive` TINYINT(1) NOT NULL DEFAULT 1,
 
-    `createdBy` INT UNSIGNED DEFAULT NULL
+    `createdBy` BIGINT UNSIGNED DEFAULT NULL
         COMMENT 'Admin/partner admin userID who created this',
 
     `createdAt` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -566,10 +566,10 @@ COMMENT='Payment method-specific discounts (e.g. 10% off crypto, 3% off PayPal)'
 -- Structurally mirrors tblSubscriptionTiers but scoped to individual partners
 -- Allows partners to define custom pricing, features, and limits
 CREATE TABLE IF NOT EXISTS `tblPartnerSubscriptionTiers` (
-    `tierID` INT UNSIGNED NOT NULL AUTO_INCREMENT
+    `tierID` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT
         COMMENT 'Unique partner tier ID',
 
-    `partnerID` INT UNSIGNED NOT NULL
+    `partnerID` BIGINT UNSIGNED NOT NULL
         COMMENT 'FK to tblPartners — the partner who owns this tier',
 
     `tierName` VARCHAR(100) NOT NULL
@@ -635,19 +635,19 @@ COMMENT='Partner-defined subscription tiers for their own customers';
 -- Links specific discount codes to individual users/emails
 -- Used when codeType = 'assigned' in tblDiscountCodes
 CREATE TABLE IF NOT EXISTS `tblDiscountCodeAssignments` (
-    `assignmentID` INT UNSIGNED NOT NULL AUTO_INCREMENT
+    `assignmentID` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT
         COMMENT 'Unique assignment ID',
 
-    `discountID` INT UNSIGNED NOT NULL
+    `discountID` BIGINT UNSIGNED NOT NULL
         COMMENT 'FK to tblDiscountCodes — the discount code assigned',
 
     `assignedToEmail` VARCHAR(320) DEFAULT NULL
         COMMENT 'Specific email address this code is assigned to',
 
-    `assignedToUserID` INT UNSIGNED DEFAULT NULL
+    `assignedToUserID` BIGINT UNSIGNED DEFAULT NULL
         COMMENT 'Specific userID this code is assigned to (NULL if email-only)',
 
-    `assignedBy` INT UNSIGNED DEFAULT NULL
+    `assignedBy` BIGINT UNSIGNED DEFAULT NULL
         COMMENT 'Admin/partner admin userID who made this assignment',
 
     `usedAt` DATETIME DEFAULT NULL
@@ -693,7 +693,7 @@ CREATE TABLE IF NOT EXISTS `tblBillingSchedule` (
     `targetType` ENUM('subscription', 'partner', 'user', 'remittance', 'fee') NOT NULL
         COMMENT 'Type of target entity',
 
-    `targetID` INT UNSIGNED NOT NULL
+    `targetID` BIGINT UNSIGNED NOT NULL
         COMMENT 'ID of the target entity (subscriptionID, partnerID, userID, etc.)',
 
     `scheduledFor` DATETIME NOT NULL
@@ -807,7 +807,7 @@ ALTER TABLE `tblSubscriptions`
 -- ============================================================================
 
 -- 💰 Service fee settings
-INSERT INTO `tblSettings` (`settingKey`, `settingValue`, `settingCategory`, `settingDescription`, `isSensitive`)
+INSERT INTO `tblSettings` (`settingKey`, `settingValue`, `settingCategory`, `description`, `isSensitive`)
 VALUES
     -- 💰 Service Fees
     ('payment.service_fee.own_keys_percent', '10.00', 'payment', 'Service fee (%) charged when partner uses their own payment keys (Option 2a)', 0),
@@ -1058,13 +1058,7 @@ VALUES
 -- 📋 MIGRATION TRACKING
 -- ============================================================================
 
-INSERT INTO `tblMigrations` (`migrationName`, `migrationVersion`, `description`)
-VALUES ('012_payment_expansion', '2.4.0-beta',
-    'Two-tier payment expansion: partner payment config, service fees, remittances, '
-    'credit/balance system, invoices, provider discounts, partner tiers, billing scheduler, '
-    'discount code enhancements (country restrictions, assigned codes), '
-    '9 email templates, 4 feature toggles, 3 MySQL scheduled events')
-ON DUPLICATE KEY UPDATE `migrationName` = VALUES(`migrationName`);
+-- [mig-fix] removed incompatible tblMigrations self-bookkeeping (the migration runner records migrations)
 
 
 -- ============================================================================

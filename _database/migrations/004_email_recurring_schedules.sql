@@ -28,7 +28,7 @@
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS `tblEmailRecurringSchedules` (
-    `scheduleID` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `scheduleID` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     `scheduleName` VARCHAR(255) NOT NULL COMMENT 'Schedule name',
     `emailData` JSON NOT NULL COMMENT 'Email configuration',
 
@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS `tblEmailRecurringSchedules` (
 
     -- 📝 Metadata
     `createdAt` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Schedule created',
-    `createdBy` INT UNSIGNED NULL COMMENT 'User who created schedule',
+    `createdBy` BIGINT UNSIGNED NULL COMMENT 'User who created schedule',
     `updatedAt` DATETIME NULL ON UPDATE CURRENT_TIMESTAMP COMMENT 'Last updated',
 
     PRIMARY KEY (`scheduleID`),
@@ -72,7 +72,7 @@ CREATE TABLE IF NOT EXISTS `tblEmailRecurringSchedules` (
 -- ============================================================================
 
 -- Mark migration as complete
-INSERT INTO tblSettings (settingKey, settingValue, settingDescription, category)
+INSERT INTO tblSettings (settingKey, settingValue, description, settingCategory)
 VALUES (
     'email.recurring_schedules.migration_version',
     '2.3.0',
@@ -81,7 +81,7 @@ VALUES (
 ) ON DUPLICATE KEY UPDATE settingValue = '2.3.0';
 
 -- Enable recurring schedules feature
-INSERT INTO tblSettings (settingKey, settingValue, settingDescription, category)
+INSERT INTO tblSettings (settingKey, settingValue, description, settingCategory)
 VALUES (
     'email.recurring_schedules.enabled',
     '1',

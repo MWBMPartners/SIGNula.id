@@ -590,6 +590,11 @@ web/.vscode/
 # Database files (keep structure, ignore generated SQL)
 _database/*.sql
 !_database/migrations/*.sql
+# B-033: the consolidated installer IS the canonical fresh-install artifact used
+# by web/public_html/install/index.php and _scripts/setup_test_db.sh. It must be
+# present in a clean checkout (the build-complete-install.sh generator is stale
+# and cannot reproduce it). Track it so "builds & runs from clean checkout" holds.
+!_database/signula_complete_install_v2.5.0.sql
 
 # ============================================================
 # Logs

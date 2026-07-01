@@ -23,7 +23,7 @@ USE signula;
 -- =====================================================
 
 CREATE TABLE IF NOT EXISTS tblPartners (
-    partnerID INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    partnerID BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
 
     -- Organization details
     partnerName VARCHAR(255) NOT NULL,
@@ -76,8 +76,8 @@ COMMENT='Partner organizations using SIGNula API';
 -- =====================================================
 
 CREATE TABLE IF NOT EXISTS tblAPIKeys (
-    keyID INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
-    partnerID INT UNSIGNED NOT NULL,
+    keyID BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    partnerID BIGINT UNSIGNED NOT NULL,
 
     -- Key identification
     keyName VARCHAR(100) NOT NULL COMMENT 'Human-readable name (e.g., "Production Key", "Development Key")',
@@ -136,7 +136,7 @@ COMMENT='Partner API keys for authentication';
 
 CREATE TABLE IF NOT EXISTS tblAPIKeyUsage (
     usageID BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
-    keyID INT UNSIGNED NOT NULL,
+    keyID BIGINT UNSIGNED NOT NULL,
 
     -- Request details
     endpoint VARCHAR(255) NOT NULL,
@@ -175,15 +175,15 @@ COMMENT='API key usage logs for analytics and debugging';
 
 CREATE TABLE IF NOT EXISTS tblAPIKeyAudit (
     auditID BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
-    keyID INT UNSIGNED NULL,
-    partnerID INT UNSIGNED NULL,
+    keyID BIGINT UNSIGNED NULL,
+    partnerID BIGINT UNSIGNED NULL,
 
     -- Action details
     action ENUM('key_generated', 'key_revoked', 'key_regenerated', 'key_updated', 'permissions_changed', 'whitelist_updated') NOT NULL,
     actionDetails TEXT NULL COMMENT 'JSON with action details',
 
     -- Who performed the action
-    performedBy INT UNSIGNED NULL COMMENT 'UserID who performed the action',
+    performedBy BIGINT UNSIGNED NULL COMMENT 'UserID who performed the action',
     performedByIP VARCHAR(45) NULL,
 
     performedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -201,7 +201,7 @@ COMMENT='Audit trail for API key management actions';
 -- 5. Settings for API Key Management
 -- =====================================================
 
-INSERT IGNORE INTO tblSettings (settingKey, settingValue, settingType, isSensitive, category, description) VALUES
+INSERT IGNORE INTO tblSettings (settingKey, settingValue, settingType, isSensitive, settingCategory, description) VALUES
 ('api_keys.enabled', '1', 'boolean', 0, 'api', 'Enable/disable API key authentication'),
 ('api_keys.default_tier', 'free', 'string', 0, 'api', 'Default tier for new partners'),
 ('api_keys.key_prefix_live', 'sk_live_', 'string', 0, 'api', 'Prefix for live API keys'),
@@ -258,8 +258,7 @@ ON DUPLICATE KEY UPDATE partnerName = partnerName;
 -- 8. Record Migration
 -- =====================================================
 
-INSERT INTO tblMigrations (migrationFile, migrationDescription, appliedAt) VALUES
-('008_partner_api_keys.sql', 'Partner organization and API key management system', NOW());
+-- [mig-fix] removed incompatible tblMigrations self-bookkeeping (the migration runner records migrations)
 
 -- =====================================================
 -- 9. Verification Queries

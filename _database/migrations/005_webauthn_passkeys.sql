@@ -33,8 +33,8 @@
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS `tblWebAuthnCredentials` (
-    `credentialID` INT UNSIGNED NOT NULL AUTO_INCREMENT,
-    `userID` INT UNSIGNED NOT NULL COMMENT 'User who owns this credential',
+    `credentialID` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `userID` BIGINT UNSIGNED NOT NULL COMMENT 'User who owns this credential',
 
     -- 🔐 WebAuthn Credential Data
     `credentialPublicKeyID` VARCHAR(255) NOT NULL COMMENT 'Base64 encoded credential ID',
@@ -84,8 +84,8 @@ CREATE TABLE IF NOT EXISTS `tblWebAuthnCredentials` (
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS `tblPasswordlessTokens` (
-    `tokenID` INT UNSIGNED NOT NULL AUTO_INCREMENT,
-    `userID` INT UNSIGNED NULL COMMENT 'User ID (null if email not yet registered)',
+    `tokenID` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `userID` BIGINT UNSIGNED NULL COMMENT 'User ID (null if email not yet registered)',
     `email` VARCHAR(255) NOT NULL COMMENT 'Email address',
 
     -- 🔐 Token Data
@@ -127,8 +127,8 @@ CREATE TABLE IF NOT EXISTS `tblPasswordlessTokens` (
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS `tblWebAuthnChallenges` (
-    `challengeID` INT UNSIGNED NOT NULL AUTO_INCREMENT,
-    `userID` INT UNSIGNED NULL COMMENT 'User ID (null for registration)',
+    `challengeID` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `userID` BIGINT UNSIGNED NULL COMMENT 'User ID (null for registration)',
     `email` VARCHAR(255) NULL COMMENT 'Email for registration',
 
     -- 🎯 Challenge Data
@@ -211,7 +211,7 @@ DEALLOCATE PREPARE stmt;
 -- ============================================================================
 
 -- Mark migration as complete
-INSERT INTO tblSettings (settingKey, settingValue, settingDescription, category)
+INSERT INTO tblSettings (settingKey, settingValue, description, settingCategory)
 VALUES (
     'auth.webauthn.migration_version',
     '1.4.0',
@@ -220,7 +220,7 @@ VALUES (
 ) ON DUPLICATE KEY UPDATE settingValue = '1.4.0';
 
 -- Enable WebAuthn feature
-INSERT INTO tblSettings (settingKey, settingValue, settingDescription, category)
+INSERT INTO tblSettings (settingKey, settingValue, description, settingCategory)
 VALUES (
     'auth.webauthn.enabled',
     '1',
@@ -229,7 +229,7 @@ VALUES (
 ) ON DUPLICATE KEY UPDATE settingValue = VALUES(settingValue);
 
 -- Enable password-less login
-INSERT INTO tblSettings (settingKey, settingValue, settingDescription, category)
+INSERT INTO tblSettings (settingKey, settingValue, description, settingCategory)
 VALUES (
     'auth.passwordless.enabled',
     '1',
@@ -238,7 +238,7 @@ VALUES (
 ) ON DUPLICATE KEY UPDATE settingValue = VALUES(settingValue);
 
 -- Password-less token validity (minutes)
-INSERT INTO tblSettings (settingKey, settingValue, settingDescription, category)
+INSERT INTO tblSettings (settingKey, settingValue, description, settingCategory)
 VALUES (
     'auth.passwordless.token_validity',
     '15',
@@ -247,7 +247,7 @@ VALUES (
 ) ON DUPLICATE KEY UPDATE settingValue = VALUES(settingValue);
 
 -- WebAuthn challenge validity (minutes)
-INSERT INTO tblSettings (settingKey, settingValue, settingDescription, category)
+INSERT INTO tblSettings (settingKey, settingValue, description, settingCategory)
 VALUES (
     'auth.webauthn.challenge_validity',
     '5',
@@ -256,7 +256,7 @@ VALUES (
 ) ON DUPLICATE KEY UPDATE settingValue = VALUES(settingValue);
 
 -- Relying Party (RP) name
-INSERT INTO tblSettings (settingKey, settingValue, settingDescription, category)
+INSERT INTO tblSettings (settingKey, settingValue, description, settingCategory)
 VALUES (
     'auth.webauthn.rp_name',
     'SIGNula',
@@ -265,7 +265,7 @@ VALUES (
 ) ON DUPLICATE KEY UPDATE settingValue = VALUES(settingValue);
 
 -- Relying Party ID (domain)
-INSERT INTO tblSettings (settingKey, settingValue, settingDescription, category)
+INSERT INTO tblSettings (settingKey, settingValue, description, settingCategory)
 VALUES (
     'auth.webauthn.rp_id',
     'signula.id',

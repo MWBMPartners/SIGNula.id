@@ -34,7 +34,11 @@ WHERE `tierSlug` = 'enterprise';
 -- that need more capacity than Premium but don't need Enterprise
 -- ============================================================================
 
-INSERT INTO `tblSubscriptionTiers` (
+-- [mig-fix] INSERT IGNORE: the Pro/Platinum tiers are already seeded by the
+-- consolidated installer. IGNORE keeps this migration idempotent (no duplicate
+-- key error when replayed on an installer-based DB) while still seeding them on
+-- a DB that lacks them. Non-destructive.
+INSERT IGNORE INTO `tblSubscriptionTiers` (
     `tierName`, `tierSlug`, `tierDescription`,
     `monthlyPrice`, `yearlyPrice`, `currency`,
     `features`, `featureLimits`,
@@ -68,7 +72,8 @@ INSERT INTO `tblSubscriptionTiers` (
 -- capacity with premium support, but without needing a custom contract
 -- ============================================================================
 
-INSERT INTO `tblSubscriptionTiers` (
+-- [mig-fix] INSERT IGNORE for idempotency (see Pro tier note above).
+INSERT IGNORE INTO `tblSubscriptionTiers` (
     `tierName`, `tierSlug`, `tierDescription`,
     `monthlyPrice`, `yearlyPrice`, `currency`,
     `features`, `featureLimits`,
@@ -115,45 +120,52 @@ WHERE `tierSlug` = 'enterprise';
 --                     NULL for global/default tiers
 -- ============================================================================
 
-ALTER TABLE `tblSubscriptionTiers`
-    ADD COLUMN `isCustom` TINYINT(1) NOT NULL DEFAULT 0
-        COMMENT 'Whether this is a custom client-created tier (1) or default global tier (0)'
-        AFTER `isDefault`,
-    ADD COLUMN `createdByPartnerID` INT UNSIGNED DEFAULT NULL
-        COMMENT 'Partner who created this custom tier (NULL for global tiers)'
-        AFTER `isCustom`,
-    ADD COLUMN `parentTierID` INT UNSIGNED DEFAULT NULL
-        COMMENT 'Base tier this custom tier is derived from (NULL for standalone/global)'
-        AFTER `createdByPartnerID`,
-    ADD COLUMN `usageLimits` JSON DEFAULT NULL
-        COMMENT 'Per-metric usage limits for this tier (e.g. {"api_calls": 5000, "storage_gb": 10})'
-        AFTER `featureLimits`,
-    ADD COLUMN `billingMode` ENUM('fixed', 'usage', 'hybrid') NOT NULL DEFAULT 'fixed'
-        COMMENT 'Default billing mode for subscriptions on this tier'
-        AFTER `usageLimits`;
+-- [mig-fix] The custom-tier columns / FKs / indexes below are already present
+-- in the consolidated installer's tblSubscriptionTiers definition. MySQL 8/9
+-- has no "ADD COLUMN IF NOT EXISTS", so each ADD is wrapped in an
+-- information_schema existence guard to make this migration idempotent and
+-- additive (safe to replay on an installer-based DB or a bare one).
+-- Note: createdByPartnerID / parentTierID use BIGINT UNSIGNED to match the
+-- BIGINT identity columns of tblPartners / tblSubscriptionTiers.
 
--- 🔗 Foreign key for createdByPartnerID
-ALTER TABLE `tblSubscriptionTiers`
-    ADD CONSTRAINT `fk_st_created_by_partner`
-        FOREIGN KEY (`createdByPartnerID`) REFERENCES `tblPartners` (`partnerID`)
-        ON DELETE SET NULL ON UPDATE CASCADE;
+-- helper: add a column only if missing
+SET @__tbl := 'tblSubscriptionTiers';
 
--- 🔗 Foreign key for parentTierID (self-referencing)
-ALTER TABLE `tblSubscriptionTiers`
-    ADD CONSTRAINT `fk_st_parent_tier`
-        FOREIGN KEY (`parentTierID`) REFERENCES `tblSubscriptionTiers` (`tierID`)
-        ON DELETE SET NULL ON UPDATE CASCADE;
+SET @__c := (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=@__tbl AND COLUMN_NAME='isCustom');
+SET @__s := IF(@__c=0, "ALTER TABLE `tblSubscriptionTiers` ADD COLUMN `isCustom` TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'Whether this is a custom client-created tier (1) or default global tier (0)' AFTER `isDefault`", 'DO 0'); PREPARE __s FROM @__s; EXECUTE __s; DEALLOCATE PREPARE __s;
 
--- 📇 Index for efficient custom tier lookups
-ALTER TABLE `tblSubscriptionTiers`
-    ADD INDEX `idx_st_custom` (`isCustom`, `createdByPartnerID`),
-    ADD INDEX `idx_st_billing_mode` (`billingMode`);
+SET @__c := (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=@__tbl AND COLUMN_NAME='createdByPartnerID');
+SET @__s := IF(@__c=0, "ALTER TABLE `tblSubscriptionTiers` ADD COLUMN `createdByPartnerID` BIGINT UNSIGNED DEFAULT NULL COMMENT 'Partner who created this custom tier (NULL for global tiers)' AFTER `isCustom`", 'DO 0'); PREPARE __s FROM @__s; EXECUTE __s; DEALLOCATE PREPARE __s;
+
+SET @__c := (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=@__tbl AND COLUMN_NAME='parentTierID');
+SET @__s := IF(@__c=0, "ALTER TABLE `tblSubscriptionTiers` ADD COLUMN `parentTierID` BIGINT UNSIGNED DEFAULT NULL COMMENT 'Base tier this custom tier is derived from (NULL for standalone/global)' AFTER `createdByPartnerID`", 'DO 0'); PREPARE __s FROM @__s; EXECUTE __s; DEALLOCATE PREPARE __s;
+
+SET @__c := (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=@__tbl AND COLUMN_NAME='usageLimits');
+SET @__s := IF(@__c=0, "ALTER TABLE `tblSubscriptionTiers` ADD COLUMN `usageLimits` JSON DEFAULT NULL COMMENT 'Per-metric usage limits for this tier' AFTER `featureLimits`", 'DO 0'); PREPARE __s FROM @__s; EXECUTE __s; DEALLOCATE PREPARE __s;
+
+SET @__c := (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=@__tbl AND COLUMN_NAME='billingMode');
+SET @__s := IF(@__c=0, "ALTER TABLE `tblSubscriptionTiers` ADD COLUMN `billingMode` ENUM('fixed','usage','hybrid') NOT NULL DEFAULT 'fixed' COMMENT 'Default billing mode for subscriptions on this tier' AFTER `usageLimits`", 'DO 0'); PREPARE __s FROM @__s; EXECUTE __s; DEALLOCATE PREPARE __s;
+
+-- 🔗 Foreign key for createdByPartnerID (guarded)
+SET @__c := (SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=@__tbl AND CONSTRAINT_NAME='fk_st_created_by_partner');
+SET @__s := IF(@__c=0, "ALTER TABLE `tblSubscriptionTiers` ADD CONSTRAINT `fk_st_created_by_partner` FOREIGN KEY (`createdByPartnerID`) REFERENCES `tblPartners` (`partnerID`) ON DELETE SET NULL ON UPDATE CASCADE", 'DO 0'); PREPARE __s FROM @__s; EXECUTE __s; DEALLOCATE PREPARE __s;
+
+-- 🔗 Foreign key for parentTierID (self-referencing, guarded)
+SET @__c := (SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=@__tbl AND CONSTRAINT_NAME='fk_st_parent_tier');
+SET @__s := IF(@__c=0, "ALTER TABLE `tblSubscriptionTiers` ADD CONSTRAINT `fk_st_parent_tier` FOREIGN KEY (`parentTierID`) REFERENCES `tblSubscriptionTiers` (`tierID`) ON DELETE SET NULL ON UPDATE CASCADE", 'DO 0'); PREPARE __s FROM @__s; EXECUTE __s; DEALLOCATE PREPARE __s;
+
+-- 📇 Indexes for efficient custom tier lookups (guarded)
+SET @__c := (SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=@__tbl AND INDEX_NAME='idx_st_custom');
+SET @__s := IF(@__c=0, "ALTER TABLE `tblSubscriptionTiers` ADD INDEX `idx_st_custom` (`isCustom`, `createdByPartnerID`)", 'DO 0'); PREPARE __s FROM @__s; EXECUTE __s; DEALLOCATE PREPARE __s;
+
+SET @__c := (SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=@__tbl AND INDEX_NAME='idx_st_billing_mode');
+SET @__s := IF(@__c=0, "ALTER TABLE `tblSubscriptionTiers` ADD INDEX `idx_st_billing_mode` (`billingMode`)", 'DO 0'); PREPARE __s FROM @__s; EXECUTE __s; DEALLOCATE PREPARE __s;
 
 -- ============================================================================
 -- ⚙️ SETTINGS — Export & Custom Tier Configuration
 -- ============================================================================
 
-INSERT INTO `tblSettings` (`settingKey`, `settingValue`, `settingDescription`, `settingCategory`, `isSensitive`)
+INSERT INTO `tblSettings` (`settingKey`, `settingValue`, `description`, `settingCategory`, `isSensitive`)
 VALUES
     -- 📊 Export settings
     ('export.csv.delimiter', ',', 'CSV export field delimiter character', 'export', 0),
@@ -182,7 +194,7 @@ VALUES
 -- 📧 EMAIL TEMPLATES — Custom Tier Notifications
 -- ============================================================================
 
-INSERT INTO `tblEmailTemplates` (`templateKey`, `templateName`, `subject`, `htmlBody`, `textBody`, `requiredVariables`, `isActive`)
+INSERT INTO `tblEmailTemplates` (`templateKey`, `templateName`, `subject`, `bodyHTML`, `bodyText`, `requiredVariables`, `isActive`)
 VALUES
     (
         'custom_tier_created',

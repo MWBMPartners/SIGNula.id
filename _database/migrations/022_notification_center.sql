@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS tblNotifications (
     notificationID INT AUTO_INCREMENT PRIMARY KEY,
 
     -- 👤 The user this notification belongs to (CASCADE delete when user is removed)
-    userID INT NOT NULL,
+    userID BIGINT UNSIGNED NOT NULL,  -- [mig-fix] BIGINT UNSIGNED to match tblUsers.userID (FK)
 
     -- 📂 Notification category/type
     -- security: login alerts, password changes, MFA events
@@ -101,7 +101,7 @@ CREATE TABLE IF NOT EXISTS tblNotifications (
 --
 -- ON DUPLICATE KEY UPDATE prevents errors if settings already exist (idempotent).
 -- ============================================================================
-INSERT INTO tblSettings (settingKey, settingValue, settingType, category, description, isPublic) VALUES
+INSERT INTO tblSettings (settingKey, settingValue, settingType, settingCategory, description, isEditable) VALUES
 
     -- 🔔 Master toggle — enables or disables the entire notification system
     ('notifications.enabled', '1', 'boolean', 'notifications',

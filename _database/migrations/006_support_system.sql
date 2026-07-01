@@ -215,7 +215,7 @@ CREATE TABLE IF NOT EXISTS tblSupportAttachments (
 -- Purpose: Support knowledge base categories
 -- ============================================
 CREATE TABLE IF NOT EXISTS tblSupportCategories (
-    categoryID INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    categoryID BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     categoryName VARCHAR(100) NOT NULL COMMENT 'Category name',
     categorySlug VARCHAR(100) NOT NULL COMMENT 'URL-friendly slug',
     description TEXT DEFAULT NULL COMMENT 'Category description',
@@ -247,7 +247,7 @@ INSERT INTO tblSupportCategories (categoryName, categorySlug, description, icon,
 -- ============================================
 -- Insert Support Settings
 -- ============================================
-INSERT INTO tblSettings (settingKey, settingValue, category, dataType, isEditable, isSensitive, description) VALUES
+INSERT INTO tblSettings (settingKey, settingValue, settingCategory, settingType, isEditable, isSensitive, description) VALUES
 ('support.enableGuestTickets', 'false', 'Support', 'boolean', TRUE, FALSE, 'Allow non-authenticated users to submit tickets'),
 ('support.requireEmailVerification', 'true', 'Support', 'boolean', TRUE, FALSE, 'Require email verification for guest tickets'),
 ('support.autoAssignTickets', 'true', 'Support', 'boolean', TRUE, FALSE, 'Automatically assign tickets to available staff'),

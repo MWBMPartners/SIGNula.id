@@ -96,10 +96,13 @@ ALTER TABLE `tblEmailQueue`
     MODIFY COLUMN `status` ENUM('pending', 'sending', 'sent', 'failed', 'cancelled') NOT NULL DEFAULT 'pending';
 
 -- Add new indexes for performance
-ALTER TABLE `tblEmailQueue`
-    ADD INDEX IF NOT EXISTS `idx_provider` (`provider`),
-    ADD INDEX IF NOT EXISTS `idx_tracking_token` (`trackingToken`),
-    ADD INDEX IF NOT EXISTS `idx_status_attempts` (`status`, `attemptCount`);
+-- [mig-fix] guarded ADD INDEX (MySQL has no ADD INDEX IF NOT EXISTS)
+SET @__c := (SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='tblEmailQueue' AND INDEX_NAME='idx_provider');
+SET @__s := IF(@__c=0, 'ALTER TABLE `tblEmailQueue` ADD INDEX `idx_provider` (`provider`)', 'DO 0'); PREPARE __s FROM @__s; EXECUTE __s; DEALLOCATE PREPARE __s;
+SET @__c := (SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='tblEmailQueue' AND INDEX_NAME='idx_tracking_token');
+SET @__s := IF(@__c=0, 'ALTER TABLE `tblEmailQueue` ADD INDEX `idx_tracking_token` (`trackingToken`)', 'DO 0'); PREPARE __s FROM @__s; EXECUTE __s; DEALLOCATE PREPARE __s;
+SET @__c := (SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='tblEmailQueue' AND INDEX_NAME='idx_status_attempts');
+SET @__s := IF(@__c=0, 'ALTER TABLE `tblEmailQueue` ADD INDEX `idx_status_attempts` (`status`, `attemptCount`)', 'DO 0'); PREPARE __s FROM @__s; EXECUTE __s; DEALLOCATE PREPARE __s;
 
 -- ============================================================================
 -- 📋 Upgrade tblEmailTemplates
@@ -127,8 +130,9 @@ ALTER TABLE `tblEmailTemplates`
     ADD COLUMN IF NOT EXISTS `updatedBy` INT UNSIGNED NULL AFTER `createdBy`;
 
 -- Add new indexes
-ALTER TABLE `tblEmailTemplates`
-    ADD INDEX IF NOT EXISTS `idx_version` (`version`);
+-- [mig-fix] guarded ADD INDEX (MySQL has no ADD INDEX IF NOT EXISTS)
+SET @__c := (SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='tblEmailTemplates' AND INDEX_NAME='idx_version');
+SET @__s := IF(@__c=0, 'ALTER TABLE `tblEmailTemplates` ADD INDEX `idx_version` (`version`)', 'DO 0'); PREPARE __s FROM @__s; EXECUTE __s; DEALLOCATE PREPARE __s;
 
 -- Add foreign key for previous version if not exists
 SET @fk_check = (SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS
@@ -177,8 +181,8 @@ DEALLOCATE PREPARE stmt;
 
 -- Email Tracking Events
 CREATE TABLE IF NOT EXISTS `tblEmailTrackingEvents` (
-    `eventID` INT UNSIGNED NOT NULL AUTO_INCREMENT,
-    `emailID` INT UNSIGNED NOT NULL,
+    `eventID` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `emailID` BIGINT UNSIGNED NOT NULL,
     `eventType` ENUM('open', 'click', 'bounce', 'complaint', 'unsubscribe') NOT NULL,
     `clickedUrl` VARCHAR(1000) NULL,
     `ipAddress` VARCHAR(45) NULL,
@@ -203,9 +207,9 @@ COMMENT='Email tracking events';
 
 -- Unsubscribe List
 CREATE TABLE IF NOT EXISTS `tblEmailUnsubscribes` (
-    `unsubscribeID` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `unsubscribeID` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     `email` VARCHAR(255) NOT NULL,
-    `userID` INT UNSIGNED NULL,
+    `userID` BIGINT UNSIGNED NULL,
     `reason` ENUM('user_request', 'bounce', 'complaint', 'manual', 'system') NOT NULL DEFAULT 'user_request',
     `reasonDetails` TEXT NULL,
     `category` VARCHAR(50) NULL,
@@ -227,7 +231,7 @@ COMMENT='Email unsubscribe list';
 
 -- Provider Health Monitoring
 CREATE TABLE IF NOT EXISTS `tblEmailProviderHealth` (
-    `healthID` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `healthID` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     `provider` VARCHAR(50) NOT NULL,
     `isHealthy` BOOLEAN NOT NULL DEFAULT TRUE,
     `successCount` INT UNSIGNED NOT NULL DEFAULT 0,
@@ -252,10 +256,10 @@ COMMENT='Email provider health monitoring';
 
 -- Email Campaigns
 CREATE TABLE IF NOT EXISTS `tblEmailCampaigns` (
-    `campaignID` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `campaignID` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     `campaignName` VARCHAR(255) NOT NULL,
     `description` TEXT NULL,
-    `templateID` INT UNSIGNED NULL,
+    `templateID` BIGINT UNSIGNED NULL,
     `category` VARCHAR(50) NULL,
     `status` ENUM('draft', 'scheduled', 'sending', 'sent', 'cancelled') NOT NULL DEFAULT 'draft',
     `totalRecipients` INT UNSIGNED NOT NULL DEFAULT 0,
@@ -269,7 +273,7 @@ CREATE TABLE IF NOT EXISTS `tblEmailCampaigns` (
     `scheduledAt` DATETIME NULL,
     `startedAt` DATETIME NULL,
     `completedAt` DATETIME NULL,
-    `createdBy` INT UNSIGNED NULL,
+    `createdBy` BIGINT UNSIGNED NULL,
     `metadata` JSON NULL,
 
     PRIMARY KEY (`campaignID`),

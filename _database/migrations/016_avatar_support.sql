@@ -212,9 +212,7 @@ ON DUPLICATE KEY UPDATE `settingKey` = `settingKey`;
 -- 📝 Record Migration
 -- ============================================================================
 
-INSERT INTO `tblMigrations` (`migrationFile`, `description`, `executedAt`)
-VALUES ('016_avatar_support.sql', 'Avatar/profile picture system: tblUserAvatars table, 11 avatar settings', NOW())
-ON DUPLICATE KEY UPDATE `executedAt` = NOW();
+-- [mig-fix] removed incompatible tblMigrations self-bookkeeping (the migration runner records migrations)
 
 
 -- ============================================================================
