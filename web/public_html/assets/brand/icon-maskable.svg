@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ============================================================================
+  SIGNula.id — PWA / app icon (maskable-safe source)
+  ============================================================================
+  Source for the manifest.json icon set (icon-72x72.png … icon-512x512.png,
+  "purpose": "any maskable"). Unlike the favicon glyph, this version:
+    - fills the ENTIRE canvas edge-to-edge (no rounded corners baked in) —
+      the OS applies its own mask shape (circle, squircle, rounded-square…)
+      on top, per the maskable-icon spec, so our art must not pre-round it;
+    - keeps all glyph content inside the ~80% "safe zone" (a circle of
+      radius 19.2 centered at 24,24 in this 48x48 view box), via the single
+      group transform below, so nothing important gets clipped by an
+      aggressive circular mask.
+
+  Rasterise to the manifest's PNG sizes with e.g.:
+    rsvg-convert -w 512 -h 512 icon-maskable.svg -o icon-512x512.png
+
+  Docs: https://developer.chrome.com/blog/maskable-icon/
+  ============================================================================
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" role="img" aria-labelledby="sig-icon-title">
+  <title id="sig-icon-title">SIGNula.id</title>
+  <defs>
+    <linearGradient id="sigIconGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#667eea"/>
+      <stop offset="100%" stop-color="#764ba2"/>
+    </linearGradient>
+    <mask id="sigIconHole" maskUnits="userSpaceOnUse" x="0" y="0" width="48" height="48">
+      <rect x="0" y="0" width="48" height="48" fill="#ffffff"/>
+      <circle cx="19" cy="18" r="6.5" fill="#000000"/>
+      <path d="M 14.5 20 L 23.5 20 L 20 32 L 18 32 Z" fill="#000000"/>
+    </mask>
+  </defs>
+
+  <!-- Full-bleed background: the OS/browser applies its own mask shape on top -->
+  <rect id="background" x="0" y="0" width="48" height="48" fill="url(#sigIconGrad)" mask="url(#sigIconHole)"/>
+
+  <!-- Content kept inside the maskable "safe zone" via a single group transform -->
+  <g id="check" transform="translate(24,24) scale(0.8) translate(-24,-24)">
+    <circle cx="32" cy="32" r="8" fill="#ffffff" stroke="#5568d3" stroke-width="1.4"/>
+    <path d="M 28.2 32 L 30.8 34.7 L 36.2 28.3" fill="none" stroke="#764ba2" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>

@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ============================================================================
+  SIGNula.id — Combined Lockup (symbol + wordmark, dark-surface, animated)
+  ============================================================================
+  Same self-contained lockup as lockup-light.svg, palette flipped for dark
+  surfaces. Named layers: <g id="signula-lockup"> > <g id="symbol"> (with
+  "key" / "lock" / "check") and <g id="wordmark">.
+  ============================================================================
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 100" role="img"
+     aria-labelledby="sig-lock-d-title sig-lock-d-desc">
+  <title id="sig-lock-d-title">SIGNula.id</title>
+  <desc id="sig-lock-d-desc">SIGNula.id logo: a horizontal key sliding into a lock, followed by a checkmark, next to the SIGNula.id wordmark.</desc>
+
+  <defs>
+    <linearGradient id="sigLockGradD" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7b93ee"/>
+      <stop offset="100%" stop-color="#9b7bc4"/>
+    </linearGradient>
+    <mask id="sigLockHoleD" maskUnits="userSpaceOnUse" x="0" y="0" width="100" height="100">
+      <rect x="60" y="18" width="28" height="64" rx="8" fill="#ffffff"/>
+      <circle cx="70" cy="48" r="6" fill="#000000"/>
+      <path d="M 64.5 49 L 75.5 49 L 72 63 L 68 63 Z" fill="#000000"/>
+    </mask>
+  </defs>
+
+  <style>
+    svg {
+      --sig-ink:     #c7d0fc;
+      --sig-surface: #101a33;
+      --sig-accent:  #b79bd6;
+      --sig-text:    #eceaf6;
+    }
+    .sig-line         { fill: none; stroke: var(--sig-ink); stroke-linecap: round; }
+    .sig-fill-ink     { fill: var(--sig-ink); }
+    .sig-plate        { fill: url(#sigLockGradD); }
+    .sig-badge-circle { fill: var(--sig-surface); stroke: var(--sig-ink); stroke-width: 1.5; }
+    .sig-tick         { fill: none; stroke: var(--sig-accent); stroke-linecap: round; stroke-linejoin: round; }
+
+    text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+    .sig-wm-sign   { fill: var(--sig-text);   font-weight: 800; }
+    .sig-wm-ula    { fill: var(--sig-text);   font-weight: 500; }
+    .sig-wm-suffix { fill: var(--sig-accent); font-weight: 800; }
+
+    #key { animation: sigKeySlide 2.6s ease-in-out infinite; }
+    @keyframes sigKeySlide {
+      0%   { transform: translateX(-34px); }
+      28%  { transform: translateX(-34px); }
+      55%  { transform: translateX(0); }
+      100% { transform: translateX(0); }
+    }
+    .sig-badge-circle { opacity: 1; animation: sigBadgeFade 2.6s ease-in-out infinite; }
+    @keyframes sigBadgeFade {
+      0% { opacity: 0; } 52% { opacity: 0; } 62% { opacity: 1; } 100% { opacity: 1; }
+    }
+    .sig-tick {
+      stroke-dasharray: 1; stroke-dashoffset: 0;
+      animation: sigCheckDraw 2.6s ease-in-out infinite;
+    }
+    @keyframes sigCheckDraw {
+      0% { stroke-dashoffset: 1; } 58% { stroke-dashoffset: 1; } 82% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      #key, .sig-badge-circle, .sig-tick { animation: none !important; }
+      #key              { transform: translateX(0) !important; }
+      .sig-badge-circle { opacity: 1 !important; }
+      .sig-tick         { stroke-dashoffset: 0 !important; }
+    }
+  </style>
+
+  <g id="signula-lockup">
+    <g id="symbol">
+      <g id="key">
+        <circle class="sig-line" cx="17" cy="50" r="9" stroke-width="6"/>
+        <rect class="sig-fill-ink" x="26" y="47" width="34" height="7" rx="1.5"/>
+        <rect class="sig-fill-ink" x="46" y="54" width="5" height="6"/>
+        <rect class="sig-fill-ink" x="54" y="54" width="6" height="9"/>
+      </g>
+      <g id="lock">
+        <rect class="sig-plate" x="60" y="18" width="28" height="64" rx="8" mask="url(#sigLockHoleD)"/>
+      </g>
+      <g id="check">
+        <circle class="sig-badge-circle" cx="80" cy="75" r="13"/>
+        <path class="sig-tick" pathLength="1" d="M 73.5 75 L 78.5 80 L 88.5 67.5" stroke-width="4.5"/>
+      </g>
+    </g>
+    <g id="wordmark">
+      <text x="118" y="68" font-size="40" letter-spacing="-0.5">
+        <tspan class="sig-wm-sign">SIGN</tspan><tspan class="sig-wm-ula">ula</tspan><tspan class="sig-wm-suffix">.id</tspan>
+      </text>
+    </g>
+  </g>
+</svg>

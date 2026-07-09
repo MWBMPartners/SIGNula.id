@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ============================================================================
+  SIGNula.id — Favicon glyph (dark-chrome variant, static)
+  ============================================================================
+  Same simplified glyph as favicon-light.svg, brightened so it stays legible
+  against dark browser chrome / dark tab bars. See favicon-light.svg for the
+  full design rationale.
+  ============================================================================
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" role="img" aria-labelledby="sig-fav-d-title">
+  <title id="sig-fav-d-title">SIGNula.id</title>
+  <defs>
+    <linearGradient id="sigFavGradD" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7b93ee"/>
+      <stop offset="100%" stop-color="#9b7bc4"/>
+    </linearGradient>
+    <mask id="sigFavHoleD" maskUnits="userSpaceOnUse" x="0" y="0" width="48" height="48">
+      <rect x="2" y="2" width="44" height="44" rx="12" fill="#ffffff"/>
+      <circle cx="22" cy="19" r="7.5" fill="#000000"/>
+      <path d="M 15.5 21 L 28.5 21 L 24 35 L 20 35 Z" fill="#000000"/>
+    </mask>
+  </defs>
+  <g id="lock">
+    <rect x="2" y="2" width="44" height="44" rx="12" fill="url(#sigFavGradD)" mask="url(#sigFavHoleD)"/>
+  </g>
+  <g id="check">
+    <circle cx="36" cy="36" r="9" fill="#101a33" stroke="#c7d0fc" stroke-width="1.4"/>
+    <path d="M 31.7 36 L 34.6 39 L 40.6 32" fill="none" stroke="#eceaf6" stroke-width="3.1" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>

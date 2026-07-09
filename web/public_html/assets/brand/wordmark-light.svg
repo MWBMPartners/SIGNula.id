@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ============================================================================
+  SIGNula.id — Wordmark (light-surface variant)
+  ============================================================================
+  Text-based wordmark (not converted to outlines) using the same system font
+  stack as the rest of the SIGNula web app, so it always renders in a font
+  that is actually installed on the visitor's device. ".id" is set in the
+  accent colour and full weight to nod at the SIGNulo.id domain used for the
+  "behind the scenes" side of the product (sign-in, account hub, API).
+
+  Follow-up note: for a print/vector-perfect wordmark that never depends on
+  installed fonts, the next iteration should convert this text to outlined
+  paths (e.g. via a font tool) — left as a deliberate first-pass trade-off;
+  see the brand preview page for details.
+  ============================================================================
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 70" role="img"
+     aria-labelledby="sig-wm-l-title">
+  <title id="sig-wm-l-title">SIGNula.id</title>
+  <style>
+    /* --sig-text: neutral deep ink, 10.5:1 on white — max legibility for the
+       bulk of the wordmark. --sig-accent: brand purple, reserved for ".id"
+       so a single spot of colour carries the emphasis (also matches the
+       symbol's accent/checkmark colour for cross-asset consistency). */
+    svg { --sig-text: #3d3d55; --sig-accent: #764ba2; }
+    text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+    .sig-wm-sign   { fill: var(--sig-text);   font-weight: 800; }
+    .sig-wm-ula    { fill: var(--sig-text);   font-weight: 500; }
+    .sig-wm-suffix { fill: var(--sig-accent); font-weight: 800; }
+  </style>
+  <g id="wordmark">
+    <text x="6" y="49" font-size="40" letter-spacing="-0.5">
+      <tspan class="sig-wm-sign">SIGN</tspan><tspan class="sig-wm-ula">ula</tspan><tspan class="sig-wm-suffix">.id</tspan>
+    </text>
+  </g>
+</svg>

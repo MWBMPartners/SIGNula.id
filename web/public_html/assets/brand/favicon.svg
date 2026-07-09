@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ============================================================================
+  SIGNula.id — Favicon glyph (adaptive: follows prefers-color-scheme)
+  ============================================================================
+  Same simplified glyph as favicon-light.svg / favicon-dark.svg, but as a
+  single file that automatically follows the browser/OS theme. Supporting
+  browsers (Safari, Firefox; Chromium support has been improving) will pick
+  the right variant for the tab bar automatically. For browsers/contexts
+  that only accept one static favicon, reference favicon-light.svg or
+  favicon-dark.svg directly instead (see the app's <link rel="icon"> tags).
+  ============================================================================
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" role="img" aria-labelledby="sig-fav-a-title">
+  <title id="sig-fav-a-title">SIGNula.id</title>
+  <defs>
+    <linearGradient id="sigFavGradA" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" class="sig-fav-stop-a"/>
+      <stop offset="100%" class="sig-fav-stop-b"/>
+    </linearGradient>
+    <mask id="sigFavHoleA" maskUnits="userSpaceOnUse" x="0" y="0" width="48" height="48">
+      <rect x="2" y="2" width="44" height="44" rx="12" fill="#ffffff"/>
+      <circle cx="22" cy="19" r="7.5" fill="#000000"/>
+      <path d="M 15.5 21 L 28.5 21 L 24 35 L 20 35 Z" fill="#000000"/>
+    </mask>
+  </defs>
+  <style>
+    svg {
+      --sig-fav-a: #667eea;
+      --sig-fav-b: #764ba2;
+      --sig-fav-surface: #ffffff;
+      --sig-fav-ring: #5568d3;
+      --sig-fav-tick: #764ba2;
+    }
+    @media (prefers-color-scheme: dark) {
+      svg {
+        --sig-fav-a: #7b93ee;
+        --sig-fav-b: #9b7bc4;
+        --sig-fav-surface: #101a33;
+        --sig-fav-ring: #c7d0fc;
+        --sig-fav-tick: #eceaf6;
+      }
+    }
+    .sig-fav-stop-a { stop-color: var(--sig-fav-a); }
+    .sig-fav-stop-b { stop-color: var(--sig-fav-b); }
+    .sig-fav-badge  { fill: var(--sig-fav-surface); stroke: var(--sig-fav-ring); stroke-width: 1.4; }
+    .sig-fav-tick   { fill: none; stroke: var(--sig-fav-tick); stroke-width: 3.1; stroke-linecap: round; stroke-linejoin: round; }
+  </style>
+  <g id="lock">
+    <rect x="2" y="2" width="44" height="44" rx="12" fill="url(#sigFavGradA)" mask="url(#sigFavHoleA)"/>
+  </g>
+  <g id="check">
+    <circle class="sig-fav-badge" cx="36" cy="36" r="9"/>
+    <path class="sig-fav-tick" d="M 31.7 36 L 34.6 39 L 40.6 32"/>
+  </g>
+</svg>
