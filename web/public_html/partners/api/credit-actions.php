@@ -623,7 +623,19 @@ function handleTopUpCredits($input, $db, $accessControl, $sessionManager, $activ
     // 🏢 VERIFY PARTNER EXISTS
     // ====================================================================
 
-    $stmt = $db->prepare("SELECT partnerID, companyName, status FROM tblPartners WHERE partnerID = ?");
+    /**
+     * 🩹 B-074 fix (found while wiring the CreditManager call below): the
+     * REAL tblPartners column for the display/legal name is `partnerName`,
+     * NOT `companyName` (grep + information_schema-verified against
+     * migration 012 — `companyName` does not exist at all). `status`
+     * (ENUM: pending/active/suspended/rejected) IS a real column and was
+     * already correct — only `companyName` was the phantom column. This
+     * SELECT previously threw an "Unknown column" mysqli_sql_exception on
+     * every request, BEFORE the handler ever reached the
+     * CreditManager::initiateTopUp() call further down — the whole top-up
+     * action fataled at this line first.
+     */
+    $stmt = $db->prepare("SELECT partnerID, partnerName, status FROM tblPartners WHERE partnerID = ?");
     $stmt->bind_param('i', $partnerID);
     $stmt->execute();
     $partnerRecord = $stmt->get_result()->fetch_assoc();
@@ -652,13 +664,31 @@ function handleTopUpCredits($input, $db, $accessControl, $sessionManager, $activ
      * If CreditManager is not yet implemented, we create a pending record manually
      * as a placeholder for the payment flow.
      *
+     * 🩹 B-074 fix: `CreditManager::initiateTopUp()` DOES NOT EXIST (grep +
+     * reflection-verified — CreditManager only implements deposit/withdraw/
+     * payFromCredits/refundToCredits/adjustBalance/transfer/getBalance).
+     * Calling it fataled with "Call to undefined method" on every request —
+     * and since CreditManager.php DOES exist and load successfully, the
+     * `class_exists('CreditManager')` check below was ALWAYS true, so the
+     * safe fallback branch (which creates a pending tblPayments row with NO
+     * live provider call — exactly the "record the intended top-up without
+     * a live charge" behaviour this ticket asks for) could never actually
+     * run. Rather than inventing a new live-charge path on CreditManager (a
+     * shared class used by every other money-moving admin/partner action —
+     * more surface area, more risk), the SMALLER, SAFER fix is option (b):
+     * gate on `method_exists()` too, so this naturally — and permanently,
+     * without a special-case flag — takes the already-written, already-safe
+     * fallback path below. The actual balance credit still only ever happens
+     * later via CreditManager::deposit(), once a real payment confirmation
+     * arrives (per this function's own doc-comment) — never here.
      * @see /web/private_html/payments/CreditManager.php
      */
     $userID = $sessionManager->getUserID();
     $userInfo = $sessionManager->getUserInfo();
 
-    if (class_exists('CreditManager')) {
-        // ✅ Use CreditManager for full payment flow
+    if (class_exists('CreditManager') && method_exists('CreditManager', 'initiateTopUp')) {
+        // ✅ Use CreditManager for full payment flow (once a real
+        // initiateTopUp() implementation exists on CreditManager).
         $result = CreditManager::initiateTopUp([
             'ownerType'     => 'partner',
             'ownerID'       => $partnerID,
@@ -712,38 +742,55 @@ function handleTopUpCredits($input, $db, $accessControl, $sessionManager, $activ
         // ====================================================================
 
         /**
-         * 📝 When CreditManager is not yet implemented, create a pending
-         * payment record directly. This serves as a placeholder until the
-         * full payment provider integration is complete.
+         * 📝 When CreditManager::initiateTopUp() is not available, create a
+         * pending payment record directly — SAFELY, with NO live provider
+         * charge (B-074: this is the "smaller, safer" option (b) the ticket
+         * asks for, not a live-charge path).
          *
          * The payment record is created with status 'pending' and will be
-         * updated to 'completed' when the payment is confirmed via webhook
-         * or manual processing.
+         * updated to 'completed' (and the credit balance actually deposited,
+         * via CreditManager::deposit()) when the payment is confirmed via
+         * webhook or manual processing.
          *
          * Invoice number format: SIG-TOPUP-YYYYMMDD-XXXXX
+         *
+         * 🩹 B-074 fix: the real tblPartners column is `partnerName`, not
+         * `companyName` (see the "VERIFY PARTNER EXISTS" fix above). The
+         * INSERT below is also fixed to include `netAmount`,
+         * `paymentProvider`, and `ipAddress` — all THREE are NOT NULL on the
+         * real tblPayments schema with no column default (migration 010/012
+         * — information_schema-verified), so this INSERT would have thrown
+         * a "Field ... doesn't have a default value" error under MySQL's
+         * default STRICT_TRANS_TABLES mode on every real database, even
+         * once the CreditManager call above was bypassed.
          * @see _database/migrations/010_webhooks_and_payments.sql (tblPayments definition)
          */
         $invoiceNumber = 'SIG-TOPUP-' . date('Ymd') . '-' . str_pad(random_int(1, 99999), 5, '0', STR_PAD_LEFT);
 
         $stmt = $db->prepare("
             INSERT INTO tblPayments
-                (userID, partnerID, amount, currency, paymentMethod, status,
-                 paymentContext, invoiceNumber, description, createdAt)
+                (userID, partnerID, amount, netAmount, currency, paymentMethod,
+                 paymentProvider, status, paymentContext, invoiceNumber,
+                 description, ipAddress, createdAt)
             VALUES
-                (?, ?, ?, ?, ?, 'pending', 'signula_direct', ?, ?, NOW())
+                (?, ?, ?, ?, ?, ?, ?, 'pending', 'signula_direct', ?, ?, ?, NOW())
         ");
 
-        $description = 'Credit top-up for partner: ' . $partnerRecord['companyName'];
+        $description = 'Credit top-up for partner: ' . $partnerRecord['partnerName'];
+        $ipAddress   = substr((string)($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0'), 0, 45);
 
         $stmt->bind_param(
-            'iidssss',
+            'iiddssssss',
             $userID,
             $partnerID,
             $amount,
+            $amount,
             $currency,
             $paymentMethod,
+            $paymentMethod,
             $invoiceNumber,
-            $description
+            $description,
+            $ipAddress
         );
 
         if (!$stmt->execute()) {

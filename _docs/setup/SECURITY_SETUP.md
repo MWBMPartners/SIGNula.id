@@ -1517,3 +1517,124 @@ sub = SHA-256( sectorIdentifier . '|' . userID . '|' . oauth.pairwise_salt )
 ### NEEDS-LEAD-REVIEW
 
 - The exact SMTP behaviour when `email.smtp.encryption = 'none'` (mail sent without AUTH) should be confirmed against your Dreamhost shared-hosting relay config before deploying to production. Dreamhost typically requires authentication; `none` may cause all outbound mail to fail silently.
+
+---
+
+## 💳 Billing / Payments (G-002) — TEST-MODE
+
+**G-002 ("Recurring Billing / Subscription Lifecycle Engine") ships TEST-MODE
+ONLY.** No real money can move through it until a human deliberately flips a
+single database setting — described in full below — AFTER configuring real
+live provider credentials. This section documents that engine's safety model
+and the exact go-live step.
+
+### ⚠️ Master Switch — `billing.test_mode_guard` (read this before anything else)
+
+`billing.test_mode_guard` (migration 036, `tblSettings`, category `billing`)
+**defaults to `'1'` (ON)**. While ON, `BillingMode::assertTestMode($provider)`
+is the single, central, FAIL-CLOSED gate that **every provider HTTP
+money-mover in the codebase calls before touching the network** — PayPal
+order/subscription creation and refunds, Stripe checkout-session creation and
+refunds, Coinbase charge creation, and `PaymentManager::createSubscription()`/
+`::recordPayment()`/`::changeTier()`'s own provider-revision calls. If the
+guard is ON **and** the target provider's configured mode resolves to
+`'live'`, the call:
+
+1. Writes an auditable `'blocked'` row to `tblBillingAttempts` (so a
+   would-be-live attempt is never silent), then
+2. Throws `BillingModeException` — every wired caller already wraps this in
+   its own try/catch, so the caller gets its normal `['success' => false,
+   ...]` failure response. **No provider HTTP call is ever reached.**
+
+When the guard is OFF, or the resolved mode is anything other than the
+literal string `'live'` (the normal sandbox/test-mode path), the check
+returns silently with zero extra overhead.
+
+This class **never flips the guard itself** — turning it off is a
+deliberate, user-gated, two-step act (see **GitHub issue #70** — "Configure
+Live Payment Provider Credentials").
+
+### Per-Provider Mode Settings
+
+Each payment provider resolves its own mode independently from `tblSettings`
+(category `payment`) — an unrecognised/missing value fails safe towards
+"treat as not-live", never towards "treat as live":
+
+| Setting | Values | Default | Provider |
+|---|---|---|---|
+| `payment.paypal.mode` | `sandbox` \| `live` | `sandbox` | PayPal (Orders + Subscriptions APIs) |
+| `payment.stripe.mode` | `test` \| `live` | `test` | Stripe (Checkout Sessions, Billing) |
+| `payment.coinbase.mode` | `sandbox` \| `live` | `sandbox` | Coinbase Commerce (crypto charges) |
+
+Different providers historically use different vocabulary for "not live"
+(`sandbox` vs `test`) — `BillingMode` only ever treats the literal string
+`live` as dangerous; anything else (including a typo) is treated as safe.
+
+### The EXACT Go-Live Step (GitHub issue #70)
+
+To accept **REAL payments in production**, you must do **BOTH** of the
+following — setting only the credentials, or only the guard, is not enough:
+
+1. **Set the live provider credentials** for whichever provider(s) you are
+   enabling (PayPal live client ID/secret, Stripe live secret/publishable
+   keys, Coinbase live API key — stored encrypted in `tblSettings`,
+   `isSensitive = 1`, per this document's general credential-storage rules),
+   **and set that provider's own `payment.<provider>.mode` to `live`**.
+2. **Turn `billing.test_mode_guard` OFF** — via the backend database, not a
+   CLI:
+
+   > **Backend DB → tblSettings → key `billing.test_mode_guard` → value `0`
+   > → Save.**
+   > (Admin UI path: **Global Admin → Settings → `billing` category →
+   > `billing.test_mode_guard` → Save**, the same generic settings editor
+   > used for every other `tblSettings`-backed feature in this document.)
+
+   ```sql
+   -- Turn OFF the TEST-MODE guard (run ONLY after live credentials are set
+   -- AND you have verified the engine end-to-end in sandbox/test mode):
+   UPDATE tblSettings SET settingValue = '0' WHERE settingKey = 'billing.test_mode_guard';
+   ```
+
+   Verify:
+
+   ```sql
+   SELECT settingValue FROM tblSettings WHERE settingKey = 'billing.test_mode_guard';
+   -- Must show '0' before ANY provider will accept a live-mode call
+   ```
+
+**⚠️ WARNING:** turning the guard OFF enables REAL charges, REAL
+subscriptions, and REAL refunds to flow through whichever provider(s) you
+have set to `live` mode. Only do this after you have exercised the full
+signup → renewal → dunning → cancellation lifecycle against each provider's
+own sandbox/test mode and are confident in the result. Leave the guard ON
+for every provider you have not yet finished verifying — the guard is
+evaluated per-call against that call's own resolved provider mode, so PayPal
+can safely go live while Stripe and Coinbase remain sandboxed, for example.
+
+### Dunning Ladder + Grace Period Settings
+
+When a recurring charge fails, the subscription enters `past_due` and a
+configurable retry ladder runs before the account is suspended:
+
+| Setting | Meaning | Default |
+|---|---|---|
+| `billing.dunning.retry_days` | CSV of days between retry rungs, chained from the moment the subscription first enters `past_due` (e.g. `1,3,5,7` — rung 1 fires 1 day after `past_due`, rung 2 three days after rung 1, etc.) | `1,3,5,7` |
+| `billing.dunning.max_retries` | Number of retry rungs before the ladder is EXHAUSTED and the subscription moves `past_due` → `grace`. Should normally match the entry count in `billing.dunning.retry_days`. | `4` |
+| `billing.grace_period_days` | How long a subscription sits in `grace` (still nominally usable, final-warning state) before the scheduled `dunning_final_cancel` task actually cancels it. | `7` |
+
+Every retry rung, the grace transition, and the final cancellation are all
+scheduled/executed by `BillingScheduler` and audited to `tblBillingAttempts`.
+
+**Provider-managed subscriptions renew via webhooks, not this ladder's own
+collection attempt.** `BillingScheduler`'s dunning-retry task does **not**
+"pull a stored card on a timer" — G-002's recurring-billing model is
+explicitly provider-managed (PayPal Subscriptions / Stripe Billing own the
+actual recurring charge and their own retry schedule). Each dunning tick's
+job is bookkeeping — email the user, advance the ladder, eventually move to
+`grace`/cancel — while the REAL resolution normally arrives independently as
+a provider webhook (`PAYMENT.SALE.COMPLETED` for PayPal,
+`invoice.paid`/`invoice.payment_succeeded` for Stripe) routed through
+`PaymentManager::applyWebhookTransition()` / `::recordSubscriptionRenewal()`,
+which resolves the local subscription via
+`tblSubscriptions.paymentProviderSubscriptionID` and moves it back to
+`active` — independently of, and often before, the next dunning tick fires.

@@ -718,25 +718,33 @@ class InvoiceManager
             $pdf->Cell(90, 6, 'Bill To:', 0, 1, 'L');
             $pdf->SetFont('helvetica', '', 10);
 
-            if (!empty($invoice['billingName'])) {
-                $pdf->Cell(90, 5, $invoice['billingName'], 0, 1, 'L');
+            // 🩹 B-070 fix: the REAL tblInvoices columns are `billedToName`/
+            // `billedToEmail`/`billedToAddress`/`billedToVATNumber` (migration
+            // 012/037 — same fix already applied to createInvoice()'s INSERT
+            // in G-002 S2). This reader was still using the OLD, non-existent
+            // `billingName`/`billingEmail`/`billingAddress`/`vatNumber` keys,
+            // so every field here silently rendered blank (array access on a
+            // missing key is not fatal, just always empty). There is NO
+            // `companyName` column at all — createInvoice() folds an optional
+            // company name into `billedToName` at creation time (see its own
+            // "Resolve the billed-to party" comment) — so that block is
+            // dropped rather than reading a phantom key.
+            if (!empty($invoice['billedToName'])) {
+                $pdf->Cell(90, 5, $invoice['billedToName'], 0, 1, 'L');
             }
-            if (!empty($invoice['companyName'])) {
-                $pdf->Cell(90, 5, $invoice['companyName'], 0, 1, 'L');
+            if (!empty($invoice['billedToEmail'])) {
+                $pdf->Cell(90, 5, $invoice['billedToEmail'], 0, 1, 'L');
             }
-            if (!empty($invoice['billingEmail'])) {
-                $pdf->Cell(90, 5, $invoice['billingEmail'], 0, 1, 'L');
-            }
-            if (!empty($invoice['vatNumber'])) {
-                $pdf->Cell(90, 5, 'VAT: ' . $invoice['vatNumber'], 0, 1, 'L');
+            if (!empty($invoice['billedToVATNumber'])) {
+                $pdf->Cell(90, 5, 'VAT: ' . $invoice['billedToVATNumber'], 0, 1, 'L');
             }
 
             // Decode billing address JSON if present
             $billingAddress = null;
-            if (!empty($invoice['billingAddress'])) {
-                $billingAddress = is_string($invoice['billingAddress'])
-                    ? json_decode($invoice['billingAddress'], true)
-                    : $invoice['billingAddress'];
+            if (!empty($invoice['billedToAddress'])) {
+                $billingAddress = is_string($invoice['billedToAddress'])
+                    ? json_decode($invoice['billedToAddress'], true)
+                    : $invoice['billedToAddress'];
             }
 
             if (is_array($billingAddress)) {
@@ -875,7 +883,8 @@ class InvoiceManager
             $pdf->SetTextColor(44, 62, 80);
             $pdf->Cell(145, 8, '', 0, 0);
             $pdf->Cell(20, 8, 'TOTAL:', 0, 0, 'R');
-            $pdf->Cell(15, 8, $invoice['currency'] . ' ' . number_format((float)$invoice['totalAmount'], 2), 0, 1, 'R');
+            // 🩹 B-070 fix: real column is `total`, not `totalAmount`.
+            $pdf->Cell(15, 8, $invoice['currency'] . ' ' . number_format((float)$invoice['total'], 2), 0, 1, 'R');
 
             // ─────────────────────────────────────────────────────────────────
             // 📝 Notes section (if present)
@@ -1032,9 +1041,10 @@ class InvoiceManager
 
             // ─────────────────────────────────────────────────────────────────
             // 📬 Determine recipient email address
-            // Priority: explicit parameter > invoice billingEmail
+            // Priority: explicit parameter > invoice billedToEmail
+            // 🩹 B-070 fix: real column is `billedToEmail`, not `billingEmail`.
             // ─────────────────────────────────────────────────────────────────
-            $toEmail = $recipientEmail ?? $invoice['billingEmail'] ?? null;
+            $toEmail = $recipientEmail ?? $invoice['billedToEmail'] ?? null;
 
             if (empty($toEmail)) {
                 return [
@@ -1062,9 +1072,16 @@ class InvoiceManager
                 'discount_amount' => number_format((float)$invoice['discountAmount'], 2),
                 'tax_rate'        => number_format((float)$invoice['taxRate'], 2),
                 'tax_amount'      => number_format((float)$invoice['taxAmount'], 2),
-                'total_amount'    => number_format((float)$invoice['totalAmount'], 2),
-                'billing_name'    => $invoice['billingName'] ?? '',
-                'company_name'    => $invoice['companyName'] ?? '',
+                // 🩹 B-070 fix: real columns are `total` and `billedToName` —
+                // `totalAmount`/`billingName` don't exist on tblInvoices.
+                // There is no `companyName` column at all (folded into
+                // `billedToName` at creation time — see createInvoice()'s
+                // "Resolve the billed-to party" comment) — that template
+                // variable is dropped rather than reading a phantom key; no
+                // shipped email template references {{company_name}}
+                // (grep-verified against _database/migrations/).
+                'total_amount'    => number_format((float)$invoice['total'], 2),
+                'billing_name'    => $invoice['billedToName'] ?? '',
                 'company_sender'  => getSetting('company.name', 'MWBM Partners Ltd'),
             ];
 
@@ -1315,12 +1332,13 @@ class InvoiceManager
 
         // ─────────────────────────────────────────────────────────────────
         // 📦 Decode billing address from JSON
+        // 🩹 B-070 fix: real column is `billedToAddress`, not `billingAddress`.
         // ─────────────────────────────────────────────────────────────────
         $billingAddress = null;
-        if (!empty($invoice['billingAddress'])) {
-            $billingAddress = is_string($invoice['billingAddress'])
-                ? json_decode($invoice['billingAddress'], true)
-                : $invoice['billingAddress'];
+        if (!empty($invoice['billedToAddress'])) {
+            $billingAddress = is_string($invoice['billedToAddress'])
+                ? json_decode($invoice['billedToAddress'], true)
+                : $invoice['billedToAddress'];
         }
 
         // ─────────────────────────────────────────────────────────────────
@@ -1488,10 +1506,12 @@ class InvoiceManager
             . '        <div class="row mb-4">' . PHP_EOL
             . '            <div class="col-md-6">' . PHP_EOL
             . '                <h6 class="text-muted text-uppercase mb-2">Bill To</h6>' . PHP_EOL
-            . (!empty($invoice['billingName']) ? '                <p class="mb-0 fw-bold">' . $esc($invoice['billingName']) . '</p>' . PHP_EOL : '')
-            . (!empty($invoice['companyName']) ? '                <p class="mb-0">' . $esc($invoice['companyName']) . '</p>' . PHP_EOL : '')
-            . (!empty($invoice['billingEmail']) ? '                <p class="mb-0 small">' . $esc($invoice['billingEmail']) . '</p>' . PHP_EOL : '')
-            . (!empty($invoice['vatNumber']) ? '                <p class="mb-0 small">VAT: ' . $esc($invoice['vatNumber']) . '</p>' . PHP_EOL : '')
+            // 🩹 B-070 fix: real columns are billedToName/billedToEmail/
+            // billedToVATNumber. There is no companyName column (folded into
+            // billedToName at creation time) — that line is dropped.
+            . (!empty($invoice['billedToName']) ? '                <p class="mb-0 fw-bold">' . $esc($invoice['billedToName']) . '</p>' . PHP_EOL : '')
+            . (!empty($invoice['billedToEmail']) ? '                <p class="mb-0 small">' . $esc($invoice['billedToEmail']) . '</p>' . PHP_EOL : '')
+            . (!empty($invoice['billedToVATNumber']) ? '                <p class="mb-0 small">VAT: ' . $esc($invoice['billedToVATNumber']) . '</p>' . PHP_EOL : '')
             . (!empty($billingAddressHTML) ? '                <p class="mb-0 small">' . $billingAddressHTML . '</p>' . PHP_EOL : '')
             . '            </div>' . PHP_EOL
             . '            <div class="col-md-6 text-md-end">' . PHP_EOL
@@ -1534,7 +1554,8 @@ class InvoiceManager
             . $taxRow . PHP_EOL
             . '                    <tr class="border-top">' . PHP_EOL
             . '                        <td class="text-end border-0"><strong class="fs-5">TOTAL:</strong></td>' . PHP_EOL
-            . '                        <td class="text-end border-0"><strong class="fs-5">' . $esc($invoice['currency']) . ' ' . number_format((float)$invoice['totalAmount'], 2) . '</strong></td>' . PHP_EOL
+            // 🩹 B-070 fix: real column is `total`, not `totalAmount`.
+            . '                        <td class="text-end border-0"><strong class="fs-5">' . $esc($invoice['currency']) . ' ' . number_format((float)$invoice['total'], 2) . '</strong></td>' . PHP_EOL
             . '                    </tr>' . PHP_EOL
             . '                </table>' . PHP_EOL
             . '            </div>' . PHP_EOL
@@ -1631,9 +1652,15 @@ class InvoiceManager
     public static function getUserInvoices(int $userID, int $limit = 25, int $offset = 0): array
     {
         return Database::fetchAll(
+            // 🩹 B-070 fix: real columns are `total` (not `totalAmount`) and
+            // `billedToName` (not `billingName`) — there is no `companyName`
+            // column at all (folded into `billedToName` at creation time).
+            // This SELECT previously referenced three non-existent columns,
+            // which would throw an "Unknown column" mysqli_sql_exception on
+            // every real database.
             "SELECT invoiceID, invoiceNumber, invoiceType, status, currency,
-                    subtotal, discountAmount, taxRate, taxAmount, totalAmount,
-                    billingName, companyName, issuedAt, dueDate, paidAt, createdAt
+                    subtotal, discountAmount, taxRate, taxAmount, total,
+                    billedToName, issuedAt, dueDate, paidAt, createdAt
              FROM tblInvoices
              WHERE userID = ?
              ORDER BY createdAt DESC
@@ -1663,9 +1690,12 @@ class InvoiceManager
     public static function getPartnerInvoices(int $partnerID, int $limit = 25, int $offset = 0): array
     {
         return Database::fetchAll(
+            // 🩹 B-070 fix: real columns are `total` (not `totalAmount`) and
+            // `billedToName` (not `billingName`) — there is no `companyName`
+            // column at all (folded into `billedToName` at creation time).
             "SELECT invoiceID, invoiceNumber, userID, invoiceType, status, currency,
-                    subtotal, discountAmount, taxRate, taxAmount, totalAmount,
-                    billingName, companyName, issuedAt, dueDate, paidAt, createdAt
+                    subtotal, discountAmount, taxRate, taxAmount, total,
+                    billedToName, issuedAt, dueDate, paidAt, createdAt
              FROM tblInvoices
              WHERE partnerID = ?
              ORDER BY createdAt DESC
@@ -1742,17 +1772,22 @@ class InvoiceManager
             }
 
             // 📝 Log the status change
+            // 🩹 B-070 fix: $invoice is a raw tblInvoices row (SELECT * via
+            // getInvoice()) — the real column is `total`, not `totalAmount`.
+            // The OUTPUT key names below ('totalAmount' in the log detail /
+            // webhook payload) are an external contract and are left as-is;
+            // only the READ from $invoice is corrected.
             ActivityLogger::log(
                 (int)$invoice['userID'],
                 'invoice_paid',
                 'payment',
                 'info',
                 'Invoice marked as paid: ' . $invoice['invoiceNumber']
-                    . ' — ' . $invoice['currency'] . ' ' . number_format((float)$invoice['totalAmount'], 2),
+                    . ' — ' . $invoice['currency'] . ' ' . number_format((float)$invoice['total'], 2),
                 [
                     'invoiceID'            => $invoiceID,
                     'invoiceNumber'        => $invoice['invoiceNumber'],
-                    'totalAmount'          => (float)$invoice['totalAmount'],
+                    'totalAmount'          => (float)$invoice['total'],
                     'currency'             => $invoice['currency'],
                     'transactionReference' => $transactionReference,
                 ]
@@ -1764,7 +1799,7 @@ class InvoiceManager
                     'invoiceID'            => $invoiceID,
                     'invoiceNumber'        => $invoice['invoiceNumber'],
                     'userID'               => (int)$invoice['userID'],
-                    'totalAmount'          => (float)$invoice['totalAmount'],
+                    'totalAmount'          => (float)$invoice['total'],
                     'currency'             => $invoice['currency'],
                     'transactionReference' => $transactionReference,
                 ]);
@@ -1953,16 +1988,30 @@ class InvoiceManager
 
             // ─────────────────────────────────────────────────────────────────
             // 📦 Decode billing address from the original invoice
+            // 🩹 B-070 fix: real column is `billedToAddress`, not `billingAddress`.
             // ─────────────────────────────────────────────────────────────────
             $billingAddress = null;
-            if (!empty($original['billingAddress'])) {
-                $billingAddress = is_string($original['billingAddress'])
-                    ? json_decode($original['billingAddress'], true)
-                    : $original['billingAddress'];
+            if (!empty($original['billedToAddress'])) {
+                $billingAddress = is_string($original['billedToAddress'])
+                    ? json_decode($original['billedToAddress'], true)
+                    : $original['billedToAddress'];
             }
 
             // ─────────────────────────────────────────────────────────────────
             // 🆕 Create the new invoice with the same details
+            //
+            // 🩹 B-070 fix: $original is a raw tblInvoices row, so it must be
+            // read via the REAL column names (billedToName/billedToEmail/
+            // billedToVATNumber) — NOT the createInvoice() $options KEYS
+            // ('billingName'/'billingEmail'/'vatNumber'), which are a
+            // DIFFERENT, public-facing naming convention (see createInvoice()'s
+            // own doc-comment). The two happen to look similar but read from
+            // different sides of the createInvoice() boundary. There is no
+            // `companyName` column to read — createInvoice() already folded
+            // any company name into `billedToName` at original-creation time,
+            // so it carries forward automatically via 'billingName' below;
+            // re-supplying a separate 'companyName' option would have
+            // double-appended it.
             // ─────────────────────────────────────────────────────────────────
             $options = [
                 'partnerID'      => $original['partnerID'] ? (int)$original['partnerID'] : null,
@@ -1971,10 +2020,9 @@ class InvoiceManager
                 'currency'       => $original['currency'],
                 'discountAmount' => (float)$original['discountAmount'],
                 'taxRate'        => (float)$original['taxRate'],
-                'billingName'    => $original['billingName'],
-                'billingEmail'   => $original['billingEmail'],
-                'companyName'    => $original['companyName'],
-                'vatNumber'      => $original['vatNumber'],
+                'billingName'    => $original['billedToName'],
+                'billingEmail'   => $original['billedToEmail'],
+                'vatNumber'      => $original['billedToVATNumber'],
                 'notes'          => 'Reissued from invoice ' . $original['invoiceNumber']
                     . (!empty($original['notes']) ? PHP_EOL . $original['notes'] : ''),
                 'dueDate'        => $original['dueDate'],
@@ -2284,6 +2332,13 @@ class InvoiceManager
     {
         // ─────────────────────────────────────────────────────────────────
         // 🏗️ Build the SQL query dynamically based on optional partner filter
+        //
+        // 🩹 B-070 fix: the revenue/average aggregates below previously
+        // referenced `totalAmount`, which is not a real tblInvoices column
+        // (the real column is `total` — migration 012/037) — every call to
+        // this method would have thrown an "Unknown column" mysqli_sql_exception
+        // on a real database. The returned array's own KEYS (revenueTotal,
+        // revenueIssued, revenueOverdue, averageInvoice) are unchanged.
         // ─────────────────────────────────────────────────────────────────
         $sql = "SELECT
                     -- 📊 Invoice counts by status
@@ -2295,12 +2350,14 @@ class InvoiceManager
                     COUNT(CASE WHEN status = 'draft' THEN 1 END) AS totalDraft,
 
                     -- 💰 Revenue aggregates
-                    COALESCE(SUM(CASE WHEN status = 'paid' THEN totalAmount ELSE 0 END), 0) AS revenueTotal,
-                    COALESCE(SUM(CASE WHEN status = 'issued' THEN totalAmount ELSE 0 END), 0) AS revenueIssued,
-                    COALESCE(SUM(CASE WHEN status = 'overdue' THEN totalAmount ELSE 0 END), 0) AS revenueOverdue,
+                    -- B-070 fix: real column is total, not totalAmount
+                    -- (output KEYS below, e.g. revenueTotal, are unchanged).
+                    COALESCE(SUM(CASE WHEN status = 'paid' THEN total ELSE 0 END), 0) AS revenueTotal,
+                    COALESCE(SUM(CASE WHEN status = 'issued' THEN total ELSE 0 END), 0) AS revenueIssued,
+                    COALESCE(SUM(CASE WHEN status = 'overdue' THEN total ELSE 0 END), 0) AS revenueOverdue,
 
                     -- 📈 Averages
-                    COALESCE(AVG(CASE WHEN status = 'paid' THEN totalAmount ELSE NULL END), 0) AS averageInvoice,
+                    COALESCE(AVG(CASE WHEN status = 'paid' THEN total ELSE NULL END), 0) AS averageInvoice,
 
                     -- 🏷️ Tax and discount totals
                     COALESCE(SUM(CASE WHEN status = 'paid' THEN taxAmount ELSE 0 END), 0) AS totalTaxCollected,

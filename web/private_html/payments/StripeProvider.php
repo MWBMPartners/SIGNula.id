@@ -1878,7 +1878,27 @@ class StripeProvider
 
         // 📦 Create or activate the subscription in SIGNula
         if ($session['mode'] === 'subscription' && $tierID) {
-            // 🔄 Create subscription via PaymentManager
+            // 🔄 Create subscription via PaymentManager.
+            //
+            // 🩹 B-072 (original fix): the real tblSubscriptions column is
+            // `paymentProviderSubscriptionID` — `externalSubscriptionID` has
+            // never existed (grep-confirmed, phantom column). Before that
+            // fix, EVERY Stripe subscription created via Checkout silently
+            // failed to persist its Stripe subscription id, which in turn
+            // meant every subsequent invoice.paid/customer.subscription.
+            // updated/.deleted webhook lookup for that subscription could
+            // never find it either.
+            //
+            // 🩹 B-073 (this fix): B-072 originally closed that gap with a
+            // separate follow-up UPDATE immediately after INSERT — correct,
+            // but a two-step create-then-update leaves a race window (a
+            // webhook for this exact subscription arriving between the two
+            // queries would still fail to match) and an extra round trip.
+            // PaymentManager::createSubscription() now accepts
+            // `paymentProviderSubscriptionID` directly — the already-known
+            // Stripe subscription id ($subscriptionID, from
+            // `$session['subscription']` above) is passed straight through
+            // and persisted in the SAME INSERT, atomically.
             $subResult = PaymentManager::createSubscription(
                 $userID,
                 $tierID,
@@ -1887,27 +1907,9 @@ class StripeProvider
                 [
                     'partnerID' => null,
                     'trialDays' => 0, // 📌 Trial would have already started via Stripe
+                    'paymentProviderSubscriptionID' => $subscriptionID,
                 ]
             );
-
-            // 📝 Store the Stripe subscription ID in our database for future reference
-            // 🩹 B-072: the real tblSubscriptions column is
-            // `paymentProviderSubscriptionID` — `externalSubscriptionID` has
-            // never existed (grep-confirmed, phantom column). Before this
-            // fix, EVERY Stripe subscription created via Checkout silently
-            // failed to persist its Stripe subscription id here (an "Unknown
-            // column" mysqli_sql_exception, non-fatal to the caller since
-            // this whole checkout-completion flow is otherwise
-            // non-transactional), which in turn meant every subsequent
-            // invoice.paid/customer.subscription.updated/.deleted webhook
-            // lookup for that subscription could never find it either.
-            if ($subResult['success'] && !empty($subResult['subscriptionID']) && $subscriptionID) {
-                Database::query(
-                    "UPDATE tblSubscriptions SET paymentProviderSubscriptionID = ? WHERE subscriptionID = ?",
-                    [$subscriptionID, $subResult['subscriptionID']],
-                    'si'
-                );
-            }
         }
 
         // 📝 Log the successful checkout completion

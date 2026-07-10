@@ -170,7 +170,30 @@ class PaymentManager
      * @param int $tierID Tier ID
      * @param string $billingCycle Billing cycle (monthly, yearly, etc.)
      * @param string $paymentMethod Payment method
-     * @param array $options Optional: partnerID, promoCode, trialDays
+     * @param array $options Optional: partnerID, promoCode, trialDays,
+     *                       paymentProviderSubscriptionID (B-073 — see below)
+     *
+     * 🩹 B-073 fix: `$options['paymentProviderSubscriptionID']` (accepts the
+     * `providerSubscriptionID` key as an alias) persists the PROVIDER's own
+     * subscription id (e.g. PayPal's `I-XXXXXXXXXXXX` from
+     * `PayPalProvider::createSubscription()`'s response, or Stripe's
+     * `sub_...`) into `tblSubscriptions.paymentProviderSubscriptionID` at
+     * INSERT time. This is ADDITIVE and nullable — omitting it (the
+     * pre-existing behaviour for free/manual subscriptions) is unchanged.
+     * Before this fix, the column was never written by this method at all,
+     * so the S3 webhook lifecycle (`PaymentManager::applyWebhookTransition()`
+     * / `::recordSubscriptionRenewal()`, reached via `PayPalProvider::
+     * handleWebhookEvent()` / `StripeProvider::handleWebhookEvent()`, both of
+     * which resolve the local subscription via `WHERE
+     * paymentProviderSubscriptionID = ?`) could never match a subscription
+     * created through this path — every BILLING.SUBSCRIPTION.ACTIVATED /
+     * renewal / cancelled webhook for a real provider-managed subscription
+     * silently fell through to the "no matching local subscription — ignored"
+     * branch. @see PayPalProvider::createSubscription(), StripeProvider's own
+     * checkout-completion flow (which now passes its already-known Stripe
+     * subscription id through this same option instead of a separate
+     * follow-up UPDATE — see StripeProvider::handleCheckoutSessionCompleted()).
+     *
      * @return array ['success' => bool, 'subscriptionID' => int, 'message' => string]
      */
     public static function createSubscription(
@@ -268,19 +291,42 @@ class PaymentManager
             $currency = $tier['currency'] ?? self::DEFAULT_CURRENCY;
             $partnerID = $options['partnerID'] ?? null;
 
+            // 🩹 B-073 fix: accept the provider's own subscription id (see
+            // this method's doc-comment above). Nullable/additive — free and
+            // manual subscriptions simply pass null, which is unchanged
+            // behaviour. `providerSubscriptionID` is accepted as an alias
+            // for readability at call sites.
+            $paymentProviderSubscriptionID = $options['paymentProviderSubscriptionID']
+                ?? $options['providerSubscriptionID']
+                ?? null;
+
             // 💾 Insert subscription
             Database::query(
                 "INSERT INTO tblSubscriptions
                     (userID, partnerID, tierID, subscriptionStatus, billingCycle, amount, currency,
-                     paymentMethod, startDate, currentPeriodStart, currentPeriodEnd,
+                     paymentMethod, paymentProviderSubscriptionID, startDate, currentPeriodStart, currentPeriodEnd,
                      nextBillingDate, trialEndsAt, autoRenew)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)",
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)",
                 [
                     $userID, $partnerID, $tierID, $status, $billingCycle, $amount, $currency,
-                    $paymentMethod, $startDate, $startDate, $periodEnd ?: '9999-12-31',
+                    $paymentMethod, $paymentProviderSubscriptionID, $startDate, $startDate, $periodEnd ?: '9999-12-31',
                     $nextBillingDate, $trialEndsAt
                 ],
-                'iiisssdssssss'
+                // 🩹 Separate pre-existing bug found while touching this line
+                // for B-073 (NOT a B-073 symptom itself): the type string was
+                // 'iiisssdssssss' — $amount (a float, 6th param) was bound as
+                // 's' and $currency (a string, 7th param) was bound as 'd'.
+                // mysqli's bind_param() converts the PHP zval to match the
+                // DECLARED type BEFORE sending it over the wire — a string
+                // like "GBP" cast to a C double via 'd' becomes 0.0, which
+                // MySQL then stores into the VARCHAR(3) `currency` column as
+                // the string "0". Empirically confirmed against a live MySQL
+                // 8/9 connection (see B-073 build report): EVERY subscription
+                // ever created through this method — free or paid — got
+                // `currency = '0'` instead of the real ISO 4217 code. Fixed
+                // by moving 'd' to the 6th position (amount) and 's' to the
+                // 7th (currency); the rest of the string was already correct.
+                'iiissdssssssss'
             );
 
             $subscriptionID = Database::getLastInsertId();
