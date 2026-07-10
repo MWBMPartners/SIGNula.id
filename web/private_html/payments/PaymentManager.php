@@ -74,10 +74,15 @@ class PaymentManager
         'refunded', 'partially_refunded', 'cancelled', 'disputed'
     ];
 
-    /** @var array Valid subscription statuses */
+    /**
+     * @var array Valid subscription statuses.
+     * 🩹 G-002 S1: 'grace' added — migration 036 extends the
+     * tblSubscriptions.subscriptionStatus ENUM with this dunning-window state.
+     * @see SubscriptionStateMachine::VALID_STATES (the enforced transition table)
+     */
     const SUBSCRIPTION_STATUSES = [
         'active', 'cancelled', 'expired', 'paused',
-        'trial', 'pending', 'past_due'
+        'trial', 'pending', 'past_due', 'grace'
     ];
 
     // ========================================================================
@@ -171,6 +176,26 @@ class PaymentManager
                 'monthly' => (float)$tier['monthlyPrice'],
                 default => (float)$tier['monthlyPrice'],
             };
+
+            // 🛡️ TEST-MODE GUARD (G-002 §0/§9.1) — only relevant when this
+            // subscription will actually route through a live-charging
+            // provider (paypal/stripe/crypto→coinbase). Free/manual
+            // subscriptions never call a provider, so they must NOT be
+            // blocked by an unrelated provider's live-mode setting — an
+            // unconditional guard here would incorrectly refuse legitimate
+            // free-tier signups. @see BillingMode::assertTestMode()
+            if ($amount > 0 && in_array($paymentMethod, ['paypal', 'stripe', 'crypto'], true)) {
+                $billingModePath = __DIR__ . DIRECTORY_SEPARATOR . 'BillingMode.php';
+                if (!file_exists($billingModePath)) {
+                    // 🚫 The guard is a hard safety requirement for any
+                    // provider-bound subscription — fail closed rather than
+                    // silently skip it if the file is somehow missing.
+                    throw new RuntimeException('BillingMode.php (TEST-MODE guard) is required but was not found');
+                }
+                require_once $billingModePath;
+                // 'crypto' resolves to the Coinbase provider mode setting.
+                BillingMode::assertTestMode($paymentMethod === 'crypto' ? 'coinbase' : $paymentMethod);
+            }
 
             // 🎟️ Apply discount code if provided
             $discountAmount = 0.00;
@@ -446,6 +471,23 @@ class PaymentManager
         array $options = []
     ): array {
         try {
+            // 🛡️ TEST-MODE GUARD (G-002 §0/§9.1) — only relevant when this
+            // payment is routed through a live-charging provider. See
+            // createSubscription() above for the free/manual exemption
+            // rationale. $paymentProvider is a free-text VARCHAR(100)
+            // ("PayPal", "Stripe", "Coinbase", "manual", …) so it is
+            // case-normalised before matching against the guarded set.
+            $guardedProviderKey = strtolower(trim($paymentProvider));
+            if ($amount > 0 && in_array($guardedProviderKey, ['paypal', 'stripe', 'coinbase'], true)) {
+                $billingModePath = __DIR__ . DIRECTORY_SEPARATOR . 'BillingMode.php';
+                if (!file_exists($billingModePath)) {
+                    // 🚫 Fail closed rather than silently skip the guard.
+                    throw new RuntimeException('BillingMode.php (TEST-MODE guard) is required but was not found');
+                }
+                require_once $billingModePath;
+                BillingMode::assertTestMode($guardedProviderKey);
+            }
+
             $currency = $options['currency'] ?? self::getSetting('payment.default_currency', self::DEFAULT_CURRENCY);
 
             // 🧮 Calculate tax

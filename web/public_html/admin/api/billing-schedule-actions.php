@@ -247,9 +247,12 @@ function handleGetPendingTasks(): void
 {
     // 📋 Fetch all pending tasks ordered by scheduled date ascending
     // Earlier dates appear first so overdue tasks are most visible
+    // 🩹 B-025: the table's PK column is `scheduleID` (migration 012), not
+    // `taskID` — alias it here so the JSON response shape (and every other
+    // handler in this file) keeps using the established `taskID` field name.
     $tasks = Database::fetchAll(
         "SELECT
-            taskID,
+            scheduleID AS taskID,
             taskType,
             targetType,
             targetID,
@@ -293,9 +296,10 @@ function handleGetPendingTasks(): void
 function handleGetFailedTasks(): void
 {
     // 📋 Fetch all failed tasks ordered by most recently updated
+    // 🩹 B-025: alias scheduleID -> taskID (see handleGetPendingTasks() above).
     $tasks = Database::fetchAll(
         "SELECT
-            taskID,
+            scheduleID AS taskID,
             taskType,
             targetType,
             targetID,
@@ -361,9 +365,10 @@ function handleGetTaskHistory(): void
     $total = $countResult ? (int) $countResult['total'] : 0;
 
     // 📋 Fetch paginated task history ordered by most recently updated
+    // 🩹 B-025: alias scheduleID -> taskID (see handleGetPendingTasks() above).
     $tasks = Database::fetchAll(
         "SELECT
-            taskID,
+            scheduleID AS taskID,
             taskType,
             targetType,
             targetID,
@@ -594,10 +599,12 @@ function handleRetryTask(?array $input): void
     $retryMinutes = max(0, min(1440, $retryMinutes));
 
     // 🔍 Verify the task exists and is in a retryable state
+    // 🩹 B-025: `scheduleID` is the real PK column; WHERE must target it,
+    // aliased back to `taskID` for the SELECT list (see handleGetPendingTasks()).
     $task = Database::fetchOne(
-        "SELECT taskID, taskType, status, attempts, maxAttempts
+        "SELECT scheduleID AS taskID, taskType, status, attempts, maxAttempts
          FROM tblBillingSchedule
-         WHERE taskID = ?",
+         WHERE scheduleID = ?",
         [$taskID],
         'i'
     );
@@ -669,10 +676,11 @@ function handleCancelTask(?array $input): void
     }
 
     // 🔍 Verify the task exists and is in a cancellable state
+    // 🩹 B-025: WHERE targets the real PK column (`scheduleID`) — see handleRetryTask() above.
     $task = Database::fetchOne(
-        "SELECT taskID, taskType, targetType, targetID, status
+        "SELECT scheduleID AS taskID, taskType, targetType, targetID, status
          FROM tblBillingSchedule
-         WHERE taskID = ?",
+         WHERE scheduleID = ?",
         [$taskID],
         'i'
     );

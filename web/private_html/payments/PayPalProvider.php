@@ -71,6 +71,18 @@ if (file_exists($paymentManagerPath)) {
     throw new RuntimeException('PaymentManager.php is required but was not found');
 }
 
+// 🛡️ Load the BillingMode TEST-MODE guard (G-002 Stage S1 — see BillingMode.php
+// for the full rationale). Every money-moving method below calls
+// BillingMode::assertTestMode('paypal') before making any PayPal API request.
+$billingModePath = __DIR__ . DIRECTORY_SEPARATOR . 'BillingMode.php';
+if (file_exists($billingModePath)) {
+    require_once $billingModePath;
+} else {
+    // ⚠️ The guard is a hard safety requirement — refuse to load without it
+    error_log('[SIGNula] PayPalProvider: BillingMode.php not found at ' . $billingModePath);
+    throw new RuntimeException('BillingMode.php is required but was not found');
+}
+
 /**
  * 💳 PayPalProvider
  *
@@ -1070,6 +1082,14 @@ class PayPalProvider
         array $options = []
     ): array {
         try {
+            // 🛡️ TEST-MODE GUARD (G-002 §0/§9.1) — checked FIRST, before any other
+            // logic or PayPal API call. If billing.test_mode_guard is ON and
+            // payment.paypal.mode is 'live', this throws BillingModeException,
+            // which the catch(\Exception) block below converts into the usual
+            // ['success' => false, 'message' => …] response — no HTTP call is
+            // ever reached. @see BillingMode::assertTestMode()
+            BillingMode::assertTestMode('paypal');
+
             // 🔍 Verify PayPal is enabled
             if (!self::isEnabled()) {
                 return [
@@ -1911,6 +1931,10 @@ class PayPalProvider
         string $reason = ''
     ): array {
         try {
+            // 🛡️ TEST-MODE GUARD (G-002 §0/§9.1) — see createSubscription() above
+            // for the full rationale. Checked first, before any PayPal API call.
+            BillingMode::assertTestMode('paypal');
+
             // 🔍 Validate the capture ID
             if (empty($captureID)) {
                 return [

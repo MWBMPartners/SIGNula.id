@@ -95,13 +95,31 @@ class BillingScheduler
     // 🔧 CONSTANTS
     // ========================================================================
 
-    /** @var array Valid task types for tblBillingSchedule.taskType ENUM */
+    /**
+     * @var array Valid task types for tblBillingSchedule.taskType ENUM.
+     *
+     * 🩹 B-025: widened to match BOTH the current DB ENUM (migration
+     * 012 + 018's taskType MODIFY) AND every literal this class actually
+     * passes to createTask() elsewhere in this file. Before this fix,
+     * 'generate_invoice', 'fee_change_notification', 'calculate_usage',
+     * 'charge_usage', and 'archive_usage' were valid ENUM members that
+     * self::createTask()'s own validation silently REJECTED (grep-confirmed
+     * call sites: processUsageCalculation() -> createTask('charge_usage', …)
+     * at ~L2400 and similar usage-billing scheduling calls) — the opposite
+     * direction of the schema↔code drift from the taskID/scheduleID and
+     * missing-column issues fixed elsewhere in this migration/PR.
+     */
     const TASK_TYPES = [
         'charge_subscription',
         'send_reminder',
         'suspend_account',
         'expire_trial',
         'process_remittance',
+        'generate_invoice',
+        'fee_change_notification',
+        'calculate_usage',
+        'charge_usage',
+        'archive_usage',
     ];
 
     /** @var array Valid target types for tblBillingSchedule.targetType ENUM */
@@ -1474,8 +1492,15 @@ class BillingScheduler
      */
     public static function getTasksDue(int $limit = self::DEFAULT_BATCH_SIZE): array
     {
+        // 🩹 B-025 schema↔code reconciliation: the table's PK column is
+        // `scheduleID` (migration 012), but every consumer of this method
+        // (processDueTasks(), processLazyBatch(), and the admin API) reads
+        // $task['taskID']. Rather than rename the PK (destructive — forbidden
+        // by the migration safety rules), alias it in the SELECT so the rest
+        // of this class's existing `$task['taskID']` reads keep working
+        // unchanged. @see https://dev.mysql.com/doc/refman/8.0/en/select.html
         return Database::fetchAll(
-            "SELECT *
+            "SELECT *, scheduleID AS taskID
              FROM tblBillingSchedule
              WHERE status = 'pending'
                AND (
@@ -1511,6 +1536,9 @@ class BillingScheduler
     public static function markTaskProcessed(int $taskID, string $status, ?string $result = null): void
     {
         try {
+            // 🩹 B-025: $taskID is the PHP-side name (matches the public method
+            // signature and every caller), but the actual PK column is
+            // `scheduleID` — target that in the WHERE clause. @see getTasksDue()
             Database::query(
                 "UPDATE tblBillingSchedule
                  SET status = ?,
@@ -1518,7 +1546,7 @@ class BillingScheduler
                      lastAttemptAt = NOW(),
                      result = ?,
                      updatedAt = NOW()
-                 WHERE taskID = ?",
+                 WHERE scheduleID = ?",
                 [$status, $result, $taskID],
                 'ssi'
             );
@@ -1556,6 +1584,7 @@ class BillingScheduler
         try {
             $nextRetryAt = date('Y-m-d H:i:s', strtotime('+' . $retryMinutes . ' minutes'));
 
+            // 🩹 B-025: see markTaskProcessed() — WHERE targets the real PK (`scheduleID`).
             Database::query(
                 "UPDATE tblBillingSchedule
                  SET status = 'pending',
@@ -1563,7 +1592,7 @@ class BillingScheduler
                      attempts = attempts + 1,
                      lastAttemptAt = NOW(),
                      updatedAt = NOW()
-                 WHERE taskID = ?",
+                 WHERE scheduleID = ?",
                 [$nextRetryAt, $taskID],
                 'si'
             );
