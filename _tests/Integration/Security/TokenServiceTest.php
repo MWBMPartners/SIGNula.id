@@ -595,7 +595,14 @@ class TokenServiceTest extends DatabaseTestCase
         // ✅ The access token verifies ONLY against the CLIENT's audience —
         //    not the default first-party jwt.audience.
         $claims = \Jwt::verify($pair['access_token'], ['aud' => $client['clientIdentifier']]);
-        $this->assertSame((string) $userID, $claims['sub']);
+
+        // 🕵️ G-001 red-team F-01 fix: an RP access token's `sub` is the OIDC
+        //    PAIRWISE subject (never the raw userID) — the SAME value
+        //    computeSubject() would produce for this user+client.
+        $hydratedClient = \OAuthClientManager::getClientByID($client['clientID']);
+        $expectedSub = \OAuthClientManager::computeSubject($userID, $hydratedClient);
+        $this->assertSame($expectedSub, $claims['sub'], 'F-01: RP access token sub must be the pairwise subject');
+        $this->assertNotSame((string) $userID, $claims['sub'], 'F-01: RP access token must never leak the raw userID');
 
         try {
             \Jwt::verify($pair['access_token']); // default aud (jwt.audience) must NOT match
@@ -638,7 +645,14 @@ class TokenServiceTest extends DatabaseTestCase
         //    audience — the clientID → clientIdentifier resolution survived
         //    rotation.
         $claims = \Jwt::verify($second['access_token'], ['aud' => $client['clientIdentifier']]);
-        $this->assertSame((string) $userID, $claims['sub']);
+
+        // 🕵️ G-001 red-team F-01 fix: the ROTATED access token still carries
+        //    the pairwise subject (never the raw userID) — the binding
+        //    survives rotation exactly like the audience does.
+        $hydratedClient = \OAuthClientManager::getClientByID($client['clientID']);
+        $expectedSub = \OAuthClientManager::computeSubject($userID, $hydratedClient);
+        $this->assertSame($expectedSub, $claims['sub'], 'F-01: rotated RP access token sub must stay pairwise');
+        $this->assertNotSame((string) $userID, $claims['sub'], 'F-01: rotated RP access token must never leak the raw userID');
 
         // 💾 The NEW refresh row also carries the same clientID.
         $row = \Database::fetchOne(

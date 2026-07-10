@@ -79,6 +79,21 @@ header('Pragma: no-cache');
 header('X-Content-Type-Options: nosniff');
 
 // ============================================================================
+// 🔒 G-001 red-team F-05 fix — the `oidc.enabled` master switch
+// ============================================================================
+// Migration 031 seeded `oidc.enabled = '0'` (default OFF until an operator
+// opts in) but nothing ever enforced it — this endpoint was fully live
+// regardless. Refuse BEFORE any DB-bound client/grant work (and before rate
+// limiting even spends a bucket slot) when the provider is off. A 404 (rather
+// than e.g. 503) so a disabled provider does not even confirm this endpoint
+// exists — mirrors the discovery document's own 404 when disabled.
+if (!class_exists('OidcDiscoveryService') || !OidcDiscoveryService::isProviderEnabled()) {
+    http_response_code(404);
+    echo json_encode(['error' => 'not_found'], JSON_UNESCAPED_SLASHES);
+    exit;
+}
+
+// ============================================================================
 // 🔧 LOCAL HELPERS
 // ============================================================================
 

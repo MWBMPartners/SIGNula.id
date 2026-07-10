@@ -56,6 +56,17 @@ header('Cache-Control: no-store');
 header('Pragma: no-cache');
 header('X-Content-Type-Options: nosniff');
 
+// ============================================================================
+// 🔒 G-001 red-team F-05 fix — the `oidc.enabled` master switch
+// ============================================================================
+// See oauth/token.php's own "F-05 fix" comment for the full rationale. This
+// endpoint is refused BEFORE it ever looks at the presented Bearer token.
+if (!class_exists('OidcDiscoveryService') || !OidcDiscoveryService::isProviderEnabled()) {
+    http_response_code(404);
+    echo json_encode(['error' => 'not_found'], JSON_UNESCAPED_SLASHES);
+    exit;
+}
+
 // 🔒 OIDC Core §5.3.1 permits GET or POST; anything else is not meaningful here.
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 if ($method !== 'GET' && $method !== 'POST') {

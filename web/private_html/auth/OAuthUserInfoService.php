@@ -49,9 +49,16 @@ declare(strict_types=1);
  *        jwt.audience, no RP client row) resolves to null here and is
  *        CORRECTLY refused — userinfo is an RP-facing OIDC surface, not a
  *        general resource-server endpoint.
- *     5. `sub` = {@see OAuthClientManager::computeSubject()} — the SAME
- *        pairwise computation Stage A3's id_token used, so the two byte-match
- *        for the same user+client (OIDC Core §5.3.2 requires this).
+ *     5. `sub` (G-001 red-team F-01 fix) — the ACCESS token's `sub` claim IS
+ *        ITSELF the OIDC pairwise (or public, per policy) subject
+ *        {@see TokenService::mintPair()} minted it with, the SAME opaque
+ *        value the id_token used, so the two byte-match for the same
+ *        user+client (OIDC Core §5.3.2) WITHOUT recomputation here. Since a
+ *        pairwise subject is a ONE-WAY hash, the userID it belongs to is
+ *        resolved via a `tblOAuthSubjects` lookup (migration 033, keyed on
+ *        subjectHash + clientID) that TokenService::issueForClient()/
+ *        refresh() populate at mint/rotation time — never by parsing the
+ *        claim as a raw userID.
  *
  * PHP Version: 8.3+ (developed/tested on 8.4).
  *
@@ -138,16 +145,38 @@ class OAuthUserInfoService
             return self::invalidTokenResult();
         }
 
-        $userID = isset($claims['sub']) ? (int) $claims['sub'] : 0;
+        // 🕵️ Step 5 (G-001 red-team F-01 fix) — the access token's `sub` is
+        //    now ITSELF the OIDC pairwise (or public, per policy) subject
+        //    (see TokenService::mintPair()/issueForClient()) — the SAME opaque
+        //    value the id_token already carries — rather than the raw userID.
+        //    A pairwise subject is a ONE-WAY hash, so we can no longer just
+        //    cast it to an int; resolve it back to a real userID via the
+        //    (subjectHash, clientID) mapping TokenService persisted at
+        //    mint/rotation time (tblOAuthSubjects, migration 033). A valid
+        //    RP access token ALWAYS has a mapping row (issueForClient()/
+        //    refresh() always write one before returning the token) — a miss
+        //    here means the token, though cryptographically valid, was never
+        //    actually minted for this client (should be unreachable in
+        //    practice; fail closed regardless).
+        if (!isset($claims['sub']) || !is_string($claims['sub']) || $claims['sub'] === '') {
+            return self::invalidTokenResult();
+        }
+        $sub = $claims['sub'];
+
+        $subjectRow = Database::fetchOne(
+            "SELECT userID FROM tblOAuthSubjects WHERE subjectHash = ? AND clientID = ? LIMIT 1",
+            [$sub, (int) $client['clientID']],
+            'si'
+        );
+        if ($subjectRow === null) {
+            return self::invalidTokenResult();
+        }
+        $userID = (int) $subjectRow['userID'];
         if ($userID <= 0) {
             return self::invalidTokenResult();
         }
 
         $grantedScopes = self::parseScope((string) ($claims['scope'] ?? ''));
-
-        // 🕵️ Step 5 — the SAME pairwise subject Stage A3's id_token used, so
-        //    the two byte-match for the same user+client (OIDC Core §5.3.2).
-        $sub = OAuthClientManager::computeSubject($userID, $client);
 
         $body = ['sub' => $sub];
         self::addGatedClaims($body, $userID, $grantedScopes);

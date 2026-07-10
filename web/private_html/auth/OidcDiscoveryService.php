@@ -61,6 +61,40 @@ if (!defined('SIGNULA_INIT')) {
 class OidcDiscoveryService
 {
     /**
+     * 🔒 Is the OAuth2/OIDC PROVIDER surface enabled at all? (G-001 red-team
+     * F-05 fix)
+     *
+     * Migration 031 seeds `oidc.enabled = '0'` ("master switch, default OFF
+     * until an operator opts in") but — before this fix — NOTHING ever read
+     * it: every provider endpoint (`/oauth/authorize-idp`, `/oauth/token`,
+     * `/oauth/userinfo`, `/oauth/revoke`, the discovery document) was fully
+     * live regardless of the setting. This is the single shared gate every
+     * one of those controllers calls at the very top of the request, BEFORE
+     * any DB-bound client/grant work — so the whole "Sign in with
+     * SIGNula.id" surface stays off until an operator explicitly flips
+     * `oidc.enabled` to `1`.
+     *
+     * Deliberately NOT applied to `/.well-known/jwks.json` — that endpoint
+     * is SHARED with the first-party G-003 JWT bearer-auth stack (which has
+     * its own, separate `jwt.enabled` concern) and must keep serving keys
+     * regardless of the OIDC-provider switch.
+     *
+     * `filter_var(..., FILTER_VALIDATE_BOOLEAN)` (not a bare truthy check)
+     * so every shape `getSetting()` can hand back — a real PHP bool (the
+     * normal runtime path, since `loadSettings()` casts a `settingType =
+     * 'boolean'` row via the SAME filter_var call), or a raw string ('0'/'1'/
+     * 'true'/'false') a test harness might set directly — resolves to the
+     * SAME correct boolean. Defaults to `false` (OFF) when the setting is
+     * entirely absent, matching the seeded default's intent.
+     *
+     * @return bool True only when the provider is explicitly enabled.
+     */
+    public static function isProviderEnabled(): bool
+    {
+        return filter_var(getSetting('oidc.enabled', false), FILTER_VALIDATE_BOOLEAN);
+    }
+
+    /**
      * 🏗️ Build the full OIDC discovery document.
      *
      * Every endpoint URL is derived from `oidc.issuer` (never a hardcoded

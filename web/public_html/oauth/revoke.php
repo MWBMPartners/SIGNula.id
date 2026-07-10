@@ -58,6 +58,16 @@ header('Pragma: no-cache');
 header('X-Content-Type-Options: nosniff');
 
 // ============================================================================
+// 🔒 G-001 red-team F-05 fix — the `oidc.enabled` master switch
+// ============================================================================
+// See oauth/token.php's own "F-05 fix" comment for the full rationale.
+if (!class_exists('OidcDiscoveryService') || !OidcDiscoveryService::isProviderEnabled()) {
+    http_response_code(404);
+    echo json_encode(['error' => 'not_found'], JSON_UNESCAPED_SLASHES);
+    exit;
+}
+
+// ============================================================================
 // 🔧 LOCAL HELPERS (mirror oauth/token.php's tokenParam()/resolveClientAuth())
 // ============================================================================
 

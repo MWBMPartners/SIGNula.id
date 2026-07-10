@@ -254,25 +254,48 @@ class OAuthTokenService
         $redirectUri  = self::stringParam($params, 'redirect_uri');
         $codeVerifier = self::stringParam($params, 'code_verifier');
 
-        $codeHash = hash('sha256', $code);
+        $codeHash              = hash('sha256', $code);
+        $authenticatedClientID = (int) $client['clientID'];
 
         // ------------------------------------------------------------------
         // 3️⃣ ATOMIC SINGLE-USE CONSUME (RFC 6749 §10.5). This is THE security
         //    control: whichever caller's UPDATE actually flips consumedAt from
         //    NULL wins; everyone else (including a genuine replay) sees 0
         //    affected rows and is denied below.
+        //
+        //    🔒 G-001 red-team F-03 fix — the CLIENT-BINDING check
+        //    (`clientID = ?`) is now baked INTO this guarded UPDATE, not left
+        //    for a later SELECT-time comparison. Before this fix, a foreign
+        //    but VALIDLY-AUTHENTICATED client B could present victim client
+        //    A's code: the UPDATE (unconditional on clientID) would still flip
+        //    consumedAt — burning A's code — and only THEN would the
+        //    old step-5️⃣ clientID comparison reject B's exchange. The code was
+        //    already dead by that point, so the legitimate client A could
+        //    never redeem its own code either (a single-shot DoS). Now the
+        //    UPDATE only ever matches (and consumes) a row that ALREADY
+        //    belongs to the AUTHENTICATED caller — a foreign client's attempt
+        //    matches 0 rows and the victim's code is left completely
+        //    untouched (still NULL consumedAt, still redeemable by its real
+        //    owner). codeHash is UNIQUE (migration 031), so this can never
+        //    accidentally consume a DIFFERENT client's row than the one that
+        //    would have matched an unfiltered WHERE codeHash=? alone.
         // ------------------------------------------------------------------
         Database::query(
-            "UPDATE tblOAuthAuthCodes SET consumedAt = NOW() WHERE codeHash = ? AND consumedAt IS NULL",
-            [$codeHash],
-            's'
+            "UPDATE tblOAuthAuthCodes SET consumedAt = NOW() WHERE codeHash = ? AND consumedAt IS NULL AND clientID = ?",
+            [$codeHash, $authenticatedClientID],
+            'si'
         );
 
         if (Database::getAffectedRows() !== 1) {
-            // Either the codeHash is entirely unknown, OR it was already
-            // consumed by an earlier exchange (REPLAY). Either way the caller
-            // gets the SAME generic invalid_grant — but a genuine replay
-            // triggers a real security response (family revoke) internally.
+            // Either the codeHash is entirely unknown, it was already consumed
+            // by an earlier exchange (REPLAY), or — post F-03 — it exists,
+            // is still live, but belongs to a DIFFERENT client than the
+            // caller authenticated as. handlePossibleReplay() re-SELECTs by
+            // codeHash alone and only acts (family revoke) when the row is
+            // ALREADY consumed, so a live foreign-owned code correctly
+            // triggers NO revoke here — it is simply left alone for its real
+            // owner. The caller gets the SAME generic invalid_grant in every
+            // case (never leak WHICH of the three reasons applied).
             self::handlePossibleReplay($codeHash);
 
             return self::errorResult(400, 'invalid_grant', 'The authorization code is invalid or has already been used.');
@@ -302,8 +325,13 @@ class OAuthTokenService
         // ------------------------------------------------------------------
 
         // 🔗 A code issued to client A can never be redeemed by client B, even
-        //    if B authenticates perfectly with its OWN credentials.
-        if ((int) $row['clientID'] !== (int) $client['clientID']) {
+        //    if B authenticates perfectly with its OWN credentials. Since the
+        //    F-03 fix, the atomic consume UPDATE above ALREADY enforces this
+        //    (it can only ever have flipped a row whose clientID matches
+        //    $authenticatedClientID) — this comparison is now unreachable
+        //    dead-code in practice, kept as cheap belt-and-suspenders defence
+        //    in depth rather than removed.
+        if ((int) $row['clientID'] !== $authenticatedClientID) {
             return self::errorResult(400, 'invalid_grant', 'The authorization code was not issued to this client.');
         }
 

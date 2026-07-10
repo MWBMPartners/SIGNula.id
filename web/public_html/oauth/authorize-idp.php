@@ -97,10 +97,15 @@ function authorizeIdpParam(array $source, string $key, ?string $default = null):
  *
  * @param string $error       OAuth error code (e.g. "invalid_client").
  * @param string $description Human-readable description.
+ * @param int    $status      HTTP status code (default 400 — the existing
+ *                             "fatal validation failure" callers). The G-001
+ *                             red-team F-05 provider-disabled gate passes 404
+ *                             instead, so a disabled provider does not even
+ *                             confirm this endpoint exists.
  */
-function renderAuthorizeIdpErrorPage(string $error, string $description): never
+function renderAuthorizeIdpErrorPage(string $error, string $description, int $status = 400): never
 {
-    http_response_code(400);
+    http_response_code($status);
     ?>
     <!DOCTYPE html>
     <html lang="en">
@@ -271,6 +276,25 @@ function renderOAuthConsentScreen(array $client, array $validated, array $curren
 // ============================================================================
 // 🚦 MAIN FLOW
 // ============================================================================
+
+// ----------------------------------------------------------------------------
+// 🔒 G-001 red-team F-05 fix — the `oidc.enabled` master switch
+// ----------------------------------------------------------------------------
+// Migration 031 seeded `oidc.enabled = '0'` (default OFF until an operator
+// opts in) but nothing ever enforced it — see oauth/token.php's own "F-05
+// fix" comment for the full rationale. This is the FIRST check in the whole
+// flow — before even parsing client_id/redirect_uri — so a disabled provider
+// never does any DB-bound work at all. Uses the LOCAL, non-redirectable error
+// page (never a redirect — no redirect_uri has been proven safe yet at this
+// point) at 404, so a disabled provider does not even confirm this endpoint
+// exists.
+if (!class_exists('OidcDiscoveryService') || !OidcDiscoveryService::isProviderEnabled()) {
+    renderAuthorizeIdpErrorPage(
+        'temporarily_unavailable',
+        'Sign-in via this application is not currently available.',
+        404
+    );
+}
 
 $isPost = $_SERVER['REQUEST_METHOD'] === 'POST';
 $source = $isPost ? $_POST : $_GET;

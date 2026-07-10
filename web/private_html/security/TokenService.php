@@ -142,6 +142,13 @@ class TokenService
      *   • the ACCESS token's `aud` claim is the RP's `clientIdentifier` (its
      *     public client_id) — NOT the default first-party `jwt.audience` — so a
      *     resource server can enforce "this token is only good for client X".
+     *   • the ACCESS token's `sub` claim is the OIDC pairwise (or public, per
+     *     the client's subjectType) subject — {@see OAuthClientManager::computeSubject()}
+     *     — the SAME opaque value the id_token/userinfo use, never the raw
+     *     userID (G-001 red-team F-01 fix). The mapping is persisted to
+     *     tblOAuthSubjects (migration 033) so {@see OAuthUserInfoService} can
+     *     resolve it back to a real userID — a pairwise subject is a one-way
+     *     hash, so this is the only way back.
      *   • the refresh-token row records `clientID` (tblRefreshTokens.clientID,
      *     reserved for G-001 since migration 030) so a later rotation
      *     ({@see self::refresh()}) can re-resolve the SAME client identifier
@@ -190,7 +197,15 @@ class TokenService
         //    changing that first-party contract is out of scope here.
         $withRefresh = in_array('offline_access', $scope, true);
 
-        return self::mintPair($userID, $familyID, $scope, $clientIdentifier, $clientID, $withRefresh);
+        // 🕵️ G-001 red-team F-01 fix — the RP access token's `sub` must be the
+        //    SAME opaque (pairwise, or public-per-policy) subject the id_token
+        //    and /oauth/userinfo already use, never the raw internal userID.
+        //    resolveAndRecordSubject() computes it AND persists the
+        //    (subjectHash -> userID, clientID) mapping tblOAuthUserInfoService
+        //    needs to resolve it back, since a pairwise subject is one-way.
+        $subject = self::resolveAndRecordSubject($userID, $clientID);
+
+        return self::mintPair($userID, $familyID, $scope, $clientIdentifier, $clientID, $withRefresh, $subject);
     }
 
     // ========================================================================
@@ -358,19 +373,50 @@ class TokenService
         //    client row is never hard-deleted while grants exist) falls back
         //    to the default audience rather than throwing, so a refresh never
         //    hard-fails purely because of this lookup.
-        $aud = null;
+        $scopeArray = $scopeStr !== '' ? explode(' ', (string) $scopeStr) : [];
+
+        $aud     = null;
+        $subject = null;
         if ($clientID !== null && class_exists('OAuthClientManager')) {
             $client = OAuthClientManager::getClientByID($clientID);
             if ($client !== null && !empty($client['clientIdentifier'])) {
                 $aud = (string) $client['clientIdentifier'];
+
+                // 🔒 G-001 red-team F-02 fix — RE-CHECK the carried-forward
+                //    scope against the client's CURRENT allowedScopes before
+                //    re-minting. Without this, a refresh token minted with
+                //    scope S keeps re-minting access tokens carrying S FOREVER,
+                //    even after an admin tightens the client's policy and
+                //    removes a scope from it — the stored scope was carried
+                //    forward VERBATIM with no re-validation. Intersecting
+                //    (never escalating — only ever narrows) means a scope an
+                //    admin has since revoked stops being issued on the very
+                //    next rotation, without needing to revoke the whole
+                //    refresh-token family just to enforce a policy change.
+                //    A first-party token (clientID null) is UNAFFECTED — it
+                //    has no client-scoped allowedScopes concept to check.
+                $allowedScopesArray = (array) ($client['allowedScopesArray'] ?? []);
+                $scopeArray = array_values(array_intersect($scopeArray, $allowedScopesArray));
+
+                // 🕵️ G-001 red-team F-01 fix — recompute + re-affirm the
+                //    pairwise subject mapping so a ROTATED RP access token
+                //    keeps the SAME opaque `sub` the original id_token/userinfo
+                //    used (never the raw userID) — see issueForClient()'s own
+                //    doc comment + resolveAndRecordSubject() for the full
+                //    rationale. UPSERT is idempotent, so re-affirming an
+                //    already-existing mapping on every rotation is a cheap
+                //    no-op in the common case.
+                $subject = self::resolveAndRecordSubject($userID, $clientID, $client);
             }
         }
 
         // 🎁 Issue the successor pair in the SAME family, carrying the same
-        //    scope AND the same clientID (G-001 — see mintPair()'s $clientID
-        //    param), so tblRefreshTokens.clientID never gets "lost" on rotation.
-        $scopeArray = $scopeStr !== '' ? explode(' ', (string) $scopeStr) : [];
-        $pair = self::mintPair($userID, $familyID, $scopeArray, $aud, $clientID);
+        //    (policy-intersected) scope AND the same clientID (G-001 — see
+        //    mintPair()'s $clientID param), so tblRefreshTokens.clientID never
+        //    gets "lost" on rotation. $withRefresh is explicitly true (a
+        //    rotation ALWAYS re-mints a refresh token — see mintPair()'s own
+        //    doc) so the trailing $subject param can be supplied positionally.
+        $pair = self::mintPair($userID, $familyID, $scopeArray, $aud, $clientID, true, $subject);
 
         // 🔗 Link the spent token to its replacement (audit trail / forensics).
         Database::query(
@@ -589,7 +635,26 @@ class TokenService
 
         // ⏱️ 3. tokensInvalidBefore cutoff. Any access token issued (iat) before
         //    the user's cutoff is rejected — the "log out everywhere" lever.
-        $sub = isset($claims['sub']) ? (int) $claims['sub'] : 0;
+        //    🕵️ G-001 red-team F-01 follow-up: `sub` is the raw userID ONLY
+        //    for a first-party token — an RP-issued token now carries the
+        //    OIDC pairwise (opaque hex) subject (see mintPair()), which is
+        //    NOT castable to a meaningful int. ctype_digit() distinguishes
+        //    the two: a userID-string is always all-decimal-digits; a SHA-256
+        //    pairwise hex digest is 64 chars and (astronomically overwhelming
+        //    odds) contains at least one a-f character. A non-numeric sub
+        //    resolves to 0 here, so the cutoff check is SKIPPED for RP
+        //    tokens — casting it blindly to (int) would silently query an
+        //    unrelated (garbage, leading-digit-truncated) userID's cutoff, a
+        //    correctness bug this fix avoids. (RP tokens have their OWN,
+        //    correctly-scoped revocation levers — jti denylist via
+        //    /oauth/revoke, and refresh-family revoke via
+        //    TokenService::revokeClientForUser() — so this is not a security
+        //    gap, only a known scope limit of the first-party mass-revoke
+        //    cutoff: it does not (yet) reach already-issued RP access
+        //    tokens. Flagged as a possible follow-up.)
+        $sub = (isset($claims['sub']) && is_string($claims['sub']) && ctype_digit($claims['sub']))
+            ? (int) $claims['sub']
+            : 0;
         $iat = isset($claims['iat']) ? (int) $claims['iat'] : 0;
         if ($sub > 0 && self::isBeforeUserCutoff($sub, $iat)) {
             throw new JwtException('Access token predates user token cutoff (mass-revoked)');
@@ -695,6 +760,20 @@ class TokenService
      *                                     false, NO row is inserted and the
      *                                     returned 'refresh_token'/
      *                                     '_new_token_id' are both null.
+     * @param string|null        $subject  G-001 red-team F-01 fix: overrides the
+     *                                     access token's `sub` claim. Defaults
+     *                                     to null, in which case `sub` falls
+     *                                     back to `(string) $userID` — the
+     *                                     ORIGINAL, UNCHANGED first-party
+     *                                     behaviour (issueTokens() never passes
+     *                                     this). issueForClient()/refresh()
+     *                                     pass the OIDC pairwise (or public,
+     *                                     per policy) subject computed by
+     *                                     {@see self::resolveAndRecordSubject()}
+     *                                     so an RP's access token carries the
+     *                                     SAME opaque `sub` its id_token/
+     *                                     userinfo already use — never the raw
+     *                                     userID.
      * @return array<string,mixed> access_token/refresh_token/… + _new_token_id.
      * @throws JwtException On signing failure.
      */
@@ -704,7 +783,8 @@ class TokenService
         array $scope,
         ?string $aud,
         ?int $clientID = null,
-        bool $withRefresh = true
+        bool $withRefresh = true,
+        ?string $subject = null
     ): array {
         // 📏 Normalise the scope to a single space-delimited string (same
         //    vocabulary as tblAPIKeys.permissions — §5 coexistence).
@@ -715,9 +795,13 @@ class TokenService
 
         // 🎟️ Sign the access-token JWT. The facade owns jti/iat/nbf/exp; we pass
         //    sub (as a STRING, per JWT convention) + scope.
+        //    🕵️ G-001 red-team F-01 fix: `sub` is `$subject` when the caller
+        //    supplied one (an RP-issued pair — always the OIDC pairwise/public
+        //    subject, NEVER the raw userID) — falls back to the raw userID
+        //    ONLY for a first-party token, exactly as before.
         $accessToken = Jwt::sign(
             [
-                'sub'   => (string) $userID,
+                'sub'   => $subject ?? (string) $userID,
                 'scope' => $scopeStr,
             ],
             $aud,
@@ -781,6 +865,68 @@ class TokenService
             'user_id'       => $userID,        // internal — convenience for callers that need it post-mint (e.g. audit logging)
             '_new_token_id' => $newTokenId,     // internal — stripped by refresh(); null when $withRefresh===false
         ];
+    }
+
+    /**
+     * 🕵️ Resolve the OIDC subject (pairwise, or public per the client's
+     * subjectType) for a userID+clientID, and UPSERT the
+     * (subjectHash → userID, clientID) mapping into tblOAuthSubjects
+     * (migration 033) so {@see OAuthUserInfoService} can resolve an access
+     * token's opaque `sub` claim back to a real userID — a PAIRWISE subject is
+     * a one-way hash (sha256(sector|userID|salt)), so this table is the only
+     * way back. Shared by {@see self::issueForClient()} (initial mint) and
+     * {@see self::refresh()} (rotation) so an RP's access token ALWAYS carries
+     * the exact same `sub` its id_token/userinfo already use (G-001 red-team
+     * F-01 fix).
+     *
+     * Fails CLOSED (throws) rather than silently falling back to a raw-userID
+     * `sub` for an RP token if the client cannot be resolved — that fallback
+     * would quietly re-introduce the exact pairwise-correlation leak this fix
+     * closes. In practice this should never happen: every caller already
+     * holds a clientID it just validated (an authenticated client at
+     * issuance, or a live tblRefreshTokens.clientID at rotation), and
+     * tblOAuthClients rows are never hard-deleted while grants exist.
+     *
+     * @param int        $userID   Owning user.
+     * @param int        $clientID The RP's internal clientID (tblOAuthClients.clientID).
+     * @param array|null $client   Optional already-hydrated client row (avoids
+     *                             a redundant getClientByID() lookup when the
+     *                             caller — e.g. refresh() — already fetched
+     *                             one for the audience resolution). Resolved
+     *                             internally when omitted.
+     * @return string The computed subject (the value to sign into `sub`).
+     * @throws JwtException If OAuthClientManager is unavailable or the client
+     *                       cannot be resolved.
+     */
+    private static function resolveAndRecordSubject(int $userID, int $clientID, ?array $client = null): string
+    {
+        if (!class_exists('OAuthClientManager')) {
+            // Should never happen in production (autoloaded); fail closed
+            // rather than silently mint a raw-userID sub for an RP token.
+            throw new JwtException('OAuthClientManager unavailable — cannot compute OIDC subject');
+        }
+
+        $client ??= OAuthClientManager::getClientByID($clientID);
+        if ($client === null) {
+            throw new JwtException('Unknown OAuth client — cannot compute OIDC subject');
+        }
+
+        $subject = OAuthClientManager::computeSubject($userID, $client);
+
+        // 💾 UPSERT — idempotent. A pairwise subject is deterministic for a
+        //    given (sector, userID, salt), so re-affirming an already-existing
+        //    mapping (a repeat issuance, or a rotation) is a cheap no-op; the
+        //    write only actually changes anything the FIRST time this exact
+        //    subject is minted.
+        Database::query(
+            "INSERT INTO tblOAuthSubjects (subjectHash, userID, clientID)
+             VALUES (?, ?, ?)
+             ON DUPLICATE KEY UPDATE userID = VALUES(userID), clientID = VALUES(clientID)",
+            [$subject, $userID, $clientID],
+            'sii'
+        );
+
+        return $subject;
     }
 
     /**

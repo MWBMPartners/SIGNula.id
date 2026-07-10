@@ -65,6 +65,21 @@ header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: public, max-age=3600');
 header('X-Content-Type-Options: nosniff');
 
+// ============================================================================
+// 🔒 G-001 red-team F-05 fix — the `oidc.enabled` master switch
+// ============================================================================
+// Migration 031 seeded `oidc.enabled = '0'` (default OFF until an operator
+// opts in) but nothing ever enforced it. A disabled provider has no
+// endpoints worth discovering, so this document 404s exactly like the
+// endpoints it would otherwise advertise — see oauth/token.php's own
+// "F-05 fix" comment for the full rationale. Deliberately NOT applied to the
+// sibling `/.well-known/jwks.json` (shared with first-party G-003 JWT auth).
+if (!class_exists('OidcDiscoveryService') || !OidcDiscoveryService::isProviderEnabled()) {
+    http_response_code(404);
+    echo json_encode(['error' => 'not_found']);
+    exit;
+}
+
 // 🔎 Only GET (and HEAD) make sense for a public metadata document.
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 if ($method !== 'GET' && $method !== 'HEAD') {

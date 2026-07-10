@@ -124,7 +124,7 @@ class OAuthRevocationService
                 if (self::hintsRefresh($hint) || (!self::hintsAccess($hint) && self::looksLikeOpaqueRefresh($token))) {
                     self::revokeRefreshIfOwnedByClient($token, (int) $client['clientID']);
                 } elseif (self::hintsAccess($hint) || self::looksLikeJwt($token)) {
-                    self::revokeAccessIfOwnedByClient($token, (string) $client['clientIdentifier']);
+                    self::revokeAccessIfOwnedByClient($token, (string) $client['clientIdentifier'], (int) $client['clientID']);
                 }
             } catch (\Throwable $e) {
                 // 🔇 Never let a best-effort revocation failure change the
@@ -207,9 +207,14 @@ class OAuthRevocationService
      *
      * @param string $token             Compact access-token JWT presented by the caller.
      * @param string $clientIdentifier  The AUTHENTICATED client's public client_id.
+     * @param int    $clientID          The AUTHENTICATED client's INTERNAL clientID
+     *                                  (tblOAuthClients.clientID) — needed (G-001
+     *                                  red-team F-01 follow-up) to resolve the
+     *                                  token's now-PAIRWISE `sub` claim back to a
+     *                                  real userID for the audit trail; see below.
      * @return void
      */
-    private static function revokeAccessIfOwnedByClient(string $token, string $clientIdentifier): void
+    private static function revokeAccessIfOwnedByClient(string $token, string $clientIdentifier, int $clientID): void
     {
         $parts = explode('.', $token);
         if (count($parts) !== 3 || !class_exists('KeyManager')) {
@@ -241,8 +246,28 @@ class OAuthRevocationService
             return;
         }
 
-        $exp    = isset($claims['exp']) ? (int) $claims['exp'] : null;
-        $userID = isset($claims['sub']) ? (int) $claims['sub'] : null;
+        $exp = isset($claims['exp']) ? (int) $claims['exp'] : null;
+
+        // 🕵️ G-001 red-team F-01 follow-up — an RP access token's `sub` is now
+        //    the OIDC pairwise (opaque, one-way) subject, NOT the raw userID
+        //    (see TokenService::mintPair()). Casting it to (int) here would
+        //    produce a GARBAGE value that then fails tblRevokedTokens.userID's
+        //    foreign key on INSERT — silently swallowing the whole revocation
+        //    (the INSERT throws, the caller's catch(\Throwable) logs it and
+        //    moves on, and the jti is NEVER actually denylisted). Resolve the
+        //    real userID via the SAME tblOAuthSubjects mapping
+        //    OAuthUserInfoService uses, falling back to null (a valid,
+        //    FK-safe value — tblRevokedTokens.userID is nullable, ON DELETE
+        //    SET NULL) rather than ever passing a fabricated int.
+        $userID = null;
+        if (isset($claims['sub']) && is_string($claims['sub']) && $claims['sub'] !== '' && class_exists('Database')) {
+            $subjectRow = Database::fetchOne(
+                "SELECT userID FROM tblOAuthSubjects WHERE subjectHash = ? AND clientID = ? LIMIT 1",
+                [$claims['sub'], $clientID],
+                'si'
+            );
+            $userID = $subjectRow !== null ? (int) $subjectRow['userID'] : null;
+        }
 
         TokenService::revokeAccessJti($jti, $userID, $exp, TokenService::REASON_LOGOUT);
 

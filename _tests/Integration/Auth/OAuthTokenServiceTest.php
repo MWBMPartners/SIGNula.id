@@ -322,8 +322,13 @@ class OAuthTokenServiceTest extends DatabaseTestCase
         $this->assertSame('openid profile email offline_access', $body['scope']);
 
         // --- access token: verifies with aud = client_id --------------------
+        // 🕵️ G-001 red-team F-01 fix: the RP ACCESS token's `sub` is now the
+        //    OIDC PAIRWISE subject too — the SAME opaque value the id_token
+        //    carries — never the raw userID (previously it leaked it).
         $accessClaims = \Jwt::verify($body['access_token'], ['aud' => $client['clientIdentifier']]);
-        $this->assertSame((string) $userID, $accessClaims['sub'], 'access token sub is the RAW userID (not pairwise)');
+        $expectedSub = \OAuthClientManager::computeSubject($userID, $client);
+        $this->assertSame($expectedSub, $accessClaims['sub'], 'F-01: access token sub must be the pairwise subject (matches id_token), not the raw userID');
+        $this->assertNotSame((string) $userID, $accessClaims['sub'], 'F-01: access token must never leak the raw userID');
 
         // --- id_token: verifies with typ=JWT, iss, aud, pairwise sub --------
         $idHeader = json_decode(\KeyManager::base64UrlDecode(explode('.', $body['id_token'])[0]), true);
@@ -335,9 +340,9 @@ class OAuthTokenServiceTest extends DatabaseTestCase
             'aud' => $client['clientIdentifier'],
         ]);
 
-        $expectedSub = \OAuthClientManager::computeSubject($userID, $client);
         $this->assertSame($expectedSub, $idClaims['sub'], 'id_token sub must be the OIDC pairwise subject');
         $this->assertNotSame((string) $userID, $idClaims['sub'], 'pairwise sub must NOT be the raw userID');
+        $this->assertSame($accessClaims['sub'], $idClaims['sub'], 'F-01: access-token sub and id_token sub must byte-match (same pairwise subject)');
         $this->assertArrayHasKey('auth_time', $idClaims);
         $this->assertSame($issued['nonce'], $idClaims['nonce']);
         $this->assertArrayNotHasKey('scope', $idClaims, 'id_token must never carry a scope claim');
@@ -669,7 +674,12 @@ class OAuthTokenServiceTest extends DatabaseTestCase
 
         // The rotated access token still verifies against this client's audience.
         $claims = \Jwt::verify($result['body']['access_token'], ['aud' => $client['clientIdentifier']]);
-        $this->assertSame((string) $userID, $claims['sub']);
+
+        // 🕵️ G-001 red-team F-01 fix: the rotated RP access token still
+        //    carries the pairwise subject, never the raw userID.
+        $expectedSub = \OAuthClientManager::computeSubject($userID, $client);
+        $this->assertSame($expectedSub, $claims['sub'], 'F-01: rotated RP access token sub must stay pairwise');
+        $this->assertNotSame((string) $userID, $claims['sub'], 'F-01: rotated RP access token must never leak the raw userID');
     }
 
     /**

@@ -345,7 +345,13 @@ class OAuthRevocationServiceTest extends DatabaseTestCase
 
         // Untouched — verify still succeeds.
         $claims = \TokenService::verifyAccessToken($pairA['access_token'], ['aud' => $regA['clientIdentifier']]);
-        $this->assertSame((string) $userID, $claims['sub']);
+
+        // 🕵️ G-001 red-team F-01 fix: an RP access token's `sub` is the OIDC
+        //    pairwise subject, never the raw userID.
+        $clientA = \OAuthClientManager::getClientByID($regA['clientID']);
+        $expectedSub = \OAuthClientManager::computeSubject($userID, $clientA);
+        $this->assertSame($expectedSub, $claims['sub'], 'F-01: RP access token sub must be the pairwise subject');
+        $this->assertNotSame((string) $userID, $claims['sub'], 'F-01: RP access token must never leak the raw userID');
     }
 
     // ========================================================================
