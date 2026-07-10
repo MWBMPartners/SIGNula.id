@@ -84,6 +84,98 @@ require_once dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . 'private_html' . DIRECT
                 </div>
 
                 <!-- ============================================================ -->
+                <!-- 0. DROP-IN BUTTON (IB1) -->
+                <!-- ============================================================ -->
+                <h2 class="h3 mt-5 mb-3" id="button">Drop-in button</h2>
+                <p>
+                    Don't want to hand-roll Step 1/2 below yourself? A
+                    framework-free, copy-paste button that runs the whole
+                    Authorization Code + PKCE redirect for you (no
+                    Bootstrap/jQuery/build-step dependency — safe to embed on
+                    any site) ships at
+                    <code>/assets/signin-button/</code>. It's rendered below
+                    using the real button stylesheet (link only — the click
+                    handler script is intentionally omitted on this page so
+                    the example isn't wired to a live, unregistered
+                    <code>client_id</code>):
+                </p>
+                <link rel="stylesheet" href="/assets/signin-button/signula-signin.css">
+                <div class="card mb-3">
+                    <div class="card-body d-flex flex-wrap align-items-center gap-3">
+                        <button type="button" class="signula-btn signula-btn--light" tabindex="-1" aria-hidden="true">
+                            <span class="signula-btn__icon" aria-hidden="true">
+                                <svg class="signula-btn__icon-svg" viewBox="0 0 100 100" width="20" height="20" aria-hidden="true" focusable="false">
+                                    <g class="signula-btn__icon-key">
+                                        <circle class="signula-btn__icon-ring" cx="17" cy="50" r="9"/>
+                                        <rect class="signula-btn__icon-fill" x="26" y="47" width="34" height="7" rx="1.5"/>
+                                        <rect class="signula-btn__icon-fill" x="46" y="54" width="5" height="6"/>
+                                        <rect class="signula-btn__icon-fill" x="54" y="54" width="6" height="9"/>
+                                    </g>
+                                    <g class="signula-btn__icon-lock">
+                                        <rect class="signula-btn__icon-fill" x="60" y="18" width="28" height="64" rx="8"/>
+                                        <circle class="signula-btn__icon-punch" cx="70" cy="48" r="6"/>
+                                        <path class="signula-btn__icon-punch" d="M 64.5 49 L 75.5 49 L 72 63 L 68 63 Z"/>
+                                    </g>
+                                    <g class="signula-btn__icon-check">
+                                        <circle class="signula-btn__icon-punch" cx="80" cy="75" r="13"/>
+                                        <circle class="signula-btn__icon-badge-ring" cx="80" cy="75" r="13"/>
+                                        <path class="signula-btn__icon-tick" d="M 73.5 75 L 78.5 80 L 88.5 67.5"/>
+                                    </g>
+                                </svg>
+                            </span>
+                            <span class="signula-btn__label">Sign in with SIGNula.id</span>
+                        </button>
+                        <button type="button" class="signula-btn signula-btn--brand" tabindex="-1" aria-hidden="true">
+                            <span class="signula-btn__icon" aria-hidden="true">
+                                <svg class="signula-btn__icon-svg" viewBox="0 0 100 100" width="20" height="20" aria-hidden="true" focusable="false">
+                                    <g class="signula-btn__icon-key">
+                                        <circle class="signula-btn__icon-ring" cx="17" cy="50" r="9"/>
+                                        <rect class="signula-btn__icon-fill" x="26" y="47" width="34" height="7" rx="1.5"/>
+                                        <rect class="signula-btn__icon-fill" x="46" y="54" width="5" height="6"/>
+                                        <rect class="signula-btn__icon-fill" x="54" y="54" width="6" height="9"/>
+                                    </g>
+                                    <g class="signula-btn__icon-lock">
+                                        <rect class="signula-btn__icon-fill" x="60" y="18" width="28" height="64" rx="8"/>
+                                        <circle class="signula-btn__icon-punch" cx="70" cy="48" r="6"/>
+                                        <path class="signula-btn__icon-punch" d="M 64.5 49 L 75.5 49 L 72 63 L 68 63 Z"/>
+                                    </g>
+                                    <g class="signula-btn__icon-check">
+                                        <circle class="signula-btn__icon-punch" cx="80" cy="75" r="13"/>
+                                        <circle class="signula-btn__icon-badge-ring" cx="80" cy="75" r="13"/>
+                                        <path class="signula-btn__icon-tick" d="M 73.5 75 L 78.5 80 L 88.5 67.5"/>
+                                    </g>
+                                </svg>
+                            </span>
+                            <span class="signula-btn__label">Sign in with SIGNula.id</span>
+                        </button>
+                    </div>
+                </div>
+                <pre class="bg-dark text-white p-3 rounded"><code>&lt;link rel="stylesheet" href="https://signula.id/assets/signin-button/signula-signin.css"&gt;
+
+&lt;button type="button" class="signula-btn signula-btn--light"
+        data-client-id="YOUR_CLIENT_ID"
+        data-redirect-uri="https://app.example.com/auth/callback"&gt;
+  &lt;!-- icon markup — full snippet in /assets/signin-button/README.md --&gt;
+  &lt;span class="signula-btn__label"&gt;Sign in with SIGNula.id&lt;/span&gt;
+&lt;/button&gt;
+
+&lt;script src="https://signula.id/assets/signin-button/signula-signin.js"&gt;&lt;/script&gt;</code></pre>
+                <p class="small text-secondary">
+                    See <code>/assets/signin-button/README.md</code> for the
+                    full copy-paste snippet, every <code>data-*</code>
+                    option, all variants (<code>--light</code>/
+                    <code>--dark</code>/<code>--brand</code>/
+                    <code>--mono</code> colour-blind-safe) and sizes, and
+                    <code>/assets/signin-button/demo.html</code> for a live
+                    visual gallery. The button runs exactly Step 1 and 2
+                    below for you (PKCE generation + the
+                    <code>/oauth/authorize-idp</code> redirect) — you still
+                    implement Steps 3&ndash;5 (code exchange, token
+                    verification, UserInfo) yourself, in your
+                    <code>redirect_uri</code> handler.
+                </p>
+
+                <!-- ============================================================ -->
                 <!-- 1. REGISTER A CLIENT -->
                 <!-- ============================================================ -->
                 <h2 class="h3 mt-5 mb-3" id="register">1. Register your application</h2>

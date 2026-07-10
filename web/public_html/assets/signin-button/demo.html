@@ -1,0 +1,513 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>"Sign in with SIGNula.id" — Button Demo</title>
+<!--
+  ============================================================================
+  🪪 Sign in with SIGNula.id — Standalone Button Demo (IB1)
+  ============================================================================
+  Renders fully offline: only same-directory references to
+  signula-signin.css / signula-signin.js, no CDN, no build step. Open this
+  file directly in a browser (file:// works for the visual gallery; the
+  "Live technical preview" section needs a secure context — see its note —
+  so serve it over http://localhost or https:// to exercise that part).
+
+  This file is a DEMO only — it is not itself part of the drop-in a partner
+  ships. The actual copy-paste artifact is signula-signin.css +
+  signula-signin.js + the button markup shown in the "Copy-paste snippet"
+  section below (and documented in README.md).
+  ============================================================================
+-->
+<link rel="stylesheet" href="signula-signin.css">
+<style>
+    /* ==========================================================================
+       Demo-page-only chrome — NOT part of the drop-in. Deliberately kept out
+       of signula-signin.css so a partner's <link> only ever pulls in button
+       styles, never this page's own layout.
+       ========================================================================== */
+    :root {
+        color-scheme: light dark;
+    }
+    * { box-sizing: border-box; }
+    body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        background: #f4f5fb;
+        color: #1f2937;
+        line-height: 1.55;
+    }
+    @media (prefers-color-scheme: dark) {
+        body { background: #0c1024; color: #e6e9f5; }
+    }
+    .wrap { max-width: 960px; margin: 0 auto; padding: 2.5rem 1.25rem 5rem; }
+    header.page-head { margin-bottom: 2.5rem; }
+    header.page-head h1 {
+        font-size: 1.85rem;
+        margin: 0 0 0.5rem;
+        background: linear-gradient(135deg, #667eea, #764ba2);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+    }
+    header.page-head p { max-width: 60ch; opacity: 0.85; }
+    section.demo-section { margin-bottom: 3rem; }
+    section.demo-section h2 {
+        font-size: 1.2rem;
+        border-bottom: 1px solid rgba(127,127,127,.25);
+        padding-bottom: 0.5rem;
+        margin-bottom: 1.25rem;
+    }
+    .swatch-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+        gap: 1rem;
+    }
+    .swatch {
+        border-radius: 0.75rem;
+        padding: 1.5rem 1.25rem;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.9rem;
+    }
+    .swatch--light  { background: #ffffff; border: 1px solid #e2e4ee; }
+    .swatch--dark   { background: #10142a; border: 1px solid #262c4c; }
+    .swatch-label {
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        opacity: 0.65;
+    }
+    .swatch--light .swatch-label { color: #3c4043; }
+    .swatch--dark  .swatch-label { color: #cdd3ee; }
+    .size-row { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; }
+    pre.code-block {
+        background: #12162c;
+        color: #dde1f5;
+        padding: 1.1rem 1.25rem;
+        border-radius: 0.65rem;
+        overflow-x: auto;
+        font-size: 0.82rem;
+        line-height: 1.6;
+    }
+    pre.code-block code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .steps { padding-left: 1.25rem; }
+    .steps li { margin-bottom: 0.5rem; }
+    .note {
+        border-left: 3px solid #764ba2;
+        background: rgba(118, 75, 162, 0.08);
+        padding: 0.85rem 1rem;
+        border-radius: 0 0.4rem 0.4rem 0;
+        font-size: 0.92rem;
+    }
+    .live-output {
+        margin-top: 1rem;
+        background: #12162c;
+        color: #b9f6ca;
+        padding: 1rem 1.1rem;
+        border-radius: 0.6rem;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 0.78rem;
+        word-break: break-all;
+        white-space: pre-wrap;
+        min-height: 2.5em;
+    }
+    footer.page-foot {
+        opacity: 0.7;
+        font-size: 0.85rem;
+        border-top: 1px solid rgba(127,127,127,.25);
+        padding-top: 1.5rem;
+    }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+    <header class="page-head">
+        <h1>Sign in with SIGNula.id</h1>
+        <p>
+            A framework-free, copy-paste button any partner site can embed to
+            let its users authenticate with a SIGNula ID — the same pattern
+            as "Sign in with Google" / "Sign in with Apple". This page shows
+            every visual variant and size, the exact snippet to copy, and a
+            live (non-navigating) preview of the PKCE values the button
+            generates on click.
+        </p>
+    </header>
+
+    <!-- ==================================================================== -->
+    <!-- 📋 Copy-paste snippet -->
+    <!-- ==================================================================== -->
+    <section class="demo-section">
+        <h2>Copy-paste snippet</h2>
+        <p>Paste this into any HTML page — no build step, no framework:</p>
+        <pre class="code-block"><code>&lt;link rel="stylesheet" href="https://signula.id/assets/signin-button/signula-signin.css"&gt;
+
+&lt;button type="button" class="signula-btn signula-btn--light"
+        data-client-id="YOUR_CLIENT_ID"
+        data-redirect-uri="https://app.example.com/auth/callback"&gt;
+  &lt;span class="signula-btn__icon" aria-hidden="true"&gt;
+    &lt;svg class="signula-btn__icon-svg" viewBox="0 0 100 100" width="20" height="20" aria-hidden="true" focusable="false"&gt;
+      &lt;g class="signula-btn__icon-key"&gt;
+        &lt;circle class="signula-btn__icon-ring" cx="17" cy="50" r="9"/&gt;
+        &lt;rect class="signula-btn__icon-fill" x="26" y="47" width="34" height="7" rx="1.5"/&gt;
+        &lt;rect class="signula-btn__icon-fill" x="46" y="54" width="5" height="6"/&gt;
+        &lt;rect class="signula-btn__icon-fill" x="54" y="54" width="6" height="9"/&gt;
+      &lt;/g&gt;
+      &lt;g class="signula-btn__icon-lock"&gt;
+        &lt;rect class="signula-btn__icon-fill" x="60" y="18" width="28" height="64" rx="8"/&gt;
+        &lt;circle class="signula-btn__icon-punch" cx="70" cy="48" r="6"/&gt;
+        &lt;path class="signula-btn__icon-punch" d="M 64.5 49 L 75.5 49 L 72 63 L 68 63 Z"/&gt;
+      &lt;/g&gt;
+      &lt;g class="signula-btn__icon-check"&gt;
+        &lt;circle class="signula-btn__icon-punch" cx="80" cy="75" r="13"/&gt;
+        &lt;circle class="signula-btn__icon-badge-ring" cx="80" cy="75" r="13"/&gt;
+        &lt;path class="signula-btn__icon-tick" d="M 73.5 75 L 78.5 80 L 88.5 67.5"/&gt;
+      &lt;/g&gt;
+    &lt;/svg&gt;
+  &lt;/span&gt;
+  &lt;span class="signula-btn__label"&gt;Sign in with SIGNula.id&lt;/span&gt;
+&lt;/button&gt;
+
+&lt;script src="https://signula.id/assets/signin-button/signula-signin.js"&gt;&lt;/script&gt;</code></pre>
+        <p>
+            Swap <code>data-client-id</code> / <code>data-redirect-uri</code> for
+            your own registered values (see README.md), and self-host the two
+            asset files if you prefer not to load them from signula.id. Full
+            <code>data-*</code> option reference is in README.md.
+        </p>
+    </section>
+
+    <!-- ==================================================================== -->
+    <!-- 🎭 Variants -->
+    <!-- ==================================================================== -->
+    <section class="demo-section">
+        <h2>Variants</h2>
+        <div class="swatch-grid">
+
+            <div class="swatch swatch--light">
+                <span class="swatch-label">--light (default)</span>
+                <button type="button" class="signula-btn signula-btn--light">
+                    <span class="signula-btn__icon" aria-hidden="true">
+                        <svg class="signula-btn__icon-svg" viewBox="0 0 100 100" width="20" height="20" aria-hidden="true" focusable="false">
+                            <g class="signula-btn__icon-key">
+                                <circle class="signula-btn__icon-ring" cx="17" cy="50" r="9"/>
+                                <rect class="signula-btn__icon-fill" x="26" y="47" width="34" height="7" rx="1.5"/>
+                                <rect class="signula-btn__icon-fill" x="46" y="54" width="5" height="6"/>
+                                <rect class="signula-btn__icon-fill" x="54" y="54" width="6" height="9"/>
+                            </g>
+                            <g class="signula-btn__icon-lock">
+                                <rect class="signula-btn__icon-fill" x="60" y="18" width="28" height="64" rx="8"/>
+                                <circle class="signula-btn__icon-punch" cx="70" cy="48" r="6"/>
+                                <path class="signula-btn__icon-punch" d="M 64.5 49 L 75.5 49 L 72 63 L 68 63 Z"/>
+                            </g>
+                            <g class="signula-btn__icon-check">
+                                <circle class="signula-btn__icon-punch" cx="80" cy="75" r="13"/>
+                                <circle class="signula-btn__icon-badge-ring" cx="80" cy="75" r="13"/>
+                                <path class="signula-btn__icon-tick" d="M 73.5 75 L 78.5 80 L 88.5 67.5"/>
+                            </g>
+                        </svg>
+                    </span>
+                    <span class="signula-btn__label">Sign in with SIGNula.id</span>
+                </button>
+            </div>
+
+            <div class="swatch swatch--dark">
+                <span class="swatch-label">--dark</span>
+                <button type="button" class="signula-btn signula-btn--dark">
+                    <span class="signula-btn__icon" aria-hidden="true">
+                        <svg class="signula-btn__icon-svg" viewBox="0 0 100 100" width="20" height="20" aria-hidden="true" focusable="false">
+                            <g class="signula-btn__icon-key">
+                                <circle class="signula-btn__icon-ring" cx="17" cy="50" r="9"/>
+                                <rect class="signula-btn__icon-fill" x="26" y="47" width="34" height="7" rx="1.5"/>
+                                <rect class="signula-btn__icon-fill" x="46" y="54" width="5" height="6"/>
+                                <rect class="signula-btn__icon-fill" x="54" y="54" width="6" height="9"/>
+                            </g>
+                            <g class="signula-btn__icon-lock">
+                                <rect class="signula-btn__icon-fill" x="60" y="18" width="28" height="64" rx="8"/>
+                                <circle class="signula-btn__icon-punch" cx="70" cy="48" r="6"/>
+                                <path class="signula-btn__icon-punch" d="M 64.5 49 L 75.5 49 L 72 63 L 68 63 Z"/>
+                            </g>
+                            <g class="signula-btn__icon-check">
+                                <circle class="signula-btn__icon-punch" cx="80" cy="75" r="13"/>
+                                <circle class="signula-btn__icon-badge-ring" cx="80" cy="75" r="13"/>
+                                <path class="signula-btn__icon-tick" d="M 73.5 75 L 78.5 80 L 88.5 67.5"/>
+                            </g>
+                        </svg>
+                    </span>
+                    <span class="signula-btn__label">Sign in with SIGNula.id</span>
+                </button>
+            </div>
+
+            <div class="swatch swatch--light">
+                <span class="swatch-label">--brand (gradient fill)</span>
+                <button type="button" class="signula-btn signula-btn--brand">
+                    <span class="signula-btn__icon" aria-hidden="true">
+                        <svg class="signula-btn__icon-svg" viewBox="0 0 100 100" width="20" height="20" aria-hidden="true" focusable="false">
+                            <g class="signula-btn__icon-key">
+                                <circle class="signula-btn__icon-ring" cx="17" cy="50" r="9"/>
+                                <rect class="signula-btn__icon-fill" x="26" y="47" width="34" height="7" rx="1.5"/>
+                                <rect class="signula-btn__icon-fill" x="46" y="54" width="5" height="6"/>
+                                <rect class="signula-btn__icon-fill" x="54" y="54" width="6" height="9"/>
+                            </g>
+                            <g class="signula-btn__icon-lock">
+                                <rect class="signula-btn__icon-fill" x="60" y="18" width="28" height="64" rx="8"/>
+                                <circle class="signula-btn__icon-punch" cx="70" cy="48" r="6"/>
+                                <path class="signula-btn__icon-punch" d="M 64.5 49 L 75.5 49 L 72 63 L 68 63 Z"/>
+                            </g>
+                            <g class="signula-btn__icon-check">
+                                <circle class="signula-btn__icon-punch" cx="80" cy="75" r="13"/>
+                                <circle class="signula-btn__icon-badge-ring" cx="80" cy="75" r="13"/>
+                                <path class="signula-btn__icon-tick" d="M 73.5 75 L 78.5 80 L 88.5 67.5"/>
+                            </g>
+                        </svg>
+                    </span>
+                    <span class="signula-btn__label">Sign in with SIGNula.id</span>
+                </button>
+            </div>
+
+            <div class="swatch swatch--light">
+                <span class="swatch-label">--mono (colour-blind-safe, light)</span>
+                <button type="button" class="signula-btn signula-btn--mono">
+                    <span class="signula-btn__icon" aria-hidden="true">
+                        <svg class="signula-btn__icon-svg" viewBox="0 0 100 100" width="20" height="20" aria-hidden="true" focusable="false">
+                            <g class="signula-btn__icon-key">
+                                <circle class="signula-btn__icon-ring" cx="17" cy="50" r="9"/>
+                                <rect class="signula-btn__icon-fill" x="26" y="47" width="34" height="7" rx="1.5"/>
+                                <rect class="signula-btn__icon-fill" x="46" y="54" width="5" height="6"/>
+                                <rect class="signula-btn__icon-fill" x="54" y="54" width="6" height="9"/>
+                            </g>
+                            <g class="signula-btn__icon-lock">
+                                <rect class="signula-btn__icon-fill" x="60" y="18" width="28" height="64" rx="8"/>
+                                <circle class="signula-btn__icon-punch" cx="70" cy="48" r="6"/>
+                                <path class="signula-btn__icon-punch" d="M 64.5 49 L 75.5 49 L 72 63 L 68 63 Z"/>
+                            </g>
+                            <g class="signula-btn__icon-check">
+                                <circle class="signula-btn__icon-punch" cx="80" cy="75" r="13"/>
+                                <circle class="signula-btn__icon-badge-ring" cx="80" cy="75" r="13"/>
+                                <path class="signula-btn__icon-tick" d="M 73.5 75 L 78.5 80 L 88.5 67.5"/>
+                            </g>
+                        </svg>
+                    </span>
+                    <span class="signula-btn__label">Sign in with SIGNula.id</span>
+                </button>
+            </div>
+
+            <div class="swatch swatch--dark">
+                <span class="swatch-label">--mono (colour-blind-safe, dark)</span>
+                <button type="button" class="signula-btn signula-btn--mono" data-theme="dark">
+                    <span class="signula-btn__icon" aria-hidden="true">
+                        <svg class="signula-btn__icon-svg" viewBox="0 0 100 100" width="20" height="20" aria-hidden="true" focusable="false">
+                            <g class="signula-btn__icon-key">
+                                <circle class="signula-btn__icon-ring" cx="17" cy="50" r="9"/>
+                                <rect class="signula-btn__icon-fill" x="26" y="47" width="34" height="7" rx="1.5"/>
+                                <rect class="signula-btn__icon-fill" x="46" y="54" width="5" height="6"/>
+                                <rect class="signula-btn__icon-fill" x="54" y="54" width="6" height="9"/>
+                            </g>
+                            <g class="signula-btn__icon-lock">
+                                <rect class="signula-btn__icon-fill" x="60" y="18" width="28" height="64" rx="8"/>
+                                <circle class="signula-btn__icon-punch" cx="70" cy="48" r="6"/>
+                                <path class="signula-btn__icon-punch" d="M 64.5 49 L 75.5 49 L 72 63 L 68 63 Z"/>
+                            </g>
+                            <g class="signula-btn__icon-check">
+                                <circle class="signula-btn__icon-punch" cx="80" cy="75" r="13"/>
+                                <circle class="signula-btn__icon-badge-ring" cx="80" cy="75" r="13"/>
+                                <path class="signula-btn__icon-tick" d="M 73.5 75 L 78.5 80 L 88.5 67.5"/>
+                            </g>
+                        </svg>
+                    </span>
+                    <span class="signula-btn__label">Sign in with SIGNula.id</span>
+                </button>
+            </div>
+
+        </div>
+        <p class="note" style="margin-top:1.25rem;">
+            <strong>Auto dark-mode:</strong> a bare <code>.signula-btn</code>
+            (no <code>--light</code>/<code>--dark</code>/<code>--brand</code>/<code>--mono</code>
+            modifier) automatically follows your OS/browser dark-mode
+            preference AND a <code>[data-theme="dark"]</code> ancestor —
+            toggle your OS appearance to see it switch without any extra
+            markup.
+        </p>
+    </section>
+
+    <!-- ==================================================================== -->
+    <!-- 📏 Sizes -->
+    <!-- ==================================================================== -->
+    <section class="demo-section">
+        <h2>Sizes</h2>
+        <div class="swatch swatch--light">
+            <div class="size-row">
+                <button type="button" class="signula-btn signula-btn--light">
+                    <span class="signula-btn__icon" aria-hidden="true">
+                        <svg class="signula-btn__icon-svg" viewBox="0 0 100 100" width="20" height="20" aria-hidden="true" focusable="false">
+                            <g class="signula-btn__icon-key"><circle class="signula-btn__icon-ring" cx="17" cy="50" r="9"/><rect class="signula-btn__icon-fill" x="26" y="47" width="34" height="7" rx="1.5"/><rect class="signula-btn__icon-fill" x="46" y="54" width="5" height="6"/><rect class="signula-btn__icon-fill" x="54" y="54" width="6" height="9"/></g>
+                            <g class="signula-btn__icon-lock"><rect class="signula-btn__icon-fill" x="60" y="18" width="28" height="64" rx="8"/><circle class="signula-btn__icon-punch" cx="70" cy="48" r="6"/><path class="signula-btn__icon-punch" d="M 64.5 49 L 75.5 49 L 72 63 L 68 63 Z"/></g>
+                            <g class="signula-btn__icon-check"><circle class="signula-btn__icon-punch" cx="80" cy="75" r="13"/><circle class="signula-btn__icon-badge-ring" cx="80" cy="75" r="13"/><path class="signula-btn__icon-tick" d="M 73.5 75 L 78.5 80 L 88.5 67.5"/></g>
+                        </svg>
+                    </span>
+                    <span class="signula-btn__label">Default (42px)</span>
+                </button>
+
+                <button type="button" class="signula-btn signula-btn--light signula-btn--large">
+                    <span class="signula-btn__icon" aria-hidden="true">
+                        <svg class="signula-btn__icon-svg" viewBox="0 0 100 100" width="24" height="24" aria-hidden="true" focusable="false">
+                            <g class="signula-btn__icon-key"><circle class="signula-btn__icon-ring" cx="17" cy="50" r="9"/><rect class="signula-btn__icon-fill" x="26" y="47" width="34" height="7" rx="1.5"/><rect class="signula-btn__icon-fill" x="46" y="54" width="5" height="6"/><rect class="signula-btn__icon-fill" x="54" y="54" width="6" height="9"/></g>
+                            <g class="signula-btn__icon-lock"><rect class="signula-btn__icon-fill" x="60" y="18" width="28" height="64" rx="8"/><circle class="signula-btn__icon-punch" cx="70" cy="48" r="6"/><path class="signula-btn__icon-punch" d="M 64.5 49 L 75.5 49 L 72 63 L 68 63 Z"/></g>
+                            <g class="signula-btn__icon-check"><circle class="signula-btn__icon-punch" cx="80" cy="75" r="13"/><circle class="signula-btn__icon-badge-ring" cx="80" cy="75" r="13"/><path class="signula-btn__icon-tick" d="M 73.5 75 L 78.5 80 L 88.5 67.5"/></g>
+                        </svg>
+                    </span>
+                    <span class="signula-btn__label">Large (52px)</span>
+                </button>
+
+                <button type="button" class="signula-btn signula-btn--light signula-btn--icon" aria-label="Sign in with SIGNula.id">
+                    <span class="signula-btn__icon" aria-hidden="true">
+                        <svg class="signula-btn__icon-svg" viewBox="0 0 100 100" width="20" height="20" aria-hidden="true" focusable="false">
+                            <g class="signula-btn__icon-key"><circle class="signula-btn__icon-ring" cx="17" cy="50" r="9"/><rect class="signula-btn__icon-fill" x="26" y="47" width="34" height="7" rx="1.5"/><rect class="signula-btn__icon-fill" x="46" y="54" width="5" height="6"/><rect class="signula-btn__icon-fill" x="54" y="54" width="6" height="9"/></g>
+                            <g class="signula-btn__icon-lock"><rect class="signula-btn__icon-fill" x="60" y="18" width="28" height="64" rx="8"/><circle class="signula-btn__icon-punch" cx="70" cy="48" r="6"/><path class="signula-btn__icon-punch" d="M 64.5 49 L 75.5 49 L 72 63 L 68 63 Z"/></g>
+                            <g class="signula-btn__icon-check"><circle class="signula-btn__icon-punch" cx="80" cy="75" r="13"/><circle class="signula-btn__icon-badge-ring" cx="80" cy="75" r="13"/><path class="signula-btn__icon-tick" d="M 73.5 75 L 78.5 80 L 88.5 67.5"/></g>
+                        </svg>
+                    </span>
+                    <span class="signula-btn__label">Sign in with SIGNula.id</span>
+                </button>
+            </div>
+        </div>
+        <p style="opacity:.75; font-size:.85rem;">
+            The icon-only button keeps its label for assistive technology
+            (visually hidden, not <code>display:none</code>) — no separate
+            <code>aria-label</code> is required, though one is harmless if
+            you add it (shown above for clarity).
+        </p>
+    </section>
+
+    <!-- ==================================================================== -->
+    <!-- ❓ What happens on click -->
+    <!-- ==================================================================== -->
+    <section class="demo-section">
+        <h2>What happens on click</h2>
+        <ol class="steps">
+            <li>signula-signin.js generates a random 32-byte
+                <code>code_verifier</code>, hashes it with SHA-256, and
+                base64url-encodes the digest as <code>code_challenge</code>
+                (RFC 7636, S256).</li>
+            <li>A random <code>state</code> and <code>nonce</code> are
+                generated (16 bytes each).</li>
+            <li><code>code_verifier</code> + <code>nonce</code> are saved to
+                <code>sessionStorage</code> under the key
+                <code>signula:pkce:&lt;state&gt;</code> — never sent
+                anywhere at this point.</li>
+            <li>The browser navigates to
+                <code>&lt;signula-base&gt;/oauth/authorize-idp</code> with
+                <code>response_type=code</code>, your <code>client_id</code>,
+                <code>redirect_uri</code>, <code>scope</code>,
+                <code>state</code>, <code>nonce</code>,
+                <code>code_challenge</code> and
+                <code>code_challenge_method=S256</code>.</li>
+            <li>The user authenticates/consents on SIGNula, which redirects
+                back to your <code>redirect_uri</code> with
+                <code>?code=...&amp;state=...</code>.</li>
+            <li><strong>Your backend</strong> verifies <code>state</code>,
+                looks up the stored <code>code_verifier</code>, and exchanges
+                the code at <code>POST /oauth/token</code> — see README.md
+                and <a href="/docs/signin-with-signula">/docs/signin-with-signula</a>
+                for that half of the flow.</li>
+        </ol>
+    </section>
+
+    <!-- ==================================================================== -->
+    <!-- 🔬 Live technical preview (no navigation) -->
+    <!-- ==================================================================== -->
+    <section class="demo-section">
+        <h2>Live technical preview</h2>
+        <p>
+            This button calls the <em>real</em>
+            <code>SignulaSignin.generateCodeVerifier()</code> /
+            <code>SignulaSignin.s256()</code> functions shipped in
+            signula-signin.js and prints the values + the authorize URL that
+            would be visited — but deliberately does <strong>not</strong>
+            navigate away, so you can safely try it on this offline demo
+            page. (It intentionally has no <code>data-client-id</code>
+            attribute, so signula-signin.js's own auto-wiring skips it; this
+            section wires it up separately, below.)
+        </p>
+        <div class="note">
+            Needs a secure context (<code>https://</code> or
+            <code>http://localhost</code>) — the Web Crypto API this relies
+            on is unavailable on a plain <code>file://</code> page in most
+            browsers. If the output below shows an error immediately, that's
+            why; the actual drop-in shows the same graceful error on a
+            partner's page instead of a broken redirect.
+        </div>
+        <div class="size-row" style="margin-top:1rem;">
+            <button type="button" id="previewBtn" class="signula-btn signula-btn--brand">
+                <span class="signula-btn__icon" aria-hidden="true">
+                    <svg class="signula-btn__icon-svg" viewBox="0 0 100 100" width="20" height="20" aria-hidden="true" focusable="false">
+                        <g class="signula-btn__icon-key"><circle class="signula-btn__icon-ring" cx="17" cy="50" r="9"/><rect class="signula-btn__icon-fill" x="26" y="47" width="34" height="7" rx="1.5"/><rect class="signula-btn__icon-fill" x="46" y="54" width="5" height="6"/><rect class="signula-btn__icon-fill" x="54" y="54" width="6" height="9"/></g>
+                        <g class="signula-btn__icon-lock"><rect class="signula-btn__icon-fill" x="60" y="18" width="28" height="64" rx="8"/><circle class="signula-btn__icon-punch" cx="70" cy="48" r="6"/><path class="signula-btn__icon-punch" d="M 64.5 49 L 75.5 49 L 72 63 L 68 63 Z"/></g>
+                        <g class="signula-btn__icon-check"><circle class="signula-btn__icon-punch" cx="80" cy="75" r="13"/><circle class="signula-btn__icon-badge-ring" cx="80" cy="75" r="13"/><path class="signula-btn__icon-tick" d="M 73.5 75 L 78.5 80 L 88.5 67.5"/></g>
+                    </svg>
+                </span>
+                <span class="signula-btn__label">Preview (does not navigate)</span>
+            </button>
+        </div>
+        <pre id="previewOutput" class="live-output">Click the button above…</pre>
+    </section>
+
+    <footer class="page-foot">
+        SIGNula.id &middot; IB1 drop-in demo &middot;
+        See <code>README.md</code> in this directory for the full
+        <code>data-*</code> option reference and redirect-handling guide.
+    </footer>
+</div>
+
+<script src="signula-signin.js"></script>
+<script>
+// ============================================================================
+// 🔬 Demo-only wiring for the "Live technical preview" button. NOT part of
+// the shipped drop-in — real partner pages just need the snippet above plus
+// signula-signin.js's own auto-wiring (no custom script required).
+// ============================================================================
+(function () {
+    'use strict';
+    var btn = document.getElementById('previewBtn');
+    var out = document.getElementById('previewOutput');
+
+    btn.addEventListener('click', function () {
+        out.textContent = 'Computing…';
+
+        if (!window.SignulaSignin) {
+            out.textContent = 'ERROR: signula-signin.js did not load.';
+            return;
+        }
+
+        Promise.resolve()
+            .then(function () {
+                var verifier = window.SignulaSignin.generateCodeVerifier();
+                return window.SignulaSignin.s256(verifier).then(function (challenge) {
+                    var params = new URLSearchParams({
+                        response_type: 'code',
+                        client_id: 'demo-client-id-123',
+                        redirect_uri: 'https://app.example.com/auth/callback',
+                        scope: 'openid email profile',
+                        state: 'demo-state-value',
+                        nonce: 'demo-nonce-value',
+                        code_challenge: challenge,
+                        code_challenge_method: 'S256'
+                    });
+                    var url = 'https://signula.id/oauth/authorize-idp?' + params.toString();
+                    out.textContent =
+                        'code_verifier   = ' + verifier + '\n' +
+                        'code_challenge  = ' + challenge + ' (S256 of the verifier above)\n\n' +
+                        'Would navigate to:\n' + url;
+                });
+            })
+            .catch(function (err) {
+                out.textContent = 'ERROR: ' + err.message;
+            });
+    });
+})();
+</script>
+</body>
+</html>

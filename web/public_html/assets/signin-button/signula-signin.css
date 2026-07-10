@@ -1,0 +1,436 @@
+/**
+ * ============================================================================
+ * 🪪 "Sign in with SIGNula.id" — Drop-in Button Stylesheet
+ * ============================================================================
+ *
+ * Purpose:     Framework-free styling for the partner-facing SIGNula sign-in
+ *              button (IB1). A Relying Party (RP) copy-pastes this file
+ *              alongside signula-signin.js and the button markup — no
+ *              Bootstrap, no FontAwesome, no jQuery, no build step required.
+ *
+ * Namespacing: Every selector is prefixed `.signula-btn` (BEM-ish elements
+ *              `.signula-btn__x`, modifiers `.signula-btn--x`) so this file
+ *              cannot collide with class names already used on a partner's
+ *              page. Do not rename these classes without also updating
+ *              signula-signin.js (it selects `.signula-btn[data-client-id]`).
+ *
+ * Theming:     Colour tokens are CSS custom properties scoped to `.signula-
+ *              btn` and re-assigned per variant/context — see "🎨 Colour
+ *              tokens" below. This mirrors the token pattern already used in
+ *              /assets/brand/symbol-adaptive.svg (custom properties reset
+ *              inside class/media blocks, never inside raw attribute
+ *              strings, since `var()` does not reliably substitute inside
+ *              plain SVG presentation attributes across renderers).
+ *
+ * Icon:        The inline SVG markup that ships with this button (see
+ *              README.md / demo.html for the exact snippet) reuses the same
+ *              key + lock + checkmark geometry as /assets/brand/symbol-
+ *              mono.svg, flattened to a STATIC (non-animated) rendering and
+ *              stripped of <mask>/<linearGradient>/id-bearing <defs> — a
+ *              partner page may legitimately paste this button snippet more
+ *              than once (e.g. a header AND a modal), and duplicate SVG
+ *              `id` values across multiple inlined instances is a known
+ *              cross-browser bug class (a `url(#id)` mask/gradient
+ *              reference can silently resolve to the WRONG element's
+ *              def when two elements share an id in the same DOM,
+ *              especially in Safari). Colour is therefore applied purely via
+ *              CSS custom properties on named classes below — no ids, no
+ *              masks, no gradients inside the icon itself.
+ *
+ * Docs:        https://developer.mozilla.org/en-US/docs/Web/CSS/:focus-visible
+ *              https://developer.mozilla.org/en-US/docs/Web/CSS/@media/prefers-color-scheme
+ *              https://developer.mozilla.org/en-US/docs/Web/CSS/@media/prefers-reduced-motion
+ *              https://www.w3.org/WAI/WCAG21/Understanding/contrast-minimum.html
+ *
+ * @package SIGNula
+ * @since   1.0.0 (IB1)
+ * ============================================================================
+ */
+
+/* ============================================================================
+   📦 Base button — shape, layout, sizing (colour-agnostic; every colour
+   below is a var() so it can be re-pointed per variant without repeating
+   the layout rules).
+   ============================================================================ */
+.signula-btn {
+    /* 🎨 Colour tokens — LIGHT is the default/fallback set. Every other
+       variant below only ever re-assigns these custom properties; it never
+       repeats the structural rules that consume them. */
+    --sb-bg:          #ffffff;
+    --sb-bg-hover:    #f8f9fa;
+    --sb-bg-active:   #f1f3f4;
+    --sb-border:      #dadce0;
+    --sb-text:        #3c4043; /* AA 8.4:1 on #ffffff */
+    --sb-icon:        #5568d3; /* brand ink   — AA 4.9:1 on #ffffff */
+    --sb-icon-accent: #764ba2; /* brand purple — AA 6.4:1 on #ffffff */
+    --sb-icon-punch:  #ffffff; /* must match --sb-bg: fakes a true cut-out */
+    --sb-shadow:      0 1px 2px rgba(0, 0, 0, 0.08);
+    --sb-shadow-hover: 0 2px 6px rgba(0, 0, 0, 0.15);
+    --sb-focus-ring:  #4c8bf5; /* high-contrast, independent of brand hue */
+    --sb-radius:      0.5rem; /* matches the existing .oauth-btn radius on /login.php */
+
+    /* 📐 Layout */
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.625rem;
+    box-sizing: border-box;
+    min-height: 44px;        /* WCAG 2.5.5 / 2.5.8 minimum tap target */
+    height: 42px;
+    padding: 0 1rem;
+    max-width: 100%;
+
+    /* 🔤 Typography */
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+        "Helvetica Neue", Arial, sans-serif;
+    font-size: 0.9375rem;
+    font-weight: 500;
+    line-height: 1;
+    white-space: nowrap;
+    text-decoration: none;
+
+    /* 🎨 Applied colour (all read from the tokens above) */
+    background: var(--sb-bg);
+    color: var(--sb-text);
+    border: 1px solid var(--sb-border);
+    border-radius: var(--sb-radius);
+    box-shadow: var(--sb-shadow);
+
+    cursor: pointer;
+    -webkit-appearance: none;
+    appearance: none;
+    user-select: none;
+    transition: background-color 0.15s ease, box-shadow 0.15s ease,
+        border-color 0.15s ease, transform 0.15s ease;
+}
+
+/* 🖱️ Hover / active / disabled states — same across every variant since
+   they all consume the same three "-hover"/"-active" tokens. */
+.signula-btn:hover {
+    background: var(--sb-bg-hover);
+    box-shadow: var(--sb-shadow-hover);
+}
+.signula-btn:active {
+    background: var(--sb-bg-active);
+    box-shadow: var(--sb-shadow);
+    transform: translateY(0);
+}
+.signula-btn:not(:disabled):not([aria-disabled="true"]):hover {
+    transform: translateY(-1px);
+}
+.signula-btn:disabled,
+.signula-btn[aria-disabled="true"] {
+    cursor: not-allowed;
+    opacity: 0.55;
+    box-shadow: none;
+    transform: none;
+}
+
+/* ♿ Focus ring — always visible on keyboard focus, never relies on colour
+   alone (2px solid outline + offset, independent of the brand gradient so
+   it stays visible in every variant, including on the gradient --brand
+   background). Uses :focus-visible so mouse/touch clicks don't show a ring,
+   per https://developer.mozilla.org/en-US/docs/Web/CSS/:focus-visible */
+.signula-btn:focus {
+    outline: none; /* superseded by :focus-visible below in supporting browsers */
+}
+.signula-btn:focus-visible {
+    outline: 2px solid var(--sb-focus-ring);
+    outline-offset: 2px;
+}
+/* Fallback for browsers without :focus-visible support (e.g. older Safari):
+   degrade gracefully to :focus so keyboard users are never left without a
+   visible indicator. Browsers that DO understand :focus-visible will apply
+   the more precise rule above instead of (in addition to) this one. */
+@supports not selector(:focus-visible) {
+    .signula-btn:focus {
+        outline: 2px solid var(--sb-focus-ring);
+        outline-offset: 2px;
+    }
+}
+
+/* 🚫 Respect prefers-reduced-motion — no hover-lift, no transition motion.
+   (The icon itself ships with no animation at all — see the header note
+   above — so there is nothing further to freeze there.) */
+@media (prefers-reduced-motion: reduce) {
+    .signula-btn {
+        transition: none;
+    }
+    .signula-btn:not(:disabled):not([aria-disabled="true"]):hover {
+        transform: none;
+    }
+}
+
+/* 🖼️ Icon element */
+.signula-btn__icon {
+    display: inline-flex;
+    flex: 0 0 auto;
+    width: 20px;
+    height: 20px;
+}
+.signula-btn__icon-svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+/* Data-URI <img> fallback path (used instead of inline <svg> — see README
+   "Minimal / no-inline-SVG snippet"). Sized identically to the inline icon. */
+.signula-btn__icon img {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+/* 🎨 Icon colouring — class-based (never inline `fill="var(...)"` — SVG
+   presentation attributes are not reliable var() substitution targets; see
+   the header note and /assets/brand/symbol-adaptive.svg's own comment). */
+.signula-btn__icon-ring {
+    fill: none;
+    stroke: var(--sb-icon);
+    stroke-width: 6;
+    stroke-linecap: round;
+}
+.signula-btn__icon-fill {
+    fill: var(--sb-icon);
+}
+.signula-btn__icon-punch {
+    fill: var(--sb-icon-punch);
+}
+.signula-btn__icon-badge-ring {
+    fill: none;
+    stroke: var(--sb-icon);
+    stroke-width: 1.5;
+}
+.signula-btn__icon-tick {
+    fill: none;
+    stroke: var(--sb-icon-accent);
+    stroke-width: 4.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+/* 🔤 Label element */
+.signula-btn__label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ============================================================================
+   🌗 Auto dark-mode detection (applies to a BARE `.signula-btn` — i.e. no
+   explicit `--light`/`--dark`/`--brand`/`--mono` modifier — so a partner who
+   doesn't care about theming gets a button that still matches their page).
+   Explicit modifiers (below) always win over this auto-detection.
+   ============================================================================ */
+@media (prefers-color-scheme: dark) {
+    .signula-btn:not(.signula-btn--light):not(.signula-btn--brand):not(.signula-btn--mono) {
+        --sb-bg:           #1b2340;
+        --sb-bg-hover:     #242c4c;
+        --sb-bg-active:    #12182e;
+        --sb-border:       rgba(255, 255, 255, 0.18);
+        --sb-text:         #f1f3f8; /* AA 12.6:1 on #1b2340 */
+        --sb-icon:         #c7d0fc; /* AA 8.1:1 on #1b2340 */
+        --sb-icon-accent:  #b79bd6; /* AA 5.3:1 on #1b2340 */
+        --sb-icon-punch:   #1b2340;
+        --sb-shadow:       0 1px 3px rgba(0, 0, 0, 0.4);
+        --sb-shadow-hover: 0 3px 10px rgba(0, 0, 0, 0.5);
+    }
+}
+/* Same token set, triggered by an explicit `[data-theme="dark"]` ancestor —
+   the hook partners already use elsewhere in SIGNula (see /assets/brand/
+   symbol-adaptive.svg's svg[data-theme="dark"] override). */
+[data-theme="dark"] .signula-btn:not(.signula-btn--light):not(.signula-btn--brand):not(.signula-btn--mono) {
+    --sb-bg:           #1b2340;
+    --sb-bg-hover:     #242c4c;
+    --sb-bg-active:    #12182e;
+    --sb-border:       rgba(255, 255, 255, 0.18);
+    --sb-text:         #f1f3f8;
+    --sb-icon:         #c7d0fc;
+    --sb-icon-accent:  #b79bd6;
+    --sb-icon-punch:   #1b2340;
+    --sb-shadow:       0 1px 3px rgba(0, 0, 0, 0.4);
+    --sb-shadow-hover: 0 3px 10px rgba(0, 0, 0, 0.5);
+}
+
+/* ============================================================================
+   🎭 Variant: --light (explicit pin — identical token set to the base
+   defaults; use this class when a partner wants to FORCE light regardless
+   of their page's own dark-mode/[data-theme] state).
+   ============================================================================ */
+.signula-btn--light {
+    --sb-bg:           #ffffff;
+    --sb-bg-hover:     #f8f9fa;
+    --sb-bg-active:    #f1f3f4;
+    --sb-border:       #dadce0;
+    --sb-text:         #3c4043;
+    --sb-icon:         #5568d3;
+    --sb-icon-accent:  #764ba2;
+    --sb-icon-punch:   #ffffff;
+    --sb-shadow:       0 1px 2px rgba(0, 0, 0, 0.08);
+    --sb-shadow-hover: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+/* ============================================================================
+   🎭 Variant: --dark (explicit pin — same token set the auto-detect block
+   above applies, but selectable directly with no OS/ancestor dependency).
+   ============================================================================ */
+.signula-btn--dark {
+    --sb-bg:           #1b2340;
+    --sb-bg-hover:     #242c4c;
+    --sb-bg-active:    #12182e;
+    --sb-border:       rgba(255, 255, 255, 0.18);
+    --sb-text:         #f1f3f8;
+    --sb-icon:         #c7d0fc;
+    --sb-icon-accent:  #b79bd6;
+    --sb-icon-punch:   #1b2340;
+    --sb-shadow:       0 1px 3px rgba(0, 0, 0, 0.4);
+    --sb-shadow-hover: 0 3px 10px rgba(0, 0, 0, 0.5);
+}
+
+/* ============================================================================
+   🎭 Variant: --brand (filled two-stop brand gradient, matches the palette
+   used throughout SIGNula — see /assets/brand/symbol-*.svg and
+   /assets/css/main.css's --primary-color/--secondary-color tokens).
+   Icon renders in white (via --sb-icon/--sb-icon-accent = #fff) since it
+   sits directly on the gradient rather than a neutral chrome background.
+   ============================================================================ */
+.signula-btn--brand {
+    --sb-bg:           linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    --sb-border:       transparent;
+    --sb-text:         #ffffff;
+    --sb-icon:         #ffffff;
+    --sb-icon-accent:  #ffffff;
+    /* Slightly-darkened "hole" reads as a recessed cut-out against the
+       gradient (a literal colour match is impossible against a gradient
+       fill, so this approximates the same visual language). */
+    --sb-icon-punch:   rgba(17, 17, 34, 0.22);
+    --sb-shadow:       0 2px 8px rgba(102, 126, 234, 0.35);
+    --sb-shadow-hover: 0 4px 16px rgba(102, 126, 234, 0.45);
+    background: var(--sb-bg);
+    background-color: #667eea; /* solid fallback for the rare renderer without gradient support */
+}
+.signula-btn--brand:hover {
+    background: linear-gradient(135deg, #7286ec 0%, #82539f 100%);
+    box-shadow: var(--sb-shadow-hover);
+}
+.signula-btn--brand:active {
+    background: linear-gradient(135deg, #5a70d8 0%, #6a4390 100%);
+}
+/* --brand needs its own :focus-visible ring colour: the default blue ring
+   would sit too close in hue to the gradient itself, so use white + a dark
+   inner line for guaranteed contrast against every point on the gradient. */
+.signula-btn--brand:focus-visible {
+    outline: 2px solid #ffffff;
+    outline-offset: 2px;
+    box-shadow: 0 0 0 4px rgba(17, 17, 34, 0.35);
+}
+
+/* ============================================================================
+   🎭 Variant: --mono (colour-blind-safe / high-contrast). Carries NO hue —
+   meaning (brand, "this is a button", pressed/hover state) is conveyed
+   entirely by shape, weight and LUMINANCE contrast, never by relying on the
+   blue/purple brand hue. Safe for every form of colour-vision deficiency
+   (protanopia / deuteranopia / tritanopia) and for print/low-colour
+   displays. Auto-inverts under OS dark mode purely on luminance, same
+   reasoning as symbol-mono.svg's own "single colour via currentColor" note.
+   ============================================================================ */
+.signula-btn--mono {
+    --sb-bg:           #ffffff;
+    --sb-bg-hover:     #f2f2f2;
+    --sb-bg-active:    #e6e6e6;
+    --sb-border:       #000000;
+    --sb-text:         #000000;
+    --sb-icon:         #000000;
+    --sb-icon-accent:  #000000; /* deliberately == --sb-icon: no hue-coded meaning */
+    --sb-icon-punch:   #ffffff;
+    --sb-shadow:       none;
+    --sb-shadow-hover: none;
+    border-width: 2px; /* thicker border adds a non-colour distinguishing cue */
+}
+.signula-btn--mono:focus-visible {
+    outline: 3px solid #000000;
+    outline-offset: 2px;
+}
+@media (prefers-color-scheme: dark) {
+    .signula-btn--mono {
+        --sb-bg:          #000000;
+        --sb-bg-hover:    #1a1a1a;
+        --sb-bg-active:   #262626;
+        --sb-border:      #ffffff;
+        --sb-text:        #ffffff;
+        --sb-icon:        #ffffff;
+        --sb-icon-accent: #ffffff;
+        --sb-icon-punch:  #000000;
+    }
+    .signula-btn--mono:focus-visible {
+        outline-color: #ffffff;
+    }
+}
+[data-theme="dark"] .signula-btn--mono {
+    --sb-bg:          #000000;
+    --sb-bg-hover:    #1a1a1a;
+    --sb-bg-active:   #262626;
+    --sb-border:      #ffffff;
+    --sb-text:        #ffffff;
+    --sb-icon:        #ffffff;
+    --sb-icon-accent: #ffffff;
+    --sb-icon-punch:  #000000;
+}
+[data-theme="dark"] .signula-btn--mono:focus-visible {
+    outline-color: #ffffff;
+}
+
+/* ============================================================================
+   📏 Sizes
+   ============================================================================ */
+.signula-btn--large {
+    height: 52px;
+    min-height: 52px;
+    padding: 0 1.5rem;
+    font-size: 1rem;
+    gap: 0.75rem;
+}
+.signula-btn--large .signula-btn__icon {
+    width: 24px;
+    height: 24px;
+}
+
+/* 🔲 Icon-only (square tap target, label kept for assistive tech only). */
+.signula-btn--icon {
+    width: 44px;
+    height: 44px;
+    min-height: 44px;
+    padding: 0;
+    border-radius: 50%;
+}
+.signula-btn--icon.signula-btn--large {
+    width: 52px;
+    height: 52px;
+    min-height: 52px;
+}
+.signula-btn--icon .signula-btn__label {
+    /* Visually hidden but still announced by screen readers — standard
+       "sr-only" clip-based technique (not display:none, which assistive
+       tech also skips). */
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* ============================================================================
+   🖨️ Print — render as plain outlined text; gradients/icons add nothing on
+   paper and can waste toner.
+   ============================================================================ */
+@media print {
+    .signula-btn {
+        background: none !important;
+        box-shadow: none !important;
+        color: #000000 !important;
+        border: 1px solid #000000 !important;
+    }
+}
