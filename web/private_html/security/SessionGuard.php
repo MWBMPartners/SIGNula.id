@@ -388,9 +388,22 @@ class SessionGuard
             // 🗄️ Also try to persist via Database::query if the class is available
             if (class_exists('Database')) {
                 try {
+                    // 🐛 B-068a fix: tblSettings has NO `createdAt` column (real
+                    // columns: settingID, settingKey, settingValue, settingType,
+                    // settingCategory, isSensitive, isEditable, description,
+                    // defaultValue, validationRules, updatedAt, updatedBy — see
+                    // _database/signula_complete_install_v2.5.0.sql). The old
+                    // INSERT referenced `createdAt`, so every call threw
+                    // "Unknown column 'createdAt'" and the generated salt was
+                    // NEVER persisted — each new request regenerated a DIFFERENT
+                    // salt, so returning sessions always failed fingerprint
+                    // validation (session fingerprinting was effectively
+                    // non-functional). `settingCategory` is VARCHAR(100) NOT NULL
+                    // with NO default, so it must also be supplied explicitly or
+                    // the INSERT fails the same way for a different column.
                     Database::query(
-                        "INSERT INTO tblSettings (settingKey, settingValue, settingType, isSensitive, description, createdAt, updatedAt)
-                         VALUES (?, ?, 'string', 0, 'Auto-generated salt for session fingerprinting', NOW(), NOW())
+                        "INSERT INTO tblSettings (settingKey, settingValue, settingType, settingCategory, isSensitive, description, updatedAt)
+                         VALUES (?, ?, 'string', 'security', 0, 'Auto-generated salt for session fingerprinting', NOW())
                          ON DUPLICATE KEY UPDATE settingValue = ?, updatedAt = NOW()",
                         [
                             'security.session_fingerprinting.salt',

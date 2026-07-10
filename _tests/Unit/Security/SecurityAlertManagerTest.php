@@ -272,4 +272,45 @@ class SecurityAlertManagerTest extends TestCase
 
         $this->assertFalse($result);
     }
+
+    // ========================================================================
+    // 📧 notify() TESTS (B-068b regression)
+    // ========================================================================
+
+    /**
+     * 🐛 B-068b regression: notify() (private — invoked via reflection since
+     * it has no public entry point that is reachable without a live Database
+     * connection; see SecurityAlertManagerNotifyTest.php in the Integration
+     * suite for the full create()-driven end-to-end path) used to call
+     * `json_decode(getSetting('security.alerts.admin_emails', '[]'), true)`
+     * unconditionally. That setting is seeded with settingType='json'
+     * (migration 014_security_enhancements.sql), so production's
+     * config.php::loadSettings() ALREADY json_decode()s it before caching —
+     * getSetting() hands back a native PHP array, and json_decode(<array>,
+     * true) throws a PHP 8 TypeError. Because TypeError extends \Error (not
+     * \Exception), it escaped notify()'s own catch(\Exception) entirely —
+     * a fatal, not a caught-and-logged failure.
+     *
+     * An EMPTY array is used deliberately so this stays a pure Unit test:
+     * notify() returns immediately after the `empty($adminEmails)` check,
+     * never reaching the `Database::query()` UPDATE at the end of the method
+     * (Database is not loaded in this test context) or any mail()/EmailService
+     * call. The OLD code still threw for an empty array — the TypeError fires
+     * at the json_decode() call itself, before the emptiness check ever runs
+     * — so this is a faithful, hermetic reproduction of the bug.
+     */
+    public function testNotifyDoesNotThrowWithArrayTypedAdminEmails(): void
+    {
+        setTestSetting('security.alerts.admin_emails', []); // 🎯 array, not JSON string
+
+        $reflection = new \ReflectionClass(\SecurityAlertManager::class);
+        $method = $reflection->getMethod('notify');
+        $method->setAccessible(true);
+
+        // 📝 If the TypeError regression were still present, this invoke()
+        // call would throw and fail the test with an uncaught \Error.
+        $method->invoke(null, 1, \SecurityAlertManager::TYPE_SESSION_HIJACK, \SecurityAlertManager::SEVERITY_HIGH, 'Test session hijack notification');
+
+        $this->assertTrue(true, 'notify() must not throw when admin_emails is an already-decoded (array-typed) setting value');
+    }
 }

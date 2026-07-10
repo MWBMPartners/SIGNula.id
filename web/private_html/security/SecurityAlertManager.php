@@ -601,9 +601,25 @@ class SecurityAlertManager
     private static function notify(int $alertID, string $alertType, string $severity, string $description): void
     {
         try {
-            // 📋 Retrieve admin email addresses from settings (stored as JSON array)
-            $adminEmailsJSON = getSetting('security.alerts.admin_emails', '[]');
-            $adminEmails = json_decode($adminEmailsJSON, true);
+            // 📋 Retrieve admin email addresses from settings (stored as JSON array).
+            // 🐛 B-068b fix: 'security.alerts.admin_emails' is seeded with
+            // settingType='json' (migration 014_security_enhancements.sql).
+            // config.php's loadSettings() ALREADY json_decode()s typed
+            // settings before caching them, so getSetting() hands back a
+            // native PHP array here — NOT the raw JSON string this code used
+            // to assume. Calling json_decode() on an array argument throws a
+            // TypeError in PHP 8 (strict argument-type enforcement), and
+            // TypeError extends \Error rather than \Exception, so it escaped
+            // BOTH this method's own catch(\Exception) below AND create()'s
+            // outer catch(\Exception) — every alert notification (including
+            // session-hijack alerts) fatally crashed the request instead of
+            // failing soft. Tolerate both shapes: an already-decoded array
+            // (the real production case) or a raw JSON string (defensive,
+            // e.g. a differently-typed/legacy setting row).
+            $adminEmailsRaw = getSetting('security.alerts.admin_emails', '[]');
+            $adminEmails = is_array($adminEmailsRaw)
+                ? $adminEmailsRaw
+                : (json_decode((string) $adminEmailsRaw, true) ?: []);
 
             // ⏭️ Skip notification if no admin emails are configured
             if (empty($adminEmails) || !is_array($adminEmails)) {

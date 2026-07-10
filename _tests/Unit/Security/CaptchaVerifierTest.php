@@ -130,6 +130,31 @@ class CaptchaVerifierTest extends TestCase
         $this->assertTrue(\CaptchaVerifier::isRequired('login'));
     }
 
+    /**
+     * 🐛 Regression: production's getSetting() returns an ALREADY-DECODED
+     * array for settingType='json' settings (config.php's loadSettings()
+     * json_decode()s typed settings before caching them) — NOT the raw JSON
+     * string the sibling tests above feed via setTestSetting(). The OLD code
+     * called `json_decode(getSetting(...), true)` unconditionally, which
+     * throws a PHP 8 TypeError (arg #1 must be of type string, array given)
+     * the moment isRequired() is called with a $formName in production —
+     * even though the string-fixture tests above never caught it. This test
+     * feeds a real PHP array, proving the fix tolerates that shape.
+     */
+    public function testIsRequiredHandlesAlreadyDecodedArrayRequiredForms(): void
+    {
+        setTestSetting('captcha.enabled', true);
+        setTestSetting('captcha.provider', 'turnstile');
+        setTestSetting('captcha.turnstile.site_key', 'test-site-key');
+        setTestSetting('captcha.turnstile.secret_key', 'test-secret-key');
+
+        // 🎯 Array, not string — simulates getSetting() for a json-typed row.
+        setTestSetting('captcha.required_forms', ['login', 'register', 'contact']);
+
+        $this->assertTrue(\CaptchaVerifier::isRequired('login'), 'A form present in an array-typed required_forms list must still be required');
+        $this->assertFalse(\CaptchaVerifier::isRequired('contact-us'), 'A form absent from an array-typed required_forms list must not be required');
+    }
+
     // ========================================================================
     // 🏷️ getProvider() TESTS
     // ========================================================================

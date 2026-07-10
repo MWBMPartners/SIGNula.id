@@ -119,7 +119,16 @@ class IPReputationChecker
         }
 
         // ✅ Check whitelist
-        $whitelist = json_decode(getSetting('security.ip_reputation.whitelist', '[]'), true);
+        // 🐛 Same double-decode anti-pattern as B-068b (SecurityAlertManager::notify()):
+        // 'security.ip_reputation.whitelist' is seeded with settingType='json'
+        // (migration 014_security_enhancements.sql), so config.php's
+        // loadSettings() already json_decode()s it before caching — getSetting()
+        // returns a native PHP array in production, and json_decode(<array>, true)
+        // throws a PHP 8 TypeError. Tolerate both shapes.
+        $whitelistRaw = getSetting('security.ip_reputation.whitelist', '[]');
+        $whitelist = is_array($whitelistRaw)
+            ? $whitelistRaw
+            : (json_decode((string) $whitelistRaw, true) ?: []);
         if (is_array($whitelist) && in_array($ip, $whitelist, true)) {
             return [
                 'allowed'  => true,

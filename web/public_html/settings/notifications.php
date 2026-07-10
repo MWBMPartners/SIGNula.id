@@ -132,11 +132,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             // 📝 Log activity
+            // 🐛 B-067: ActivityLogger::log() has no $activityResult/$activityDetails
+            // params — see settings/profile.php's B-066 note for the full
+            // explanation (same root cause, same fix: map to the real
+            // $description param). Matches the profile.php/privacy.php/
+            // connected-accounts.php convention.
             ActivityLogger::log(
                 userID: $userID,
                 activityType: 'notification_preferences_updated',
-                activityResult: 'success',
-                activityDetails: 'Notification preferences updated'
+                description: 'Notification preferences updated'
             );
 
             $message = 'Notification preferences updated successfully!';
