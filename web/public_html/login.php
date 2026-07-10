@@ -73,7 +73,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } else {
                     // Successful login with verified email
                     $redirectTo = sanitizeRedirectUrl($_GET['redirect'] ?? '/dashboard');
-                    redirect($redirectTo);
+
+                    // 🍪 G-004 Layer 2 — versioned re-consent gate. Runs ONLY
+                    // here: after Auth::login() has fully succeeded, with no
+                    // pending MFA and no pending email verification — i.e.
+                    // the user is genuinely, fully logged in. Gated behind
+                    // consent.reconsent.enforce (ships '0'/OFF), so this is a
+                    // no-op (single getSetting() lookup, no DB touch) unless
+                    // an admin explicitly turns it on — keeps the existing
+                    // login integration test baseline green.
+                    if (!class_exists('ConsentCategoryService')) {
+                        require_once ROOT_DIR . DIRECTORY_SEPARATOR . 'private_html'
+                            . DIRECTORY_SEPARATOR . 'compliance' . DIRECTORY_SEPARATOR . 'ConsentCategoryService.php';
+                    }
+                    $reconsentRedirect = ConsentCategoryService::maybeReconsentRedirect(
+                        (int) ($result['userID'] ?? 0),
+                        $redirectTo
+                    );
+
+                    redirect($reconsentRedirect ?? $redirectTo);
                 }
             }
         } else {

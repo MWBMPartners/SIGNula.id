@@ -107,7 +107,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $redirect = sanitizeRedirectUrl(is_scalar($storedRedirect) ? (string) $storedRedirect : '/dashboard');
                         unset($_SESSION['redirect_after_login']);
 
-                        redirect($redirect);
+                        // 🍪 G-004 Layer 2 — versioned re-consent gate. Runs
+                        // ONLY here: AFTER MFA verification has fully
+                        // succeeded and the login session is complete —
+                        // never mid-MFA. Gated behind
+                        // consent.reconsent.enforce (ships '0'/OFF); mirrors
+                        // login.php's own non-MFA success path exactly so
+                        // both routes to "truly logged in" apply the same
+                        // check.
+                        if (!class_exists('ConsentCategoryService')) {
+                            require_once ROOT_DIR . DIRECTORY_SEPARATOR . 'private_html'
+                                . DIRECTORY_SEPARATOR . 'compliance' . DIRECTORY_SEPARATOR . 'ConsentCategoryService.php';
+                        }
+                        $reconsentRedirect = ConsentCategoryService::maybeReconsentRedirect((int) $userID, $redirect);
+
+                        redirect($reconsentRedirect ?? $redirect);
                     } else {
                         $error = 'Invalid verification code. Please try again.';
                         ActivityLogger::log($userID, 'mfa_verification_failed', 'auth', 'warning',

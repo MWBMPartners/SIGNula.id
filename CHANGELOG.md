@@ -58,6 +58,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     themselves; the queue tracks and routes them.
   - **Layer 1 (consent trail + DSAR engine + admin queue + public form) is now
     complete and usable.**
+- **Multi-jurisdiction compliance — Layer 2: consent-management surface (G-004).**
+  - The cookie banner is now **server-persisted and granular** — visitors accept
+    or decline per category (necessary / functional / analytics / marketing;
+    "necessary" can't be switched off), and the choice is stored server-side (the
+    source of truth), not just in the browser. Categories are data-driven from a
+    new table, and the banner **works with JavaScript disabled** (native form
+    submit + a full-page fallback at `/legal/consent`).
+  - **"Do Not Sell or Share My Personal Information"** — a new toggle on the
+    privacy page plus a public `/legal/do-not-sell` page, and automatic honoring
+    of the browser **Global Privacy Control (`Sec-GPC`)** signal (opt-out recorded
+    once per session, never duplicated).
+  - **Versioned re-consent** — when the current terms/privacy policy version
+    changes, users can be prompted to re-accept on next login. This is
+    **off by default** and enabled via a setting when the operator is ready.
+  - No policy text is shipped — the new policy-version table carries version
+    anchors only; wording remains the operator's/counsel's to provide.
 
 ### Fixed
 
@@ -75,7 +91,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SIGNula as IdP — SAML 2.0 / OIDC provider (G-001, **provider + iHymns integration shipped**; SAML later)
 - Recurring billing engine with dunning (G-002, **built — TEST-MODE only**; go-live is the owner's #70 step)
 - JWT bearer-auth for API (G-003, **shipped in v2.8.0-beta** — see below)
-- Multi-jurisdiction compliance tooling — consent log, DSAR engine, regime model, breach/RoPA/retention (G-004, **Layer 1 complete: consent trail + DSAR engine + admin queue + public request form shipped**; consent-management surface (L2) + data-driven regime model (L3) + breach/RoPA/retention (L4) to follow)
+- Multi-jurisdiction compliance tooling — consent log, DSAR engine, regime model, breach/RoPA/retention (G-004, **Layer 1 (DSAR + consent) + Layer 2 (consent-management surface: granular banner, Do-Not-Sell/GPC, versioned re-consent) shipped**; data-driven regime model (L3) + breach/RoPA/retention (L4) to follow)
 
 ---
 

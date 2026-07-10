@@ -403,6 +403,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
     // ====================================================================
+    // 🚫 "DO NOT SELL OR SHARE MY PERSONAL INFORMATION" (G-004 Layer 2)
+    // ====================================================================
+    // CCPA/CPRA-style opt-out toggle. granted=false means "opted OUT of
+    // sale/sharing" (see ConsentManager's consentType docblock + spec
+    // §3.3) — the button below always posts the OPPOSITE of the CURRENT
+    // opted-out state, so one click flips it.
+    } elseif ($action === 'set_do_not_sell') {
+        if (!SecurityUtils::verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+            $message = 'Invalid security token. Please try again.';
+            $messageType = 'danger';
+        } elseif (!(bool) getSetting('consent.do_not_sell.enabled', '1')) {
+            $message = 'This option is not currently enabled.';
+            $messageType = 'danger';
+        } else {
+            if (!class_exists('ConsentManager')) {
+                require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'private_html'
+                    . DIRECTORY_SEPARATOR . 'compliance' . DIRECTORY_SEPARATOR . 'ConsentManager.php';
+            }
+
+            // 🧼 granted arrives as '1' (allow sale — opt back IN) or '0'
+            // (opt OUT of sale) from the toggle button's hidden field below.
+            $doNotSellGranted = ($_POST['granted'] ?? '') === '1';
+
+            ConsentManager::record($userID, null, 'do_not_sell', $doNotSellGranted, ['mechanism' => 'preference_center']);
+
+            $message = $doNotSellGranted
+                ? 'You have opted back in — sale/sharing of your information is now allowed.'
+                : 'Your preference has been saved. We will not sell or share your personal information.';
+            $messageType = 'success';
+        }
+
+    // ====================================================================
     // 📨 SUBMIT A DATA SUBJECT ACCESS REQUEST (G-004 Layer 1 — Cycle B)
     // ====================================================================
     // Submission ONLY — this page does not fulfil the request. An admin
@@ -482,6 +514,12 @@ if (!class_exists('ConsentManager')) {
         . DIRECTORY_SEPARATOR . 'compliance' . DIRECTORY_SEPARATOR . 'ConsentManager.php';
 }
 $consentDecisions = ConsentManager::getEffectiveConsents($userID, null);
+
+// 🚫 "Do Not Sell or Share My Personal Information" (G-004 Layer 2) — current
+// state for the toggle section below. granted=false means "opted out".
+$doNotSellEnabled = (bool) getSetting('consent.do_not_sell.enabled', '1');
+$doNotSellCurrent = ConsentManager::getCurrent($userID, null, 'do_not_sell');
+$isOptedOutOfSale = $doNotSellCurrent !== null && (int) $doNotSellCurrent['granted'] === 0;
 
 // 🎨 Include header
 include SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'layout' . DIRECTORY_SEPARATOR . 'header.php';
@@ -696,6 +734,42 @@ include SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATO
                     </div>
                 </div>
             </div>
+
+            <!-- ============================================================ -->
+            <!-- 🚫 DO NOT SELL OR SHARE MY PERSONAL INFORMATION (G-004 L2)   -->
+            <!-- ============================================================ -->
+            <?php if ($doNotSellEnabled): ?>
+            <div class="card shadow mt-4">
+                <div class="card-body p-4">
+                    <h5 class="mb-3"><i class="fas fa-ban text-primary"></i> Do Not Sell or Share My Personal Information</h5>
+                    <p class="text-muted small mb-3">
+                        Separate from cookie preferences above — this tells us not to sell or share your personal
+                        information with third parties.
+                    </p>
+
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span class="badge bg-<?php echo $isOptedOutOfSale ? 'success' : 'secondary'; ?>">
+                            <?php echo $isOptedOutOfSale ? 'Opted out (not sold/shared)' : 'Not opted out'; ?>
+                        </span>
+
+                        <form method="POST" action="" class="d-inline">
+                            <input type="hidden" name="action" value="set_do_not_sell">
+                            <input type="hidden" name="granted" value="<?php echo $isOptedOutOfSale ? '1' : '0'; ?>">
+                            <input type="hidden" name="csrf_token"
+                                   value="<?php echo htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8'); ?>">
+                            <button type="submit"
+                                    class="btn btn-sm btn-outline-<?php echo $isOptedOutOfSale ? 'secondary' : 'danger'; ?>">
+                                <?php echo $isOptedOutOfSale ? 'Opt Back In (Allow Sale)' : 'Opt Out'; ?>
+                            </button>
+                        </form>
+                    </div>
+
+                    <p class="text-muted small mt-3 mb-0">
+                        See also the public <a href="https://SIGNula.com/legal/do-not-sell" target="_blank" rel="noopener">Do Not Sell / Share</a> page.
+                    </p>
+                </div>
+            </div>
+            <?php endif; ?>
 
             <!-- Third-Party App Access -->
             <div class="card shadow mt-4">

@@ -1739,6 +1739,31 @@ existing `tblActivityLog` anonymisation.
   > mitigate by moving that work async or adding compensating delay if a
   > timing-based enumeration threat is in scope for your deployment.
 
+### Consent-management surface — L2 (`ConsentCategoryService`)
+
+- **Server is the source of truth.** Banner/preference choices persist as
+  append-only `ConsentManager` rows (the old cookie banner was `localStorage`
+  only). Categories are data-driven from `tblConsentCategories`; the
+  **strictly-necessary** category is forced granted **server-side** in
+  `recordBannerChoices()` — a tampered request that tries to opt it out cannot.
+- **Anonymous identity.** A first-party `SIGNULA_VID` UUID-v4 cookie (SameSite=Lax;
+  intentionally *not* httponly so the progressive-enhancement banner JS can read
+  it — it is not a security boundary) lets pre-login consent be recorded and
+  later reconciled to the user on login (`reconcileVisitorToUser`).
+- **Global Privacy Control.** A `Sec-GPC: 1` request auto-records a
+  `do_not_sell` opt-out (`mechanism='gpc_signal'`) when `consent.gpc.honor` is on.
+  The hook lives in the shared bootstrap but is **cost- and spam-guarded**: a
+  request with no GPC header costs one array lookup (no class load, no DB); when
+  present it records **at most once per session** (`$_SESSION['gpc_honored']`) and
+  never a duplicate (a `getCurrent()` idempotency check precedes any insert).
+- **Versioned re-consent** (`consent.reconsent.enforce`, **default OFF**). When
+  enabled, a user whose latest `terms`/`privacy` consent version is stale is sent
+  to a re-consent interstitial after full authentication (never mid-MFA). The gate
+  is evaluated **before any DB access**, so with the shipped default it is inert.
+- **No fabricated legal text.** `tblPolicyVersions` carries version anchors only;
+  disclosure bodies ship empty. All consent UI copy is functional, not statutory.
+- Every state-changing consent POST is CSRF-verified and works without JavaScript.
+
 ### Settings added (all `privacy` category, non-sensitive)
 
 `dsar.default_sla_days` (30), `dsar.identity_verification.required` (true),

@@ -508,6 +508,47 @@ try {
     // Initialize session management
     initializeSession();
 
+    // 🌐 Global Privacy Control (G-004 Layer 2) — auto-record a Do-Not-Sell
+    // opt-out when the request carries `Sec-GPC: 1`. Placed here (once, in
+    // the shared bootstrap every page runs) rather than in each individual
+    // page, because GPC is a REQUEST-level signal that should be honoured
+    // regardless of which page the visitor happens to land on first.
+    //
+    // ⚠️ Cost control: config.php is require_once'd by nearly every request
+    // in the application, so this call MUST be cheap on the common path.
+    // ConsentCategoryService::honorGpcSignalIfPresent() front-loads two
+    // guards before it ever touches $_SESSION or the database: (1) the
+    // Sec-GPC header must literally be '1', and (2) consent.gpc.honor must
+    // be truthy. Only once BOTH pass does it consult (and then set)
+    // $_SESSION['gpc_honored'], so a request with no GPC header — the
+    // overwhelming majority — costs exactly one $_SERVER lookup here.
+    // web/private_html/compliance/ is not covered by the autoloader
+    // directory list below, so — same class_exists()-guarded lazy-require
+    // idiom used throughout this codebase for compliance classes — it is
+    // required explicitly, but ONLY when the header is actually present,
+    // to avoid even the filesystem stat() on the common no-GPC path.
+    if (($_SERVER['HTTP_SEC_GPC'] ?? '') === '1') {
+        if (!class_exists('ConsentCategoryService')) {
+            $consentCategoryServicePath = ROOT_DIR . DIRECTORY_SEPARATOR . 'private_html'
+                . DIRECTORY_SEPARATOR . 'compliance' . DIRECTORY_SEPARATOR . 'ConsentCategoryService.php';
+            if (file_exists($consentCategoryServicePath)) {
+                require_once $consentCategoryServicePath;
+            }
+        }
+
+        if (class_exists('ConsentCategoryService')) {
+            $gpcUserID = (isset($_SESSION['userID']) && is_numeric($_SESSION['userID']))
+                ? (int) $_SESSION['userID']
+                : null;
+            $gpcCookieName = (string) getSetting('consent.visitor_cookie.name', 'SIGNULA_VID');
+            $gpcVisitorID = isset($_COOKIE[$gpcCookieName]) && is_string($_COOKIE[$gpcCookieName])
+                ? $_COOKIE[$gpcCookieName]
+                : null;
+
+            ConsentCategoryService::honorGpcSignalIfPresent($gpcUserID, $gpcVisitorID);
+        }
+    }
+
     // 🛡️ Security middleware — IP blocklist, bot detection, IP reputation checks
     // Runs on every request. Each check is independently toggleable via tblSettings.
     // @see web/private_html/security/SecurityMiddleware.php
