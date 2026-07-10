@@ -56,19 +56,88 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if ($isValid) {
-            // 📝 Attempt registration
-            $result = Auth::register($email, $username, $password, [
-                'firstName' => $firstName,
-                'lastName' => $lastName,
-                'displayName' => trim($firstName . ' ' . $lastName) ?: $username
-            ]);
+            // 🚼 G-004 Layer 4b §5.4 — COPPA-style age gate, CONFIG-GATED OFF
+            // by default (compliance.age_gate.enabled ships '0' — migration
+            // 044). When OFF, AgeGateService::isEnabled() returns false and
+            // this ENTIRE block is a no-op: no date_of_birth is ever read or
+            // required, and control falls straight through to the unchanged
+            // normal registration path below — behaviourally IDENTICAL to
+            // this migration never having existed. Only when an operator
+            // explicitly enables the gate (after confirming the applicable
+            // minimum age with legal) does the DOB check below ever run.
+            if (!class_exists('AgeGateService')) {
+                require_once ROOT_DIR . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'compliance'
+                    . DIRECTORY_SEPARATOR . 'AgeGateService.php';
+            }
 
-            if ($result['success']) {
-                $success = $result['message'];
-                // Clear form data on success
-                $_POST = [];
-            } else {
-                $error = $result['message'];
+            $ageGateHandled = false;
+
+            if (class_exists('AgeGateService') && AgeGateService::isEnabled()) {
+                $dob = trim($_POST['date_of_birth'] ?? '');
+
+                if ($dob === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $dob)) {
+                    $error = 'Please provide your date of birth to continue.';
+                    $ageGateHandled = true;
+                } elseif (AgeGateService::isUnderage($dob)) {
+                    // 👶 Under the configured minimum age — route to the
+                    // parental-consent scaffold instead of the normal path.
+                    $parentEmailRaw = trim($_POST['parent_email'] ?? '');
+                    $sanitizedParentEmail = $parentEmailRaw !== '' ? SecurityUtils::sanitizeEmail($parentEmailRaw) : false;
+
+                    if ($sanitizedParentEmail === false) {
+                        $fieldErrors['parent_email'] = 'A parent/guardian email address is required to confirm consent.';
+                        $error = 'We need a parent or guardian to confirm consent before this account can be used.';
+                    } else {
+                        // 🏗️ Create the account (the existing email-
+                        // verification gate already withholds full access
+                        // until verified — a form of restriction) then start
+                        // the parental-consent scaffold against it.
+                        $result = Auth::register($email, $username, $password, [
+                            'firstName' => $firstName,
+                            'lastName' => $lastName,
+                            'displayName' => trim($firstName . ' ' . $lastName) ?: $username
+                        ]);
+
+                        if ($result['success']) {
+                            try {
+                                AgeGateService::startParentalConsent((int) $result['userID'], $sanitizedParentEmail);
+                            } catch (\Throwable $e) {
+                                if (class_exists('ErrorLogger')) {
+                                    ErrorLogger::logError('Exception', $e->getMessage(), $e->getFile(), $e->getLine());
+                                }
+                            }
+                            $success = "Thanks! Because you indicated an age under our minimum, we also need "
+                                . "your parent or guardian to confirm consent — we've emailed them a "
+                                . "verification link. Your account will remain restricted until that step is "
+                                . "completed.";
+                            // Clear form data on success
+                            $_POST = [];
+                        } else {
+                            $error = $result['message'];
+                        }
+                    }
+
+                    $ageGateHandled = true;
+                }
+                // 🔓 Not underage: fall through to the normal registration
+                // path below, exactly as if the gate were OFF.
+            }
+
+            if (!$ageGateHandled) {
+                // 📝 Attempt registration
+                $result = Auth::register($email, $username, $password, [
+                    'firstName' => $firstName,
+                    'lastName' => $lastName,
+                    'displayName' => trim($firstName . ' ' . $lastName) ?: $username
+                ]);
+
+                if ($result['success']) {
+                    $success = $result['message'];
+                    // Clear form data on success
+                    $_POST = [];
+                } else {
+                    $error = $result['message'];
+                }
             }
         }
     }
@@ -278,6 +347,55 @@ $pageTitle = 'Create Account - SIGNula';
                         <?php echo htmlspecialchars($fieldErrors['confirm_password'] ?? ''); ?>
                     </div>
                 </div>
+
+                <?php
+                // 🚼 G-004 Layer 4b §5.4 — the DOB (+ optional parent email)
+                // fields are ONLY rendered/required when the age gate is
+                // enabled (compliance.age_gate.enabled, migration 044 —
+                // OFF by default). When the setting is OFF this whole block
+                // renders nothing, and the form is byte-for-byte the same as
+                // before this migration existed.
+                if (!class_exists('AgeGateService')) {
+                    require_once ROOT_DIR . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'compliance'
+                        . DIRECTORY_SEPARATOR . 'AgeGateService.php';
+                }
+                ?>
+                <?php if (class_exists('AgeGateService') && AgeGateService::isEnabled()): ?>
+                <!-- 🎂 Date of Birth (age-gate ON) -->
+                <div class="form-group">
+                    <label for="date_of_birth" class="form-label form-label-required">Date of Birth</label>
+                    <input
+                        type="date"
+                        class="form-control"
+                        id="date_of_birth"
+                        name="date_of_birth"
+                        required
+                        max="<?php echo htmlspecialchars(date('Y-m-d'), ENT_QUOTES, 'UTF-8'); ?>"
+                        value="<?php echo htmlspecialchars($_POST['date_of_birth'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
+                    >
+                    <div class="invalid-feedback"></div>
+                    <small class="form-text">We ask this to confirm you meet the minimum age to sign up.</small>
+                </div>
+
+                <!-- 👪 Parent/Guardian Email (only required if under the minimum age) -->
+                <div class="form-group">
+                    <label for="parent_email" class="form-label <?php echo isset($fieldErrors['parent_email']) ? 'is-invalid' : ''; ?>">Parent/Guardian Email</label>
+                    <input
+                        type="email"
+                        class="form-control <?php echo isset($fieldErrors['parent_email']) ? 'is-invalid' : ''; ?>"
+                        id="parent_email"
+                        name="parent_email"
+                        placeholder="parent@example.com"
+                        autocomplete="email"
+                        maxlength="255"
+                        value="<?php echo htmlspecialchars($_POST['parent_email'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
+                    >
+                    <div class="invalid-feedback">
+                        <?php echo htmlspecialchars($fieldErrors['parent_email'] ?? '', ENT_QUOTES, 'UTF-8'); ?>
+                    </div>
+                    <small class="form-text">Only required if the date of birth above is under our minimum age — we'll email this address a consent link.</small>
+                </div>
+                <?php endif; ?>
 
                 <!-- ✅ Terms and Conditions -->
                 <div class="form-check mb-4">

@@ -1823,3 +1823,49 @@ existing `tblActivityLog` anonymisation.
 overrides of the SLA/age/breach values arrive with the regime model (a later
 layer) and always fall back to the most-protective default — the resolver never
 fails open.
+
+### Breach notifications, RoPA register, COPPA age-gate — L4b (`BreachManager` /
+`AgeGateService`) — **G-004 is now fully BUILT (all four layers shipped)**
+
+- **Breach deadlines are always resolver-driven, never a hardcoded window.**
+  `BreachManager::computeNotificationDeadlines()` computes
+  `dueAt = detectedAt + RegimeResolver::breachWindowHours(regimeCode)` hours for
+  every (regime, audience) pair on an incident. A regime with no configured window
+  (the shipped default — all 19 seeded regimes are inactive) degrades gracefully:
+  `dueAt` stays `NULL`, status stays `pending`, and an explanatory note is written
+  — it never crashes and never guesses a number. Recomputing an incident's
+  deadlines never resets an already-`sent` notification back to `pending`.
+- **Machinery only — this tool never files anything with a regulator.** Breach
+  `summary`/`remediation`, and every notification's filing `note`, are always
+  exactly what the operator/DPO typed — nothing is templated or auto-generated.
+  The tool computes deadlines and tracks status; the decision to notify, and the
+  notification content, remain entirely an operator/legal judgement call.
+- **Breach admin** (`/admin/compliance/breaches`) is super-admin gated, CSRF +
+  POST-only, `X-Frame-Options: DENY`, audit-logged — same chrome as every other
+  compliance admin surface.
+- **The RoPA register ships with zero fabricated content.** `/admin/compliance/ropa`
+  is pure CRUD over `tblProcessingActivities` — purpose, lawful basis, data
+  categories, recipients, and retention period are entered by you or your DPO;
+  the migration seeds no rows and the admin page never pre-fills a value.
+- **The signup age-gate is OFF by default and inert until enabled.**
+  `compliance.age_gate.enabled` ships `'0'` — with the gate off, `register.php`
+  never reads or requires a date of birth, and behaves byte-for-byte as before
+  this release (this is what keeps the existing registration test baseline
+  green). An operator must explicitly enable the setting (after confirming the
+  applicable minimum age with legal, via `/admin/compliance/regimes`) before any
+  signup is age-gated. The threshold itself always comes from
+  `RegimeResolver::minAgeFor()` — never a hardcoded number.
+- **Parental-consent tokens follow the same hash-only pattern as DSAR identity
+  verification.** `AgeGateService::startParentalConsent()` stores **only the
+  SHA-256 hash** of the emailed verification token in `tblParentalConsents` — the
+  raw value is never persisted or logged, only emailed once to the parent/guardian.
+  Verification is a timing-safe (`hash_equals`) comparison with a TTL
+  (`compliance.parental_consent.token_ttl_hours`, default 72h) and fails closed
+  (a single generic "invalid or expired link" outcome) for every rejection reason.
+  The verification **method's legal sufficiency under COPPA is left to the
+  operator/legal team** — this scaffold provides the email-link mechanism only.
+
+### Settings added (Layer 4b, `privacy` category, non-sensitive unless noted)
+
+`compliance.age_gate.enabled` (`'0'`/OFF by default),
+`compliance.parental_consent.token_ttl_hours` (`72`).

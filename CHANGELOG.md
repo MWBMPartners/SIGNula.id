@@ -108,6 +108,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     the seeded policies are inactive — nothing is ever purged until you explicitly
     fill in a policy, activate it, and turn purging on. Purges are batch-capped and
     restricted to a hardcoded table/column allowlist.
+- **Multi-jurisdiction compliance — Layer 4b: breach notifications, RoPA register,
+  COPPA age-gate (G-004). Completes the epic — all four layers are now BUILT.**
+  - A new **breach-notification log and admin workflow** (`/admin/compliance/breaches`,
+    `tblBreachIncidents` + `tblBreachNotifications`) lets an operator open an
+    incident and **compute** its per-regime notification deadlines — every deadline
+    is `detectedAt + RegimeResolver::breachWindowHours(regime)`, never a hardcoded
+    window. A regime with no configured window degrades gracefully to a `NULL` due
+    date and an explanatory note rather than guessing or crashing. This tool
+    **computes deadlines and tracks status only** — it never auto-files with a
+    regulator and never writes notification copy for you.
+  - A new **Records of Processing Activities (RoPA) register**
+    (`/admin/compliance/ropa`, `tblProcessingActivities`) provides pure CRUD
+    structure for your processing-activity inventory. It ships with **zero seeded
+    rows** — every purpose, lawful basis, recipient list and retention period is
+    entered by you or your DPO; nothing is fabricated or pre-filled.
+  - A new **COPPA-style signup age gate** (`AgeGateService`), **OFF by default**
+    (`compliance.age_gate.enabled = '0'`) — with the setting off, registration is
+    byte-for-byte unchanged from before this release. When an operator enables it,
+    the minimum age comes from `RegimeResolver::minAgeFor()` (never a hardcoded
+    number), and an under-age signup routes to a **parental-consent email-link
+    scaffold** (`tblParentalConsents`) rather than being silently allowed or
+    silently blocked. The verification token is stored **only as its SHA-256
+    hash** — the same pattern already used for DSAR identity verification —
+    never the raw value.
 
 ### Fixed
 
@@ -130,7 +154,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SIGNula as IdP — SAML 2.0 / OIDC provider (G-001, **provider + iHymns integration shipped**; SAML later)
 - Recurring billing engine with dunning (G-002, **built — TEST-MODE only**; go-live is the owner's #70 step)
 - JWT bearer-auth for API (G-003, **shipped in v2.8.0-beta** — see below)
-- Multi-jurisdiction compliance tooling — consent log, DSAR engine, regime model, breach/RoPA/retention (G-004, **Layer 1 (DSAR + consent) + Layer 2 (consent-management surface: granular banner, Do-Not-Sell/GPC, versioned re-consent) shipped**; data-driven regime model (L3) + breach/RoPA/retention (L4) to follow)
+- Multi-jurisdiction compliance tooling — consent log, DSAR engine, regime model, breach/RoPA/retention (G-004, **BUILT — all four layers shipped**: L1 DSAR + consent, L2 consent-management surface, L3 data-driven regime model, L4a retention + compliance cron, L4b breach notifications + RoPA register + COPPA age-gate)
 
 ---
 
