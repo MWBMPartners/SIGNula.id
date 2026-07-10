@@ -442,6 +442,45 @@ class TokenService
         );
     }
 
+    /**
+     * 🪪 Revoke a user's OUTSTANDING refresh-token families for ONE specific
+     * RP client only (G-001 Stage A4 — the "Connected Apps" hub's per-app
+     * "Revoke access" action).
+     *
+     * Deliberately narrower than {@see self::revokeAllForUser()}, which is
+     * too broad for this use case — it would log the user out of EVERY
+     * client (including first-party) on a single "revoke this one app"
+     * click. This scopes the revoke to tblRefreshTokens rows whose
+     * `clientID` matches the given RP (NULL/first-party rows are never
+     * touched — the WHERE clause requires clientID = ? exactly, and MySQL
+     * NULL never equals a bound integer).
+     *
+     * Access tokens already minted for this client are NOT individually
+     * denylisted here — they are short-lived (`oidc.access_ttl`, default
+     * 900s) and expire naturally within minutes; the killed refresh family
+     * is the actual lever (no NEW access token can be minted for this
+     * client via refresh once its family is revoked). A caller wanting an
+     * immediate access-token kill too can additionally call
+     * {@see self::revokeAccessJti()} if it holds the specific jti.
+     *
+     * @param int    $userID   The consenting user revoking access.
+     * @param int    $clientID The RP's internal clientID (tblOAuthClients.clientID PK).
+     * @param string $reason   Audit reason (defaults to logout).
+     * @return int Number of refresh-token rows newly revoked.
+     */
+    public static function revokeClientForUser(int $userID, int $clientID, string $reason = self::REASON_LOGOUT): int
+    {
+        Database::query(
+            "UPDATE tblRefreshTokens
+             SET revoked = 1, revokedReason = ?
+             WHERE userID = ? AND clientID = ? AND revoked = 0",
+            [$reason, $userID, $clientID],
+            'sii'
+        );
+
+        return Database::getAffectedRows();
+    }
+
     // ========================================================================
     // ✅ VERIFICATION (denylist + tokensInvalidBefore wired in)
     // ========================================================================

@@ -69,6 +69,14 @@ $currentPage = basename($_SERVER['PHP_SELF'], '.php');
                 <span class="me-2">🔗</span> Connected Accounts
             </a>
 
+            <!-- Connected Apps (OAuth/OIDC Relying Parties — G-001 Stage A4) -->
+            <a
+                href="/settings/connected-apps"
+                class="nav-link <?php echo $currentPage === 'connected-apps' ? 'active' : ''; ?>"
+            >
+                <span class="me-2">🔌</span> Connected Apps
+            </a>
+
             <!-- Activity Log -->
             <a
                 href="/settings/activity"

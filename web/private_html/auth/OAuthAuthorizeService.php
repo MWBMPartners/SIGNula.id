@@ -360,6 +360,55 @@ class OAuthAuthorizeService
     }
 
     // ========================================================================
+    // 🚫 CONSENT REVOCATION — DB-bound (G-001 Stage A4 "Connected Apps")
+    // ========================================================================
+
+    /**
+     * 🚫 Revoke a user's consent for one client — the "Connected Apps" hub's
+     * "Revoke access" action (Stage A4).
+     *
+     * Two effects, always BOTH attempted (belt-and-suspenders — a button
+     * press must always have a real effect even if the consent row and the
+     * refresh-token family have somehow drifted out of sync):
+     *   1. `tblOAuthConsents.revokedAt` is stamped NOW() for this (userID,
+     *      clientID) pair — the row disappears from
+     *      {@see self::hasCoveringConsent()} and from the Connected Apps
+     *      active list.
+     *   2. Every one of the client's OUTSTANDING refresh-token families for
+     *      this user is revoked via
+     *      {@see TokenService::revokeClientForUser()} — so a revoked app
+     *      cannot silently mint a new access token via refresh. (Existing
+     *      access tokens simply expire on their own short TTL.)
+     *
+     * Idempotent: revoking an already-revoked (or never-granted) consent is
+     * a safe no-op for step 1 (the guarded UPDATE affects 0 rows) while
+     * step 2 still runs — defence-in-depth against a family somehow
+     * outliving its consent row.
+     *
+     * @param int $userID   The user revoking access.
+     * @param int $clientID Internal clientID (PK) being revoked.
+     * @return bool True if a LIVE consent row was actually revoked just now
+     *              (false if none existed / was already revoked).
+     */
+    public static function revokeConsent(int $userID, int $clientID): bool
+    {
+        Database::query(
+            "UPDATE tblOAuthConsents SET revokedAt = NOW() WHERE userID = ? AND clientID = ? AND revokedAt IS NULL",
+            [$userID, $clientID],
+            'ii'
+        );
+        $consentWasRevoked = Database::getAffectedRows() > 0;
+
+        // 🧵 Kill the client's active refresh-token families for this user
+        //    REGARDLESS of whether the consent row itself just changed.
+        if (class_exists('TokenService')) {
+            TokenService::revokeClientForUser($userID, $clientID, TokenService::REASON_LOGOUT);
+        }
+
+        return $consentWasRevoked;
+    }
+
+    // ========================================================================
     // 🎫 CODE ISSUANCE — DB-bound
     // ========================================================================
 
