@@ -71,6 +71,25 @@ $CONSENT_TYPE_LABELS = [
     'marketing.email'    => 'Marketing Emails',
 ];
 
+// ============================================================================
+// 📨 DSAR TYPE ALLOWLIST — user-initiable only (G-004 Layer 1 — Cycle B)
+// ============================================================================
+// 🔒 The ONLY requestType values THIS PAGE is permitted to submit via the
+// 'request_dsar' POST action below. DSARManager's own VALID_REQUEST_TYPES is
+// broader (it also covers types only ever created by other channels, e.g. a
+// future public /legal/data-request form or an admin-initiated restriction/
+// object/automated-decision-optout request) — this is the authenticated
+// "settings" surface's own narrower, server-authoritative closed set.
+//
+// @see web/private_html/compliance/DSARManager.php
+// @see _database/migrations/040_consent_and_dsar.sql
+$DSAR_TYPE_LABELS = [
+    'access'        => 'Access my data (see what SIGNula holds about me)',
+    'portability'   => 'Portability (download a machine-readable copy)',
+    'erasure'       => 'Erasure (delete my account and data)',
+    'rectification' => 'Rectification (correct inaccurate information)',
+];
+
 /**
  * 📥 Load the current user's privacy preferences from the tblUserPreferences
  * EAV store, filling in defaults for any key that has never been saved.
@@ -380,6 +399,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $message = 'Your consent preference has been saved.';
                 $messageType = 'success';
+            }
+        }
+
+    // ====================================================================
+    // 📨 SUBMIT A DATA SUBJECT ACCESS REQUEST (G-004 Layer 1 — Cycle B)
+    // ====================================================================
+    // Submission ONLY — this page does not fulfil the request. An admin
+    // fulfils it from the compliance queue (Layer 1 / Cycle C — not built
+    // yet); DSARManager::submit() just creates the tracked request + its
+    // initial 'submitted' audit event and (best-effort) notifies compliance
+    // admins. IDOR-safe: $userID is read from $_SESSION at the top of this
+    // file, never from request input.
+    } elseif ($action === 'request_dsar') {
+        if (!SecurityUtils::verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+            $message = 'Invalid security token. Please try again.';
+            $messageType = 'danger';
+        } else {
+            // 🧼 Sanitise, then validate against the server-authoritative
+            // allowlist ($DSAR_TYPE_LABELS above) — this form must never be
+            // able to submit a requestType outside what a logged-in user is
+            // permitted to self-initiate (DSARManager's own allowlist is
+            // broader; this page's is deliberately narrower).
+            $dsarType = SecurityUtils::sanitizeString($_POST['dsar_type'] ?? '');
+
+            if (!array_key_exists($dsarType, $DSAR_TYPE_LABELS)) {
+                $message = 'Unrecognised request type.';
+                $messageType = 'danger';
+            } else {
+                if (!class_exists('DSARManager')) {
+                    require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'private_html'
+                        . DIRECTORY_SEPARATOR . 'compliance' . DIRECTORY_SEPARATOR . 'DSARManager.php';
+                }
+
+                try {
+                    $requestID = DSARManager::submit([
+                        'userID'      => $userID,
+                        'requestType' => $dsarType,
+                        'details'     => SecurityUtils::sanitizeString($_POST['dsar_details'] ?? ''),
+                        'actorType'   => 'user',
+                    ]);
+
+                    $message = 'Your request has been submitted (reference #' . (int) $requestID . '). '
+                        . 'We will review it and follow up by email.';
+                    $messageType = 'success';
+                } catch (InvalidArgumentException $e) {
+                    $message = 'Unable to submit your request. Please try again.';
+                    $messageType = 'danger';
+                }
             }
         }
     }
@@ -725,6 +792,47 @@ include SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATO
 
                         <button type="submit" class="btn btn-primary">
                             <i class="fas fa-download me-1"></i> Export My Data
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- ============================================================ -->
+            <!-- 📨 DATA SUBJECT ACCESS REQUEST (G-004 Layer 1 — Cycle B)     -->
+            <!-- ============================================================ -->
+            <div class="card shadow mt-4">
+                <div class="card-body p-4">
+                    <h5 class="mb-3"><i class="fas fa-file-signature text-primary"></i> Submit a Data Subject Request</h5>
+                    <p class="text-muted small mb-3">
+                        Ask us to act on your data in a specific way — see what we hold about you,
+                        get a portable copy, request corrections, or request erasure. Every request
+                        is tracked and reviewed by an administrator; this form only submits it.
+                    </p>
+
+                    <form method="POST" action="">
+                        <input type="hidden" name="action" value="request_dsar">
+                        <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8'); ?>">
+
+                        <div class="mb-3">
+                            <label for="dsar_type" class="form-label">Request type</label>
+                            <select class="form-select" id="dsar_type" name="dsar_type" required>
+                                <option value="">Choose a request type&hellip;</option>
+                                <?php foreach ($DSAR_TYPE_LABELS as $dsarTypeKey => $dsarTypeLabel): ?>
+                                    <option value="<?php echo htmlspecialchars($dsarTypeKey, ENT_QUOTES, 'UTF-8'); ?>">
+                                        <?php echo htmlspecialchars($dsarTypeLabel, ENT_QUOTES, 'UTF-8'); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="dsar_details" class="form-label">Additional details (optional)</label>
+                            <textarea class="form-control" id="dsar_details" name="dsar_details" rows="3"
+                                      placeholder="Anything that helps us process your request faster"></textarea>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-paper-plane me-1"></i> Submit Request
                         </button>
                     </form>
                 </div>

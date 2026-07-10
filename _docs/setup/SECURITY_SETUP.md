@@ -1680,15 +1680,37 @@ and counsel supply the wording.**
   write an arbitrary consent type into the trail), scopes all rows to the
   session `userID` (no IDOR), escapes all output, and works with JavaScript off.
 
-### Erasure-safety contract (lands with the DSAR layer, L1b)
+### DSAR engine (`tblDataSubjectRequests` / `DSARManager`) — L1b
+
+- **Delegation, not duplication.** `DSARManager` fulfils portability/access via
+  `AccountManager::exportUserData()` and erasure via
+  `AccountManager::requestAccountDeletion()` (the existing grace-period cron does
+  the actual erasure) — there is exactly one export/delete implementation, so
+  the two can never drift. Rectification writes only an explicit column allowlist.
+- **Guarded lifecycle.** A request moves through a fixed state machine; an
+  illegal transition is audited (`tblActivityLog`, `privacy`, `warning`) and then
+  rejected. Every status change appends an immutable `tblDataSubjectRequestEvents`
+  row.
+- **Identity verification.** For a request that needs it, a random token is
+  issued but only its **SHA-256 hash** is stored (never the raw token, mirroring
+  the data-export download-token lesson); verification is a timing-safe
+  `hash_equals` with a TTL. Public/email-channel requests must never reveal
+  whether an email matches an account (uniform response) — enforced in the L1c
+  public form.
+- **User surface.** `settings/privacy.php` exposes a submission-only DSAR form
+  (CSRF-verified, server-authoritative type allowlist, `userID` from session — no
+  IDOR, no JS required). Fulfilment happens from the admin queue (L1c).
+
+### Erasure-safety contract — implemented (L1b)
 
 Neither `tblConsentRecords` nor `tblDataSubjectRequests` uses
 `ON DELETE CASCADE` to `tblUsers`. On permanent account erasure the PII in
-these rows is **anonymised** (`userID`/IP/UA nulled/redacted), **not deleted** —
-the *fact* of consent and the *fact* of a fulfilled request survive as an
-anonymised compliance record even after the account is gone, while the personal
-data does not. (The additive `permanentlyDeleteAccount()` step that enforces
-this is part of the next layer, not L1a.)
+these rows is **anonymised** (`userID`/IP/UA/`requesterEmail` nulled/redacted),
+**not deleted** — the *fact* of consent and the *fact* of a fulfilled request
+survive as an anonymised compliance record even after the account is gone, while
+the personal data does not. This is enforced by an additive block inside
+`AccountManager::permanentlyDeleteAccount()`, in the **same transaction** as the
+existing `tblActivityLog` anonymisation.
 
 ### Settings added (all `privacy` category, non-sensitive)
 

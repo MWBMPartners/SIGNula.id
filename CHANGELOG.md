@@ -28,6 +28,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     allowlist, works without JavaScript).
   - Data-driven by design: no jurisdiction value is hardcoded — the regime
     model, DSAR fulfilment engine, and admin queue land in later G-004 cycles.
+- **Multi-jurisdiction compliance — Layer 1b: DSAR engine (G-004, in progress).**
+  - New `DSARManager` (`web/private_html/compliance/`) tracks a data-subject
+    request (access / portability / erasure / rectification / …) through a
+    guarded state machine, with SHA-256-hashed identity-verification tokens
+    (raw token never stored), an audited status timeline, and bounded admin
+    queue / compliance-report queries.
+  - Fulfilment **delegates** to the existing GDPR engine rather than
+    duplicating it: portability/access call `AccountManager::exportUserData()`,
+    erasure calls `AccountManager::requestAccountDeletion()` (the existing
+    grace-period cron performs the actual erasure). There is exactly one
+    export/delete implementation.
+  - Permanent erasure now **anonymises** (never deletes) the consent and DSAR
+    records — the *fact* of consent and of a fulfilled request survives for
+    regulator proof while the PII does not.
+  - `settings/privacy.php` gains a "Submit a Data Subject Request" form
+    (CSRF-protected, server-authoritative type allowlist, works without JS).
+
+### Fixed
+
+- **GDPR data-export and account-deletion were broken and now work.** The
+  `AccountManager` export/erasure engine had four latent defects (activity-log
+  calls using parameters that don't exist, a malformed prepared-statement type
+  string, and three queries referencing columns that don't exist), so the
+  "Export My Data" and "Delete Account" actions on the privacy page failed on
+  every use. All four are fixed and verified against the live database schema.
 
 ### Planned
 
@@ -36,7 +61,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SIGNula as IdP — SAML 2.0 / OIDC provider (G-001, **provider + iHymns integration shipped**; SAML later)
 - Recurring billing engine with dunning (G-002, **built — TEST-MODE only**; go-live is the owner's #70 step)
 - JWT bearer-auth for API (G-003, **shipped in v2.8.0-beta** — see below)
-- Multi-jurisdiction compliance tooling — consent log, DSAR engine, regime model, breach/RoPA/retention (G-004, **L1a consent foundation shipped**; DSAR engine + admin queue + regime model + L2–L4 to follow)
+- Multi-jurisdiction compliance tooling — consent log, DSAR engine, regime model, breach/RoPA/retention (G-004, **L1a consent + L1b DSAR engine shipped**; admin queue + public request form (L1c) + regime model + L2–L4 to follow)
 
 ---
 
