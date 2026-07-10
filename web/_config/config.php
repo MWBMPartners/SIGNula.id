@@ -310,9 +310,30 @@ function loadSettings(): void
             $type = $setting['settingType'];
             $isSensitive = (bool)$setting['isSensitive'];
 
-            // 🔓 Decrypt sensitive values
+            // 🔓 Decrypt sensitive values — resilient: a single blank/undecryptable
+            // row must NOT abort loading the rest of the settings (fresh installs
+            // seed blank placeholder credential rows for unconfigured OAuth/
+            // payment/CAPTCHA providers). Skip+log the bad one and carry on.
+            // 🐛 B-052 fix: previously this call sat unguarded inside the OUTER
+            // try/catch below — the first blank/undecryptable sensitive value
+            // threw a RuntimeException (SecurityUtils::decrypt() throws on a
+            // blank/invalid ciphertext) which propagated straight out of the
+            // foreach loop, aborting the ENTIRE settings load. Every setting
+            // after that row (often most of the table) silently disappeared.
             if ($isSensitive && class_exists('SecurityUtils')) {
-                $value = SecurityUtils::decrypt($value);
+                if ($value === null || $value === '') {
+                    // 🈳 Unconfigured/blank sensitive setting — nothing to decrypt.
+                    $value = '';
+                } else {
+                    try {
+                        $value = SecurityUtils::decrypt($value);
+                    } catch (\Throwable $decryptError) {
+                        // 🚑 Do not let one undecryptable secret starve every
+                        // other setting — log it and keep processing the rest.
+                        error_log("loadSettings: could not decrypt sensitive setting '" . $key . "': " . $decryptError->getMessage());
+                        $value = ''; // leave empty; continue loading remaining rows
+                    }
+                }
             }
 
             // 🔄 Convert to appropriate type

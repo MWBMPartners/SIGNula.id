@@ -46,8 +46,14 @@ class AccessControl {
      * Load user's partner memberships
      */
     private function loadPartnerMemberships() {
+        // 🐛 B-051 fix: tblPartners has NO companyName / tier / status columns —
+        // the real columns are partnerName / accountTier / isActive (verified
+        // against _database/migrations). Alias them back to the legacy key
+        // names so every downstream consumer of
+        // $this->partnerMemberships[...]['companyName'/'tier'/'partnerStatus']
+        // keeps working unchanged.
         $stmt = $this->db->prepare("
-            SELECT tm.*, p.companyName, p.tier, p.status as partnerStatus
+            SELECT tm.*, p.partnerName AS companyName, p.accountTier AS tier, p.isActive AS partnerStatus
             FROM tblPartnerTeamMembers tm
             JOIN tblPartners p ON tm.partnerID = p.partnerID
             WHERE tm.userID = ? AND tm.status = 'active'
