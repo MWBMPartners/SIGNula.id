@@ -44,6 +44,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     regulator proof while the PII does not.
   - `settings/privacy.php` gains a "Submit a Data Subject Request" form
     (CSRF-protected, server-authoritative type allowlist, works without JS).
+- **Multi-jurisdiction compliance — Layer 1c: admin queue + public form (G-004). This completes Layer 1.**
+  - New admin DSAR queue at `/admin/compliance/dsar` (super-admin only) —
+    filter/sort/paginate requests, overdue highlighting, a detail view with the
+    full audit timeline, and fulfilment actions; every mutation is CSRF-checked,
+    POST-only, `X-Frame-Options: DENY`, and recorded in the admin audit log.
+  - New public "I can't log in" data-request form at `/legal/data-request`
+    (CAPTCHA + anti-bot + rate-limited) that emails an identity-verification
+    link. It **never reveals whether an email matches an account** — the
+    response is identical in either case (user-enumeration protection).
+  - Admin fulfilment of export/erasure never bypasses the account owner's
+    password — those actions remain completable only by the data subject
+    themselves; the queue tracks and routes them.
+  - **Layer 1 (consent trail + DSAR engine + admin queue + public form) is now
+    complete and usable.**
 
 ### Fixed
 
@@ -61,7 +75,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SIGNula as IdP — SAML 2.0 / OIDC provider (G-001, **provider + iHymns integration shipped**; SAML later)
 - Recurring billing engine with dunning (G-002, **built — TEST-MODE only**; go-live is the owner's #70 step)
 - JWT bearer-auth for API (G-003, **shipped in v2.8.0-beta** — see below)
-- Multi-jurisdiction compliance tooling — consent log, DSAR engine, regime model, breach/RoPA/retention (G-004, **L1a consent + L1b DSAR engine shipped**; admin queue + public request form (L1c) + regime model + L2–L4 to follow)
+- Multi-jurisdiction compliance tooling — consent log, DSAR engine, regime model, breach/RoPA/retention (G-004, **Layer 1 complete: consent trail + DSAR engine + admin queue + public request form shipped**; consent-management surface (L2) + data-driven regime model (L3) + breach/RoPA/retention (L4) to follow)
 
 ---
 

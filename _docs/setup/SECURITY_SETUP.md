@@ -1712,6 +1712,33 @@ the personal data does not. This is enforced by an additive block inside
 `AccountManager::permanentlyDeleteAccount()`, in the **same transaction** as the
 existing `tblActivityLog` anonymisation.
 
+### Admin DSAR queue + public request form — L1c (Layer 1 complete)
+
+- **Admin queue** (`/admin/compliance/dsar`) and its AJAX endpoint are gated to
+  **super-admin** (`AccessControl::requireSuperAdmin()` / `isSuperAdmin` check)
+  before any output — compliance data is higher-sensitivity than ordinary app
+  data. Every mutation is **POST-only + CSRF-verified**, sets
+  `X-Frame-Options: DENY`, and is recorded via `logAdminAction()` (audit of the
+  auditors). Detail responses strip the packed IP and the hashed verification
+  token; all HTML output is `htmlspecialchars`-escaped and packed IPs are shown
+  via `inet_ntop`.
+- **No admin password bypass.** Export/erasure fulfilment verifies the *data
+  subject's own* password (that check is what makes those actions safe). The
+  admin queue therefore does **not** fabricate or substitute a password and does
+  **not** drive those delegators — an admin can track/route a request, but only
+  the subject can complete an export/erasure, from their own Settings → Privacy.
+- **Public data-request form** (`/legal/data-request`) for locked-out users is
+  protected by CAPTCHA + anti-bot form protection + rate-limiting, and is
+  **user-enumeration-safe**: the response is byte-identical whether or not the
+  submitted email matches an account (a single uniform "if an account exists,
+  we've emailed you" message, enforced by construction in `DataRequestIntake`).
+  Verification uses the same SHA-256-hashed-token flow as the rest of the DSAR
+  engine; the raw token is emailed once and never stored, logged, or returned.
+  > **Residual (low):** the anti-enumeration is content-uniform but not yet
+  > *timing*-uniform (the matched-account path does more work). Tracked as B-080;
+  > mitigate by moving that work async or adding compensating delay if a
+  > timing-based enumeration threat is in scope for your deployment.
+
 ### Settings added (all `privacy` category, non-sensitive)
 
 `dsar.default_sla_days` (30), `dsar.identity_verification.required` (true),
