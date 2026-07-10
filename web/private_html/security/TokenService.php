@@ -636,31 +636,110 @@ class TokenService
         // ⏱️ 3. tokensInvalidBefore cutoff. Any access token issued (iat) before
         //    the user's cutoff is rejected — the "log out everywhere" lever.
         //    🕵️ G-001 red-team F-01 follow-up: `sub` is the raw userID ONLY
-        //    for a first-party token — an RP-issued token now carries the
-        //    OIDC pairwise (opaque hex) subject (see mintPair()), which is
-        //    NOT castable to a meaningful int. ctype_digit() distinguishes
-        //    the two: a userID-string is always all-decimal-digits; a SHA-256
-        //    pairwise hex digest is 64 chars and (astronomically overwhelming
-        //    odds) contains at least one a-f character. A non-numeric sub
-        //    resolves to 0 here, so the cutoff check is SKIPPED for RP
-        //    tokens — casting it blindly to (int) would silently query an
-        //    unrelated (garbage, leading-digit-truncated) userID's cutoff, a
-        //    correctness bug this fix avoids. (RP tokens have their OWN,
-        //    correctly-scoped revocation levers — jti denylist via
-        //    /oauth/revoke, and refresh-family revoke via
-        //    TokenService::revokeClientForUser() — so this is not a security
-        //    gap, only a known scope limit of the first-party mass-revoke
-        //    cutoff: it does not (yet) reach already-issued RP access
-        //    tokens. Flagged as a possible follow-up.)
-        $sub = (isset($claims['sub']) && is_string($claims['sub']) && ctype_digit($claims['sub']))
-            ? (int) $claims['sub']
-            : 0;
+        //    for a first-party token — an RP-issued token carries the OIDC
+        //    pairwise (or public, per client policy) opaque subject (see
+        //    mintPair()), which is NOT directly castable to a meaningful int.
+        //    ctype_digit() distinguishes the two: a userID-string is always
+        //    all-decimal-digits; a SHA-256 pairwise hex digest is 64 chars
+        //    and (astronomically overwhelming odds) contains at least one
+        //    a-f character.
         $iat = isset($claims['iat']) ? (int) $claims['iat'] : 0;
-        if ($sub > 0 && self::isBeforeUserCutoff($sub, $iat)) {
-            throw new JwtException('Access token predates user token cutoff (mass-revoked)');
+
+        if (isset($claims['sub']) && is_string($claims['sub']) && ctype_digit($claims['sub'])) {
+            // 🪪 First-party token — sub IS the raw userID. UNCHANGED
+            //    behaviour from before B-063.
+            $sub = (int) $claims['sub'];
+            if ($sub > 0 && self::isBeforeUserCutoff($sub, $iat)) {
+                throw new JwtException('Access token predates user token cutoff (mass-revoked)');
+            }
+        } else {
+            // 🕵️ B-063 (LOW) fix — an RP-issued token's `sub` is an opaque
+            //    (pairwise/public) subject, not a userID. Previously this
+            //    branch SKIPPED the cutoff entirely (casting the hex string
+            //    blindly to (int) would have silently queried an unrelated,
+            //    leading-digit-truncated userID's cutoff — a correctness bug
+            //    that fix avoided, but at the cost of the mass-revoke lever
+            //    never reaching already-issued RP access tokens at all).
+            //    Now: resolve the REAL userID via the SAME
+            //    (subjectHash, clientID) -> userID mapping
+            //    OAuthUserInfoService uses (tblOAuthSubjects, migration
+            //    033/035), keyed on this token's `sub` + the client its
+            //    `aud` claim resolves to, and apply the IDENTICAL cutoff
+            //    check first-party tokens get.
+            //
+            //    ADDITIVE / FAIL-SAFE ONLY: this can only ever ADD a
+            //    rejection, never remove one that would otherwise have
+            //    happened. If the aud does not resolve to a known client, or
+            //    no subject-mapping row is found (should not happen for a
+            //    legitimately-issued RP token — issueForClient()/refresh()
+            //    always write the mapping BEFORE returning the token), we do
+            //    NOT newly-reject — the token's OTHER checks (signature,
+            //    exp/nbf, jti denylist) already ran above and still fully
+            //    apply, and RP tokens retain their own scoped revocation
+            //    levers (jti denylist via /oauth/revoke, and
+            //    TokenService::revokeClientForUser()'s refresh-family
+            //    revoke). We deliberately never let a transient or missing
+            //    lookup turn an otherwise cryptographically valid token into
+            //    a rejected one — we only ever STRENGTHEN the check when
+            //    resolution succeeds.
+            $resolvedUserID = self::resolveUserIdForRpSubject($claims);
+            if ($resolvedUserID !== null && self::isBeforeUserCutoff($resolvedUserID, $iat)) {
+                throw new JwtException('Access token predates user token cutoff (mass-revoked)');
+            }
         }
 
         return $claims;
+    }
+
+    /**
+     * 🕵️ B-063 helper — resolve an RP-issued access token's opaque `sub`
+     * (pairwise or public subject) back to the real userID it belongs to, via
+     * the SAME `tblOAuthSubjects` (subjectHash, clientID) mapping
+     * {@see OAuthUserInfoService} uses. The client is identified from the
+     * token's OWN (already-crypto-verified, by the time this runs)
+     * `aud` claim.
+     *
+     * Fails soft (returns null) on ANY ambiguity — an unresolvable aud, an
+     * inactive/missing client, or no matching subject row — so the caller
+     * ({@see self::verifyAccessToken()}) can apply the "never newly-reject on
+     * a lookup miss" fail-safe rule described there.
+     *
+     * @param array<string,mixed> $claims The already-verified access-token claims.
+     * @return int|null The resolved userID, or null if it could not be resolved.
+     */
+    private static function resolveUserIdForRpSubject(array $claims): ?int
+    {
+        if (!isset($claims['sub']) || !is_string($claims['sub']) || $claims['sub'] === '') {
+            return null;
+        }
+        if (!isset($claims['aud']) || !is_string($claims['aud']) || $claims['aud'] === '') {
+            return null;
+        }
+        if (!class_exists('OAuthClientManager')) {
+            return null;
+        }
+
+        // 🪪 Resolve aud -> the RP's internal clientID (mirrors
+        //    OAuthUserInfoService::handleUserInfoRequest()'s own aud -> client
+        //    resolution, minus its isActive gate — a deactivated client's
+        //    ALREADY-ISSUED tokens should still be reachable by the mass-
+        //    revoke cutoff, not silently exempted from it).
+        $client = OAuthClientManager::getClient($claims['aud']);
+        if ($client === null || empty($client['clientID'])) {
+            return null;
+        }
+
+        $row = Database::fetchOne(
+            "SELECT userID FROM tblOAuthSubjects WHERE subjectHash = ? AND clientID = ? LIMIT 1",
+            [$claims['sub'], (int) $client['clientID']],
+            'si'
+        );
+        if ($row === null) {
+            return null;
+        }
+
+        $userID = (int) $row['userID'];
+        return $userID > 0 ? $userID : null;
     }
 
     /**
@@ -918,6 +997,20 @@ class TokenService
         //    mapping (a repeat issuance, or a rotation) is a cheap no-op; the
         //    write only actually changes anything the FIRST time this exact
         //    subject is minted.
+        //    🔧 B-062 fix (migration 035): tblOAuthSubjects' UNIQUE key is now
+        //    COMPOSITE — (clientID, subjectHash), not subjectHash alone — so
+        //    this UPSERT triggers on the (clientID, subjectHash) PAIR. That is
+        //    exactly right: a re-affirm for the SAME (client, subject) updates
+        //    userID in place, while TWO DIFFERENT clients that happen to mint
+        //    the SAME subjectHash (only possible for a 'public' subjectType
+        //    client, whose sub is the raw, client-unscoped userID — see
+        //    OAuthClientManager::computeSubject()) now INSERT two SEPARATE
+        //    rows instead of colliding and overwriting each other's clientID.
+        //    `clientID = VALUES(clientID)` is technically redundant now
+        //    (clientID is part of the key that decided WHICH row got
+        //    upserted, so it can never actually change on that row) — kept
+        //    for clarity/defence-in-depth and because it is harmless either
+        //    way; only `userID` can meaningfully change on a re-affirm.
         Database::query(
             "INSERT INTO tblOAuthSubjects (subjectHash, userID, clientID)
              VALUES (?, ?, ?)

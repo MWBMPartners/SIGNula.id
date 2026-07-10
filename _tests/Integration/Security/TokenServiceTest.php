@@ -82,6 +82,7 @@ class TokenServiceTest extends DatabaseTestCase
         'tblRevokedTokens',
         'tblSecurityAlerts',
         'tblActivityLog',
+        'tblOAuthSubjects',
         'tblOAuthClientRedirectUris',
         'tblOAuthClients',
         'tblPartners',
@@ -200,9 +201,14 @@ class TokenServiceTest extends DatabaseTestCase
      * OAuthClientManager::getClientByID() (exactly as TokenService::refresh()
      * does in production).
      *
+     * @param array<string,mixed> $opts Optional OAuthClientManager::registerClient()
+     *                                  $opts overrides (e.g. ['subjectType' => 'public']
+     *                                  for the B-062 tests below). Defaults to
+     *                                  [] — the ORIGINAL behaviour (pairwise
+     *                                  subjectType) every existing call site relies on.
      * @return array{clientID:int,clientIdentifier:string}
      */
-    private function createClient(): array
+    private function createClient(array $opts = []): array
     {
         $partnerID = \Database::insert(
             "INSERT INTO tblPartners (partnerName, partnerEmail, accountTier, isActive, isVerified, verifiedAt)
@@ -216,7 +222,8 @@ class TokenServiceTest extends DatabaseTestCase
             'TS Test RP',
             'confidential',
             ['https://rp.example.com/callback'],
-            ['openid', 'profile']
+            ['openid', 'profile'],
+            $opts
         );
 
         $this->assertIsArray($result, 'client registration must succeed for this fixture');
@@ -871,6 +878,249 @@ class TokenServiceTest extends DatabaseTestCase
 
         $this->assertIsString($pair['refresh_token']);
         $this->assertSame(64, strlen($pair['refresh_token']));
+    }
+
+    // ========================================================================
+    // 🕵️ B-062 — tblOAuthSubjects composite UNIQUE (public-subject clients)
+    // ========================================================================
+
+    /**
+     * 🕵️ B-062 fix verification: TWO different subjectType='public' clients
+     * for the SAME user must each get their OWN tblOAuthSubjects row (same
+     * subjectHash — a 'public' subject is the raw, client-UNSCOPED userID —
+     * but DIFFERENT clientID), rather than the second issuance's UPSERT
+     * silently OVERWRITING the first client's row via the OLD
+     * subjectHash-only UNIQUE key. Regression test for migration 035's
+     * composite `uk_subject_client (clientID, subjectHash)`.
+     */
+    public function testTwoPublicSubjectClientsForSameUserGetSeparateSubjectRows(): void
+    {
+        $userID = $this->createUser();
+
+        $clientA = $this->createClient(['subjectType' => 'public']);
+        $clientB = $this->createClient(['subjectType' => 'public']);
+
+        $pairA = \TokenService::issueForClient($userID, $clientA['clientID'], $clientA['clientIdentifier'], ['openid']);
+        $pairB = \TokenService::issueForClient($userID, $clientB['clientID'], $clientB['clientIdentifier'], ['openid']);
+
+        // 🕵️ A 'public' subject IS the raw userID string — identical for
+        //    BOTH clients (unlike the default 'pairwise' subjectType, which
+        //    is per-sector-scoped and would differ between clients).
+        $claimsA = \Jwt::verify($pairA['access_token'], ['aud' => $clientA['clientIdentifier']]);
+        $claimsB = \Jwt::verify($pairB['access_token'], ['aud' => $clientB['clientIdentifier']]);
+        $this->assertSame((string) $userID, $claimsA['sub']);
+        $this->assertSame((string) $userID, $claimsB['sub']);
+        $this->assertSame($claimsA['sub'], $claimsB['sub'], 'public subject is unscoped by client — same value for both');
+
+        // ✅ B-062: BOTH clients get their OWN row for that shared
+        //    subjectHash — the second issuance must NOT have overwritten the
+        //    first client's mapping.
+        $rows = \Database::fetchAll(
+            "SELECT clientID, userID FROM tblOAuthSubjects WHERE subjectHash = ? ORDER BY clientID ASC",
+            [(string) $userID],
+            's'
+        );
+        $this->assertCount(2, $rows, 'two different public clients must produce two SEPARATE subject rows, not a collision/overwrite');
+
+        $clientIDs = array_map(static fn(array $r): int => (int) $r['clientID'], $rows);
+        sort($clientIDs);
+        $expected = [$clientA['clientID'], $clientB['clientID']];
+        sort($expected);
+        $this->assertSame($expected, $clientIDs, 'both client IDs must be present — neither row overwrote the other');
+
+        foreach ($rows as $row) {
+            $this->assertSame($userID, (int) $row['userID'], 'each row must still correctly resolve to the same user');
+        }
+    }
+
+    /**
+     * 🟢 Regression guard: the DEFAULT ('pairwise') subjectType is UNAFFECTED
+     * by the B-062 composite-key change — two pairwise clients in DIFFERENT
+     * sectors already computed DIFFERENT subjectHash values (sector-scoped:
+     * sha256(sectorIdentifier|userID|salt)), so they get separate rows
+     * regardless of which UNIQUE key is in force. Explicit distinct
+     * `sectorIdentifier` opts are supplied here — createClient()'s default
+     * fixture redirect_uri host would otherwise be IDENTICAL for both
+     * clients, which (correctly, per OIDC pairwise semantics — same sector
+     * means same sub BY DESIGN) would make them share a sub too, defeating
+     * the point of this specific "must differ" assertion. This reasserts
+     * that migration 035 did not regress the (already-passing,
+     * already-covered-elsewhere) pairwise path.
+     */
+    public function testTwoPairwiseSubjectClientsForSameUserStillGetSeparateSubjectRowsAndDistinctSubs(): void
+    {
+        $userID = $this->createUser();
+
+        $clientA = $this->createClient(['sectorIdentifier' => 'sector-a.example.com']); // default subjectType = 'pairwise'
+        $clientB = $this->createClient(['sectorIdentifier' => 'sector-b.example.com']);
+
+        $pairA = \TokenService::issueForClient($userID, $clientA['clientID'], $clientA['clientIdentifier'], ['openid']);
+        $pairB = \TokenService::issueForClient($userID, $clientB['clientID'], $clientB['clientIdentifier'], ['openid']);
+
+        $claimsA = \Jwt::verify($pairA['access_token'], ['aud' => $clientA['clientIdentifier']]);
+        $claimsB = \Jwt::verify($pairB['access_token'], ['aud' => $clientB['clientIdentifier']]);
+
+        // Pairwise subjects are sector-scoped — DIFFERENT for each client.
+        $this->assertNotSame($claimsA['sub'], $claimsB['sub'], 'pairwise subs must differ per client (sector-scoped)');
+
+        $rowA = \Database::fetchOne(
+            "SELECT userID FROM tblOAuthSubjects WHERE subjectHash = ? AND clientID = ?",
+            [$claimsA['sub'], $clientA['clientID']],
+            'si'
+        );
+        $rowB = \Database::fetchOne(
+            "SELECT userID FROM tblOAuthSubjects WHERE subjectHash = ? AND clientID = ?",
+            [$claimsB['sub'], $clientB['clientID']],
+            'si'
+        );
+        $this->assertSame($userID, (int) $rowA['userID']);
+        $this->assertSame($userID, (int) $rowB['userID']);
+    }
+
+    // ========================================================================
+    // 🌐 B-063 — mass-revoke cutoff reaches RP access tokens too
+    // ========================================================================
+
+    /**
+     * 🌐 B-063 fix verification: revokeAllForUser()'s tokensInvalidBefore
+     * cutoff now ALSO invalidates an already-issued RP (pairwise-subject)
+     * access token, not just first-party ones. Before this fix,
+     * verifyAccessToken() only ever applied the cutoff when `sub` was
+     * ctype_digit() (a first-party userID) — an RP token's opaque pairwise
+     * `sub` made the whole check a silent no-op for it.
+     */
+    public function testRevokeAllForUserRejectsOlderRpAccessTokens(): void
+    {
+        $userID = $this->createUser();
+        $client = $this->createClient(); // default pairwise subjectType
+
+        // 🕵️ Compute the SAME pairwise subject issueForClient() would, and
+        //    persist the (subjectHash -> userID, clientID) mapping exactly as
+        //    resolveAndRecordSubject() does at real issuance —
+        //    verifyAccessToken()'s new RP-cutoff resolution depends on this
+        //    row existing (mirrors how the real minting path populates it).
+        $hydratedClient = \OAuthClientManager::getClientByID($client['clientID']);
+        $subject = \OAuthClientManager::computeSubject($userID, $hydratedClient);
+        \Database::query(
+            "INSERT INTO tblOAuthSubjects (subjectHash, userID, clientID) VALUES (?, ?, ?)",
+            [$subject, $userID, $client['clientID']],
+            'sii'
+        );
+
+        // 🕰️ Craft an RP-shaped access token whose iat is safely in the past
+        //    (mirrors testRevokeAllForUserRejectsOlderAccessTokens()'s
+        //    first-party approach), signed with the pairwise subject + the
+        //    RP's own clientIdentifier as aud.
+        $past = time() - 600;
+        $oldRpToken = $this->signRawWithActiveKey([
+            'sub'   => $subject,
+            'iss'   => 'https://signula.id',
+            'aud'   => $client['clientIdentifier'],
+            'iat'   => $past,
+            'nbf'   => $past,
+            'exp'   => time() + 900,
+            'jti'   => bin2hex(random_bytes(16)),
+            'scope' => 'openid',
+        ]);
+
+        // ✅ Accepted before mass-revoke.
+        $claims = \TokenService::verifyAccessToken($oldRpToken, ['aud' => $client['clientIdentifier']]);
+        $this->assertSame($subject, $claims['sub']);
+
+        // 🌐 "Log out everywhere" for the underlying user.
+        \TokenService::revokeAllForUser($userID);
+
+        // ❌ The RP token — predating the cutoff — is now REJECTED too.
+        $this->expectException(JwtException::class);
+        \TokenService::verifyAccessToken($oldRpToken, ['aud' => $client['clientIdentifier']]);
+    }
+
+    /**
+     * 🟢 The existing FIRST-PARTY mass-revoke cutoff test stays green
+     * (unchanged path) — reasserted explicitly here alongside its new RP
+     * sibling for contrast/clarity; the real coverage is
+     * testRevokeAllForUserRejectsOlderAccessTokens() above.
+     */
+    public function testRevokeAllForUserStillRejectsOlderFirstPartyAccessTokens(): void
+    {
+        $userID = $this->createUser();
+
+        $past = time() - 600;
+        $oldToken = $this->signRawWithActiveKey([
+            'sub'   => (string) $userID,
+            'iss'   => 'https://signula.id',
+            'aud'   => 'https://signula.id/api',
+            'iat'   => $past,
+            'nbf'   => $past,
+            'exp'   => time() + 900,
+            'jti'   => bin2hex(random_bytes(16)),
+            'scope' => 'user:read',
+        ]);
+
+        $this->assertSame((string) $userID, \TokenService::verifyAccessToken($oldToken)['sub']);
+        \TokenService::revokeAllForUser($userID);
+
+        $this->expectException(JwtException::class);
+        \TokenService::verifyAccessToken($oldToken);
+    }
+
+    /**
+     * 🟢 B-063 additive/fail-safe guarantee: if an RP token's `sub` cannot be
+     * resolved back to a userID (e.g. no tblOAuthSubjects mapping row at all
+     * — should never happen for a legitimately-issued token, but must never
+     * behave differently for a merely-unresolvable one), verifyAccessToken()
+     * must NOT newly-reject the token on that basis alone. The cutoff-
+     * resolution step fails OPEN specifically; every OTHER check (signature,
+     * exp/nbf, jti denylist) still fully applies and already ran above.
+     */
+    public function testUnresolvableRpSubjectDoesNotBreakVerification(): void
+    {
+        $client = $this->createClient();
+
+        // 🎯 A structurally-valid, RP-shaped, freshly-issued (iat = now)
+        //    token whose `sub` has NO tblOAuthSubjects row at all — it was
+        //    never actually minted through issueForClient().
+        $bogusSubject = bin2hex(random_bytes(32)); // 64 lowercase hex chars — NOT ctype_digit (RP-shaped)
+        $freshToken = $this->signRawWithActiveKey([
+            'sub'   => $bogusSubject,
+            'iss'   => 'https://signula.id',
+            'aud'   => $client['clientIdentifier'],
+            'iat'   => time(),
+            'nbf'   => time(),
+            'exp'   => time() + 900,
+            'jti'   => bin2hex(random_bytes(16)),
+            'scope' => 'openid',
+        ]);
+
+        // ✅ Still verifies fine — an unresolvable sub must not turn into a
+        //    rejection; it simply means the cutoff step could not be applied
+        //    (there is nothing legitimate to apply it to).
+        $claims = \TokenService::verifyAccessToken($freshToken, ['aud' => $client['clientIdentifier']]);
+        $this->assertSame($bogusSubject, $claims['sub']);
+    }
+
+    /**
+     * 🟢 B-063 additive/fail-safe guarantee, aud variant: an RP-shaped token
+     * whose `aud` does not resolve to ANY registered client at all must also
+     * NOT be newly-rejected by the cutoff-resolution step.
+     */
+    public function testUnresolvableAudDoesNotBreakVerification(): void
+    {
+        $bogusSubject = bin2hex(random_bytes(32));
+        $bogusAud = bin2hex(random_bytes(16));
+        $freshToken = $this->signRawWithActiveKey([
+            'sub'   => $bogusSubject,
+            'iss'   => 'https://signula.id',
+            'aud'   => $bogusAud,
+            'iat'   => time(),
+            'nbf'   => time(),
+            'exp'   => time() + 900,
+            'jti'   => bin2hex(random_bytes(16)),
+            'scope' => 'openid',
+        ]);
+
+        $claims = \TokenService::verifyAccessToken($freshToken, ['aud' => $bogusAud]);
+        $this->assertSame($bogusSubject, $claims['sub']);
     }
 
     // ========================================================================

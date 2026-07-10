@@ -69,6 +69,7 @@ class OAuthUserInfoServiceTest extends DatabaseTestCase
         'tblOAuthAccessGrants',
         'tblOAuthConsents',
         'tblOAuthAuthCodes',
+        'tblOAuthSubjects',
         'tblOAuthClientRedirectUris',
         'tblOAuthClients',
         'tblRefreshTokens',
@@ -175,6 +176,35 @@ class OAuthUserInfoServiceTest extends DatabaseTestCase
             explode(' ', $scopes)
         );
         $this->assertIsArray($result, 'confidential client fixture registration must succeed');
+        $client = \OAuthClientManager::getClient($result['clientIdentifier']);
+
+        return [
+            'clientID'         => (int) $result['clientID'],
+            'clientIdentifier' => $result['clientIdentifier'],
+            'client'           => $client,
+        ];
+    }
+
+    /**
+     * 🕵️ B-062: register a client with subjectType='public' (the non-default
+     * OIDC subject policy whose collision this fixture exercises —
+     * OAuthClientManager::computeSubject() returns the raw, client-UNSCOPED
+     * userID for a 'public' client, unlike the default 'pairwise' sector-
+     * scoped hash).
+     *
+     * @return array{clientID:int,clientIdentifier:string,client:array}
+     */
+    private function registerPublicClient(?int $partnerID, string $scopes = 'openid profile email'): array
+    {
+        $result = \OAuthClientManager::registerClient(
+            $partnerID,
+            'UIS Public-Subject Test RP',
+            'confidential',
+            ['https://rp.example.com/callback'],
+            explode(' ', $scopes),
+            ['subjectType' => 'public']
+        );
+        $this->assertIsArray($result, 'public-subject client fixture registration must succeed');
         $client = \OAuthClientManager::getClient($result['clientIdentifier']);
 
         return [
@@ -304,6 +334,61 @@ class OAuthUserInfoServiceTest extends DatabaseTestCase
         $this->assertSame($idClaims['sub'], $result['body']['sub'], 'userinfo sub must byte-match the id_token sub');
         $this->assertSame($expectedSub, $result['body']['sub']);
         $this->assertNotSame((string) $userID, $result['body']['sub'], 'pairwise sub must NOT be the raw userID');
+    }
+
+    // ========================================================================
+    // 🕵️ B-062 — public-subject clients: userinfo resolves BOTH independently
+    // ========================================================================
+
+    /**
+     * 🕵️ B-062 regression: TWO different subjectType='public' clients for the
+     * SAME user compute the EXACT SAME subjectHash (a 'public' subject is the
+     * raw userID, unscoped by client). Before migration 035's composite
+     * UNIQUE key, the SECOND issuance's UPSERT collided on that shared
+     * subjectHash and OVERWROTE the FIRST client's row — after which
+     * userinfo for the first client's (still perfectly valid) access token
+     * 401'd. Both clients must now resolve correctly and independently.
+     */
+    public function testPublicSubjectClientsResolveIndependentlyViaUserinfo(): void
+    {
+        $partnerID = $this->createPartner();
+        $userID    = $this->createUser();
+
+        $regA = $this->registerPublicClient($partnerID, 'openid profile');
+        $regB = $this->registerPublicClient($partnerID, 'openid profile');
+
+        // Mint client A's token FIRST, then client B's — the ORDER matters:
+        // under the old bug, B's UPSERT (issued second) would overwrite A's
+        // row, so A's userinfo call would 401 if checked AFTER B is minted.
+        $tokenA = $this->mintAccessToken($userID, $regA, 'openid profile');
+        $tokenB = $this->mintAccessToken($userID, $regB, 'openid profile');
+
+        $resultA = \OAuthUserInfoService::handleUserInfoRequest($tokenA);
+        $resultB = \OAuthUserInfoService::handleUserInfoRequest($tokenB);
+
+        $this->assertSame(200, $resultA['status'], 'client A userinfo must still resolve, not 401 (B-062 regression)');
+        $this->assertSame(200, $resultB['status'], 'client B userinfo must resolve');
+
+        // Both resolve to the SAME underlying user (same sub value — both are
+        // 'public' subjectType) and both correctly recover the profile claims.
+        $this->assertSame((string) $userID, $resultA['body']['sub']);
+        $this->assertSame((string) $userID, $resultB['body']['sub']);
+        $this->assertSame($resultA['body']['sub'], $resultB['body']['sub'], 'public sub is unscoped by client');
+        $this->assertSame('UIS User', $resultA['body']['name']);
+        $this->assertSame('UIS User', $resultB['body']['name']);
+
+        // 💾 Confirm the underlying storage-level fix directly too: TWO
+        //    separate tblOAuthSubjects rows, one per client, both pointing
+        //    at the correct userID.
+        $rows = \Database::fetchAll(
+            "SELECT clientID, userID FROM tblOAuthSubjects WHERE subjectHash = ? ORDER BY clientID ASC",
+            [(string) $userID],
+            's'
+        );
+        $this->assertCount(2, $rows, 'two public clients must leave two separate subject rows');
+        foreach ($rows as $row) {
+            $this->assertSame($userID, (int) $row['userID']);
+        }
     }
 
     // ========================================================================
