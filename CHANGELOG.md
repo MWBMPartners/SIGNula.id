@@ -95,9 +95,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     SLA, minimum age and breach-notification window are all filled in** (enforced
     server-side, re-reading the stored values), so a jurisdiction can never go live
     with blank legal values. Every change is CSRF-protected and audit-logged.
+- **Multi-jurisdiction compliance — Layer 4a: retention + the compliance cron (G-004).**
+  - A new **token-secured compliance cron** (`/cron/compliance.php`, run by your
+    external scheduler) now runs the previously-dormant scheduled work: it executes
+    due account deletions, cleans up expired data-export files, expires stale
+    data-request verification tokens, and applies retention policies. Enable it by
+    setting `compliance.cron.secret_token` (a strong random value) and pointing your
+    cron at the endpoint.
+  - **Data-retention policies** (`tblRetentionPolicies`) let you age out old data by
+    table on a schedule (anonymise or delete). This ships **completely inert and
+    safe**: retention purging is **disabled** and in **dry-run** mode by default, and
+    the seeded policies are inactive — nothing is ever purged until you explicitly
+    fill in a policy, activate it, and turn purging on. Purges are batch-capped and
+    restricted to a hardcoded table/column allowlist.
 
 ### Fixed
 
+- **Scheduled account deletions and export cleanup now actually run.** The
+  grace-period account-erasure and expired-export-cleanup routines existed but
+  nothing ever invoked them, so a confirmed account-deletion request was never
+  carried out and old export files were never removed. The new compliance cron
+  wires both in (you must set its secret token and schedule it).
 - **GDPR data-export and account-deletion were broken and now work.** The
   `AccountManager` export/erasure engine had four latent defects (activity-log
   calls using parameters that don't exist, a malformed prepared-statement type

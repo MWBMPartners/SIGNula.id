@@ -1785,6 +1785,36 @@ existing `tblActivityLog` anonymisation.
 - **No fabricated legal values or disclosure text** — the admin forms accept the
   operator's/counsel's input; disclosure bodies ship empty; nothing is pre-filled.
 
+### Retention + the compliance cron — L4a (`RetentionManager` + `cron/compliance.php`)
+
+> **Operator action required to enable:** set `compliance.cron.secret_token` to a
+> strong random value (Repository → Settings, or your DB settings UI — it is stored
+> **encrypted**), then point your external scheduler at `/cron/compliance.php?token=…`
+> (or send it as `Authorization: Bearer …`). Until the token is set the cron refuses
+> to run. This ties to the out-of-scope cron item (#85).
+
+- **The cron is token-gated and fails closed.** The endpoint reads the
+  `isSensitive` token via `getSetting()` (decrypted — never a raw `SELECT`, which
+  would compare against ciphertext), and rejects the request (401) unless a provided
+  `?token=`/Bearer value matches via constant-time `hash_equals`. **An empty/unset
+  expected token never matches** — an unconfigured cron can't be triggered. Failed
+  attempts are logged. No real or guessable token value ships in code (it's empty).
+- **What it does:** runs the previously-dormant `AccountManager::processScheduledDeletions()`
+  and `cleanupExpiredExports()` (closing a real gap — nothing else called them),
+  expires overdue data-request verification tokens, and applies retention policies.
+- **Retention purging is safe-by-default — three independent gates.** Nothing purges
+  user data unless the operator (1) fills in and **activates** a policy, (2) sets
+  `retention.purge.enabled=1`, AND (3) sets `retention.purge.dry_run=0`. All three
+  ship in the safe position (policies inactive, purge disabled, dry-run on). In
+  `RetentionManager`, **"disabled" always wins** over a mistakenly-flipped dry-run
+  flag, the non-live path changes nothing, purges are **batch-capped**, and
+  **anonymise is preferred over delete**.
+- **No identifier injection.** The target table, date column and anonymise columns a
+  policy may touch are validated by **exact match against a hardcoded allowlist
+  const** (not DB-editable); only those literal identifiers are ever interpolated,
+  and all values are bound parameters. A policy naming an un-allowlisted table is
+  skipped, logged, and never executed.
+
 ### Settings added (all `privacy` category, non-sensitive)
 
 `dsar.default_sla_days` (30), `dsar.identity_verification.required` (true),
