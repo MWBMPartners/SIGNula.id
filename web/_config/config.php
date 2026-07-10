@@ -140,7 +140,20 @@ if (DEBUG_MODE) {
     ini_set('display_errors', DISPLAY_ERRORS ? '1' : '0');
     ini_set('display_startup_errors', '1');
 } else {
-    error_reporting(E_ALL & ~E_DEPRECATED & ~E_STRICT);
+    // 🐛 B-064: the legacy "strict standards" error-level flag has been
+    // folded into E_ALL since PHP 8.0, and the constant ITSELF was marked
+    // deprecated in PHP 8.4 — merely referencing that old constant (even
+    // just to mask it back out of E_ALL, as this line used to do) emits a
+    // "constant is deprecated" notice of its own. Because this line runs
+    // before display_errors is turned off two lines below, that notice
+    // could print as LEADING BYTES on the response, which corrupts JSON API
+    // responses and can break header() calls downstream ("headers already
+    // sent"). Dropping the mask is a no-op for actual error coverage (there
+    // is nothing left to mask since PHP 8.0) and removes the trigger
+    // entirely.
+    // @see https://www.php.net/manual/en/errorfunc.constants.php
+    // @see https://php.watch/versions/8.4/deprecations (search: legacy strict-standards constant)
+    error_reporting(E_ALL & ~E_DEPRECATED);
     ini_set('display_errors', '0');
     ini_set('display_startup_errors', '0');
 }
@@ -172,7 +185,12 @@ set_error_handler(function($errno, $errstr, $errfile, $errline) {
         E_USER_ERROR        => 'E_USER_ERROR',
         E_USER_WARNING      => 'E_USER_WARNING',
         E_USER_NOTICE       => 'E_USER_NOTICE',
-        E_STRICT            => 'E_STRICT',
+        // 🐛 B-064: this map used to carry an entry for the legacy "strict
+        // standards" error-level constant here. That level is never actually
+        // EMITTED by PHP 8.4 (folded into E_ALL since 8.0), so the entry was
+        // dead code — and merely referencing the old constant to build it
+        // triggers the same PHP 8.4 constant-deprecation notice described
+        // next to the error_reporting() call a few lines up. Removed.
         E_RECOVERABLE_ERROR => 'E_RECOVERABLE_ERROR',
         E_DEPRECATED        => 'E_DEPRECATED',
         E_USER_DEPRECATED   => 'E_USER_DEPRECATED',
@@ -543,33 +561,279 @@ function isValidEmail(string $email): bool
 }
 
 /**
- * 🌐 Get client IP address
+ * 🧮 Test whether a single IP address falls inside a single CIDR range
+ * (or matches a single bare IP, treated as a /32 for IPv4 or /128 for IPv6).
  *
- * @return string IP address (IPv4 or IPv6)
+ * Implemented from scratch (no library — Dreamhost shared hosting has no
+ * Composer in prod) using inet_pton()'s packed binary representation, which
+ * works identically for IPv4 (4 bytes) and IPv6 (16 bytes). A family
+ * mismatch (comparing an IPv4 address against an IPv6 CIDR or vice versa)
+ * always returns false rather than throwing — malformed/mismatched entries
+ * must be skippable, never fatal (B-061).
+ *
+ * @param string $ip   The address being tested (IPv4 or IPv6, no CIDR suffix)
+ * @param string $cidr A CIDR range ("10.0.0.0/8", "2001:db8::/32") or a bare
+ *                      IP ("203.0.113.7", "2001:db8::1")
+ * @return bool True if $ip lies inside $cidr
+ * @see https://www.php.net/manual/en/function.inet-pton.php
  */
-function getClientIP(): string
+function ipInCidr(string $ip, string $cidr): bool
 {
-    $ipKeys = [
-        'HTTP_CF_CONNECTING_IP', // Cloudflare
-        'HTTP_X_FORWARDED_FOR',
-        'HTTP_X_REAL_IP',
-        'HTTP_CLIENT_IP',
-        'REMOTE_ADDR'
-    ];
+    $cidr = trim($cidr);
+    if ($cidr === '') {
+        return false;
+    }
 
-    foreach ($ipKeys as $key) {
-        if (!empty($_SERVER[$key])) {
-            $ips = explode(',', $_SERVER[$key]);
-            $ip = trim($ips[0]);
+    // 🔀 Split "address/prefix" — a bare IP (no slash) is treated as the
+    // narrowest possible mask (/32 for IPv4, /128 for IPv6) below, once we
+    // know the address family from inet_pton()'s output length.
+    if (str_contains($cidr, '/')) {
+        [$subnet, $maskStr] = explode('/', $cidr, 2);
+        // 🛡️ Reject a non-numeric or negative prefix outright rather than
+        // letting PHP coerce garbage into 0 — a malformed entry must be
+        // SKIPPED (return false), never silently treated as "match everything".
+        if (!ctype_digit($maskStr)) {
+            return false;
+        }
+        $maskBits = (int) $maskStr;
+    } else {
+        $subnet = $cidr;
+        $maskBits = null; // resolved to the full address width just below
+    }
 
-            // Validate IP
-            if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
-                return $ip;
-            }
+    // 📦 Pack both addresses to their raw binary form. inet_pton() returns
+    // false on anything that isn't a syntactically valid IPv4/IPv6 address —
+    // that covers garbage input, empty strings, and hostnames alike.
+    $ipBin = @inet_pton($ip);
+    $subnetBin = @inet_pton($subnet);
+    if ($ipBin === false || $subnetBin === false) {
+        return false;
+    }
+
+    // 🌐 Family mismatch (4-byte IPv4 vs 16-byte IPv6 packed form) — an IPv4
+    // address can never lie "inside" an IPv6 CIDR and vice versa.
+    if (strlen($ipBin) !== strlen($subnetBin)) {
+        return false;
+    }
+
+    $maxBits = strlen($ipBin) * 8; // 32 for IPv4, 128 for IPv6
+    if ($maskBits === null) {
+        $maskBits = $maxBits; // bare IP = exact-match /32 or /128
+    }
+    if ($maskBits < 0 || $maskBits > $maxBits) {
+        return false; // malformed/out-of-range prefix — skip, don't crash
+    }
+    if ($maskBits === 0) {
+        return true; // 0.0.0.0/0 or ::/0 — matches every address in that family
+    }
+
+    // 🔍 Compare the first $maskBits bits of the two packed byte strings:
+    // all FULLY-covered bytes must match exactly, and the one PARTIALLY
+    // covered byte (if $maskBits isn't a multiple of 8) is compared only
+    // across its masked-in high bits.
+    $fullBytes = intdiv($maskBits, 8);
+    $remainderBits = $maskBits % 8;
+
+    if ($fullBytes > 0 && substr($ipBin, 0, $fullBytes) !== substr($subnetBin, 0, $fullBytes)) {
+        return false;
+    }
+
+    if ($remainderBits > 0) {
+        // e.g. $remainderBits = 3 -> mask 0b11100000 (0xE0), covering the
+        // top 3 bits of the next byte and ignoring the remaining 5.
+        $maskByte = (0xFF << (8 - $remainderBits)) & 0xFF;
+        $ipByte = ord($ipBin[$fullBytes]);
+        $subnetByte = ord($subnetBin[$fullBytes]);
+        if (($ipByte & $maskByte) !== ($subnetByte & $maskByte)) {
+            return false;
         }
     }
 
-    return $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+    return true;
+}
+
+/**
+ * 🧮 Test whether an IP address matches ANY CIDR range/bare IP in a list.
+ * Each entry is checked independently via ipInCidr() — a malformed entry
+ * simply never matches (skipped), it never aborts the scan of the rest.
+ *
+ * @param string        $ip    The address being tested
+ * @param array<string> $cidrs List of CIDR ranges / bare IPs
+ * @return bool True if $ip matches at least one entry
+ */
+function ipInAnyCidr(string $ip, array $cidrs): bool
+{
+    foreach ($cidrs as $cidr) {
+        if (ipInCidr($ip, $cidr)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/**
+ * 🔐 Parse the `security.trusted_proxies` setting into a list of CIDR/bare-IP
+ * entries (B-061). Comma- AND/OR whitespace-separated (space, tab, newline)
+ * so it can be entered either as one long comma list or one range per line
+ * in the admin UI. EMPTY (the seeded default — see migration 034) means "no
+ * proxy is trusted": getClientIP() then trusts nothing but REMOTE_ADDR.
+ *
+ * Cached in a static local for the lifetime of the request — getSetting()
+ * is an in-memory array lookup already, but there's no reason to re-parse
+ * the same string on every call within one request (e.g. SecurityMiddleware
+ * + several rate limiters + ActivityLogger may all call getClientIP()
+ * during a single request).
+ *
+ * @return array<int, string>
+ */
+function getTrustedProxyCidrs(): array
+{
+    static $cached = null;
+
+    if ($cached !== null) {
+        return $cached;
+    }
+
+    $raw = (string) getSetting('security.trusted_proxies', '');
+
+    // Split on one-or-more commas and/or whitespace characters in any mix.
+    $entries = preg_split('/[\s,]+/', $raw, -1, PREG_SPLIT_NO_EMPTY);
+    $cached = $entries !== false ? array_map('trim', $entries) : [];
+
+    return $cached;
+}
+
+/**
+ * 🔎 Resolve the real client IP from forwarded headers — ONLY called once
+ * the immediate TCP peer (REMOTE_ADDR) has already been confirmed to be a
+ * configured trusted proxy (B-061). Returns null (never throws) whenever no
+ * usable address can be extracted, so the caller can fail safe to
+ * REMOTE_ADDR.
+ *
+ * @param array<int, string> $trustedProxies The parsed security.trusted_proxies list
+ * @return string|null The resolved client IP, or null if unresolvable
+ */
+function resolveForwardedClientIP(array $trustedProxies): ?string
+{
+    // 🧭 Primary path: the generic X-Forwarded-For chain walk.
+    //
+    // XFF format (the de-facto standard this codebase targets):
+    //   X-Forwarded-For: <original client>, <proxy 1>, <proxy 2>, ...
+    // Each hop APPENDS the address it received the request FROM, so the
+    // chain grows left-to-right as the request passes through proxies — the
+    // LEFTMOST entry is (claims to be) the original client, and the
+    // RIGHTMOST entries are the ones closest to us and therefore the only
+    // ones OUR configured trusted-proxy list can actually vouch for.
+    //
+    // We walk from the RIGHT and skip every hop that itself matches a
+    // trusted proxy (that hop is a proxy we trust re-appended its own
+    // upstream peer's address, which is expected); the first hop that does
+    // NOT match a trusted proxy is the real client, because it's the
+    // address the LAST trusted proxy in the chain reported receiving the
+    // request from.
+    // @see https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Forwarded-For
+    $xff = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? '';
+    if (is_string($xff) && $xff !== '') {
+        $hops = array_map('trim', explode(',', $xff));
+        $hops = array_values(array_filter($hops, static fn (string $hop): bool => $hop !== ''));
+
+        for ($i = count($hops) - 1; $i >= 0; $i--) {
+            $candidate = $hops[$i];
+
+            if (ipInAnyCidr($candidate, $trustedProxies)) {
+                // This hop IS one of our known proxies — keep walking left
+                // to find the address it says it received the request from.
+                continue;
+            }
+
+            // 🎯 First non-trusted hop from the right = the real client.
+            // Still validated (public-range only) — a spoofed/private value
+            // injected at this exact position must not be trusted blindly.
+            if (filter_var($candidate, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+                return $candidate;
+            }
+
+            // 🛑 Malformed or private/reserved value sitting exactly where
+            // the real client should be — do not keep scanning further left
+            // (that could surface an attacker-injected decoy ahead of the
+            // genuine client); fail safe by giving up on XFF entirely.
+            break;
+        }
+        // Either every hop matched a trusted proxy, or the first untrusted
+        // hop failed validation — fall through to the CF header / null.
+    }
+
+    // 🌩️ Secondary path: Cloudflare's single-value header. Cloudflare sits
+    // directly in front of the request (when configured as a trusted
+    // proxy), so this value is exactly as trustworthy as a validated XFF
+    // resolution — used as a fallback when XFF was absent/unusable.
+    $cfIp = $_SERVER['HTTP_CF_CONNECTING_IP'] ?? '';
+    if (is_string($cfIp) && $cfIp !== '') {
+        $cfIp = trim($cfIp);
+        if (filter_var($cfIp, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+            return $cfIp;
+        }
+    }
+
+    return null;
+}
+
+/**
+ * 🌐 Get client IP address
+ *
+ * 🐛 B-061: previously walked HTTP_CF_CONNECTING_IP -> HTTP_X_FORWARDED_FOR ->
+ * HTTP_X_REAL_IP -> HTTP_CLIENT_IP -> REMOTE_ADDR and returned the first
+ * valid PUBLIC address found. On this project's actual deployment target
+ * (Dreamhost shared hosting — direct Apache, NO reverse proxy in front by
+ * default) every one of those forwarded headers is an ordinary REQUEST
+ * HEADER: fully attacker-controlled. Any client could send
+ * `X-Forwarded-For: 8.8.8.8` and this function returned exactly that,
+ * defeating EVERY per-IP rate limiter (Auth::login, JWT issuance/revoke,
+ * OAuth token endpoints) and poisoning IP-reputation / impossible-travel
+ * detection / tblActivityLog's IP attribution.
+ *
+ * Fixed behaviour:
+ *   - DEFAULT (no `security.trusted_proxies` configured — the Dreamhost
+ *     reality): return REMOTE_ADDR ONLY. Forwarded headers are ignored
+ *     entirely, spoofed or not.
+ *   - Forwarded headers are honoured ONLY when the immediate TCP peer
+ *     (REMOTE_ADDR) is ITSELF listed in `security.trusted_proxies` (e.g. a
+ *     Cloudflare edge IP range, or a self-hosted reverse proxy's address) —
+ *     the standard "trusted proxy chain" model. See resolveForwardedClientIP()
+ *     for the chain-walk logic.
+ *   - Any failure to resolve a usable address from the forwarded headers
+ *     (missing/malformed/fully-trusted-chain) fails SAFE back to REMOTE_ADDR
+ *     — this function must never throw.
+ *
+ * @return string IP address (IPv4 or IPv6)
+ * @see https://cheatsheetseries.owasp.org/cheatsheets/IP_Address_Spoofing_Cheat_Sheet.html
+ */
+function getClientIP(): string
+{
+    $remoteAddr = $_SERVER['REMOTE_ADDR'] ?? '';
+
+    $trustedProxies = getTrustedProxyCidrs();
+
+    if ($remoteAddr !== '' && !empty($trustedProxies) && ipInAnyCidr($remoteAddr, $trustedProxies)) {
+        $resolved = resolveForwardedClientIP($trustedProxies);
+        if ($resolved !== null) {
+            return $resolved;
+        }
+        // 🛡️ Fail-safe: header resolution didn't yield a usable address —
+        // fall through to REMOTE_ADDR below rather than guessing further.
+    }
+
+    // 🏠 Default / fallback path: REMOTE_ADDR only.
+    // NOTE: unlike the resolved-from-headers value above (which IS filtered
+    // to public-range-only, because a spoofed header could claim to be a
+    // private/reserved address specifically to dodge IP-reputation/geo
+    // checks), REMOTE_ADDR is deliberately NEVER filtered for being
+    // private/reserved here — it's the socket's real source address, not
+    // attacker-controllable, and a legitimate dev/LAN/localhost request
+    // (10.x.x.x, 127.0.0.1, etc.) must still resolve to that real IP rather
+    // than being discarded in favour of the '0.0.0.0' placeholder.
+    return $remoteAddr !== '' ? $remoteAddr : '0.0.0.0';
 }
 
 /**
