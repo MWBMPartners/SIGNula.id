@@ -29,6 +29,104 @@ if (!defined('SIGNULA_INIT')) {
 }
 
 /**
+ * ============================================================================
+ * 🔌 DatabaseConnection — thin instance adapter around the shared mysqli link
+ * ============================================================================
+ *
+ * 🐛 B-054 fix. 74 pages under web/public_html do:
+ *
+ *     $db = Database::getInstance();
+ *     $sessionManager = new SessionManager($db);
+ *     ...
+ *     $stmt = $db->prepare("SELECT ..."); $stmt->bind_param(...); $stmt->execute();
+ *
+ * i.e. they expect an OBJECT with an instance-style `prepare()`/`query()`/etc,
+ * exactly like a raw mysqli link — NOT the static `Database` class above
+ * (whose API is `Database::query()`, `Database::fetchOne()`, ... — no
+ * `getInstance()`, and none of it is callable through `->`). This class is
+ * the shape that closes that gap.
+ *
+ * Rather than re-implement every mysqli method, this is a minimal PROXY:
+ * it holds the one shared mysqli connection (see Database::getConnection())
+ * and forwards any method call / property read straight through to it via
+ * PHP's magic __call()/__get(). That keeps a single real connection per
+ * request (no second connection pool to manage) while giving callers the
+ * exact `$db->prepare(...)`, `$db->insert_id`, `$db->getConnection()`,
+ * `$db->rollback()`, `$db->commit()`, `$db->begin_transaction()`, `$db->ping()`,
+ * `$db->error` surface verified in use across web/public_html.
+ *
+ * @see https://www.php.net/manual/en/book.mysqli.php
+ * @see https://www.php.net/manual/en/language.oop5.overloading.php#object.call
+ * @see https://www.php.net/manual/en/language.oop5.overloading.php#object.get
+ */
+if (!class_exists('DatabaseConnection')) {
+    final class DatabaseConnection
+    {
+        /**
+         * 🏗️ Constructor
+         *
+         * @param mysqli $mysqli The shared connection returned by
+         *                       Database::getConnection(). Stored via a
+         *                       PHP 8 constructor property promotion
+         *                       (readonly-by-convention — never reassigned).
+         * @see https://www.php.net/manual/en/language.oop5.decon.php#language.oop5.decon.constructor.promotion
+         */
+        public function __construct(private readonly \mysqli $mysqli)
+        {
+        }
+
+        /**
+         * 🔗 Get Underlying mysqli Connection
+         *
+         * Explicit accessor for the 3 verified `$db->getConnection()` call
+         * sites — returns the exact same connection object every other
+         * $db-> call in this class proxies to (not a copy/clone).
+         *
+         * @return \mysqli The wrapped mysqli connection
+         */
+        public function getConnection(): \mysqli
+        {
+            return $this->mysqli;
+        }
+
+        /**
+         * 🪄 Magic Method Proxy
+         *
+         * Forwards any method call not explicitly defined above (prepare,
+         * query, rollback, commit, begin_transaction, ping, real_escape_string,
+         * close, ...) straight through to the wrapped mysqli connection, so
+         * `$db->prepare(...)` behaves exactly like `$mysqli->prepare(...)`.
+         *
+         * @param string $name Method name being called
+         * @param array<int, mixed> $args Positional arguments to forward
+         * @return mixed Whatever the underlying mysqli method returns
+         * @see https://www.php.net/manual/en/mysqli-stmt.bind-param.php
+         */
+        public function __call(string $name, array $args): mixed
+        {
+            return $this->mysqli->{$name}(...$args);
+        }
+
+        /**
+         * 🪄 Magic Property Proxy
+         *
+         * Forwards any property READ not explicitly defined above
+         * (insert_id, error, errno, affected_rows, ...) straight through to
+         * the wrapped mysqli connection, so `$db->insert_id` after an
+         * `INSERT` reads the real mysqli::$insert_id.
+         *
+         * @param string $name Property name being read
+         * @return mixed Whatever the underlying mysqli property holds
+         * @see https://www.php.net/manual/en/mysqli.insert-id.php
+         */
+        public function __get(string $name): mixed
+        {
+            return $this->mysqli->{$name};
+        }
+    }
+}
+
+/**
  * 🗄️ Database Connection Class
  *
  * Manages database connections using MySQLi with singleton pattern
@@ -140,6 +238,41 @@ class Database
         }
 
         return self::$connection;
+    }
+
+    /**
+     * 🏭 Get Instance-Style Database Handle
+     *
+     * 🐛 B-054 fix. 74 pages under web/public_html do
+     * `$db = Database::getInstance(); new SessionManager($db);` and then call
+     * instance-style methods on $db (`$db->prepare(...)`, `$db->insert_id`,
+     * `$db->getConnection()`, ...) — but this class (Database) is 100% STATIC
+     * and had no `getInstance()` at all, so every one of those pages fataled
+     * with "Call to undefined method Database::getInstance()".
+     *
+     * Returns a lightweight {@see DatabaseConnection} adapter wrapping the
+     * SAME shared mysqli connection self::getConnection() already manages —
+     * this does NOT open a second connection; it is just an instance-shaped
+     * proxy in front of the one connection this class maintains. A fresh
+     * adapter object is handed back on every call (cheap — it holds only a
+     * reference), but every adapter proxies to the identical underlying
+     * mysqli link, so `Database::getInstance()->getConnection() === Database::getInstance()->getConnection()`
+     * is always true within one request.
+     *
+     * If the connection is not yet configured/reachable, this surfaces the
+     * exact same RuntimeException self::getConnection()/self::connect()
+     * would throw for any other caller — no new error-swallowing is
+     * introduced here.
+     *
+     * @return DatabaseConnection Instance-style handle proxying to the
+     *                            shared mysqli connection
+     * @throws RuntimeException If the underlying connection cannot be
+     *                          established (propagated from self::connect())
+     * @see DatabaseConnection
+     */
+    public static function getInstance(): DatabaseConnection
+    {
+        return new DatabaseConnection(self::getConnection());
     }
 
     /**
