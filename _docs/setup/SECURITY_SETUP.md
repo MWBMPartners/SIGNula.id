@@ -1764,6 +1764,27 @@ existing `tblActivityLog` anonymisation.
   disclosure bodies ship empty. All consent UI copy is functional, not statutory.
 - Every state-changing consent POST is CSRF-verified and works without JavaScript.
 
+### Data-driven regime model — L3 (`RegimeResolver` + regime admin)
+
+- **No jurisdiction value is hardcoded.** Every regime's SLA, age threshold,
+  breach window and rights live in `tblComplianceRegimes` / child tables; PHP
+  reads rows. A grep-gate enforces that no regime-code literal (`GDPR`, `CCPA`, …)
+  appears in `web/private_html` PHP logic. Adding a jurisdiction is data, not code.
+- **Never fails open.** `RegimeResolver` resolves the governing regime (active,
+  non-draft rows only) or a synthetic **most-protective default** — an unknown or
+  NULL value always yields the strictest fallback (`dsar.default_sla_days`, the
+  strictest age), never a permissive one.
+- **Ships inert.** All 19 seeded regimes are `isActive=0` with NULL legal values,
+  so the resolver returns the default and the DSAR/consent retro-wire is a no-op
+  until an operator activates a regime — existing behaviour is unchanged.
+- **Regime admin** (`/admin/compliance/regimes`) is super-admin gated, CSRF +
+  POST-only, `X-Frame-Options: DENY`, audit-logged. The **activation guard**
+  re-reads the stored row and refuses to set a regime active until `dsarSlaDays`,
+  `minAge` and `breachNotifyHours` are all non-NULL — a jurisdiction cannot go live
+  with blank legal values, and a client cannot bypass the check with forged input.
+- **No fabricated legal values or disclosure text** — the admin forms accept the
+  operator's/counsel's input; disclosure bodies ship empty; nothing is pre-filled.
+
 ### Settings added (all `privacy` category, non-sensitive)
 
 `dsar.default_sla_days` (30), `dsar.identity_verification.required` (true),

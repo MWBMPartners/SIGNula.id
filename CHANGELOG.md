@@ -88,7 +88,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     governing regime and SLA, always falling back to the **most-protective default**
     when nothing is configured (it never fails open). With the shipped (all-draft)
     seed this is a no-op — existing behaviour is unchanged until a regime is
-    activated. (The admin UI to fill and activate regimes lands next.)
+    activated.
+  - A **super-admin regime-management console** (`/admin/compliance/regimes`) lets
+    the operator fill each regime's legal values, rights, disclosures and
+    resolution rules and then activate it. A regime **cannot be activated until its
+    SLA, minimum age and breach-notification window are all filled in** (enforced
+    server-side, re-reading the stored values), so a jurisdiction can never go live
+    with blank legal values. Every change is CSRF-protected and audit-logged.
 
 ### Fixed
 
