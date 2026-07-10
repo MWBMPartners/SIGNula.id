@@ -25,8 +25,29 @@ $userID = $_SESSION['userID'];
 $message = null;
 $messageType = null;
 
+// 🎫 Generate CSRF token for the unlink/set-primary forms below
+// 🐛 B-066: this page previously had NO CSRF protection at all on its
+// state-changing POST actions (unlink_account, set_primary) — no
+// csrf_token field, no SecurityUtils::verifyCSRFToken() call. Added to
+// match every sibling settings/*.php page (profile.php, security.php,
+// privacy.php) and the project's standing CSRF requirement.
+// @see https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html
+$csrfToken = SecurityUtils::generateCSRFToken();
+
 // 📝 Handle form submission
+//
+// 🐛 B-066: this whole handler used to target `tblUserLinkedAccounts`, which
+// does NOT exist (verified against information_schema). The real store for
+// a user's linked third-party sign-in accounts is `tblOAuthAccounts` (the
+// same table AvatarService.php and profile.php already read from). Retargeted
+// every query below, mapping the old `accountID` PK to the real
+// `oauthAccountID`, and `createdAt` to the real `linkedAt` column.
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // 🛡️ Verify CSRF token before any side-effect
+    if (!SecurityUtils::verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+        $message = 'Invalid security token. Please try again.';
+        $messageType = 'danger';
+    } else {
     $action = $_POST['action'] ?? '';
 
     if ($action === 'unlink_account') {
@@ -41,7 +62,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             // 🔍 Verify account belongs to user
             $existing = Database::fetchOne(
-                "SELECT accountID FROM tblUserLinkedAccounts
+                "SELECT oauthAccountID FROM tblOAuthAccounts
                  WHERE userID = ? AND provider = ? AND providerUserID = ?",
                 [$userID, $provider, $providerUserID],
                 'iss'
@@ -52,16 +73,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             // 🗑️ Delete linked account
-            $query = "DELETE FROM tblUserLinkedAccounts WHERE accountID = ?";
-            $result = Database::query($query, [$existing['accountID']], 'i');
+            $query = "DELETE FROM tblOAuthAccounts WHERE oauthAccountID = ?";
+            $result = Database::query($query, [$existing['oauthAccountID']], 'i');
 
             if ($result) {
                 // 📝 Log activity
+                // 🐛 B-066: ActivityLogger::log() has no $activityResult/
+                // $activityDetails params — see profile.php's B-066 note for
+                // the full explanation. Mapped to the real $description param.
                 ActivityLogger::log(
                     userID: $userID,
                     activityType: 'oauth_account_unlinked',
-                    activityResult: 'success',
-                    activityDetails: "Unlinked {$provider} account"
+                    description: "Unlinked {$provider} account"
                 );
 
                 $message = 'Account unlinked successfully!';
@@ -81,7 +104,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             // 🔍 Verify account belongs to user
             $account = Database::fetchOne(
-                "SELECT accountID, provider FROM tblUserLinkedAccounts WHERE accountID = ? AND userID = ?",
+                "SELECT oauthAccountID, provider FROM tblOAuthAccounts WHERE oauthAccountID = ? AND userID = ?",
                 [$accountID, $userID],
                 'ii'
             );
@@ -92,14 +115,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             // 🔄 Update all accounts to not primary
             Database::query(
-                "UPDATE tblUserLinkedAccounts SET isPrimary = 0 WHERE userID = ?",
+                "UPDATE tblOAuthAccounts SET isPrimary = 0 WHERE userID = ?",
                 [$userID],
                 'i'
             );
 
             // ✅ Set selected account as primary
             $result = Database::query(
-                "UPDATE tblUserLinkedAccounts SET isPrimary = 1 WHERE accountID = ?",
+                "UPDATE tblOAuthAccounts SET isPrimary = 1 WHERE oauthAccountID = ?",
                 [$accountID],
                 'i'
             );
@@ -109,8 +132,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ActivityLogger::log(
                     userID: $userID,
                     activityType: 'primary_account_changed',
-                    activityResult: 'success',
-                    activityDetails: "Set {$account['provider']} as primary account"
+                    description: "Set {$account['provider']} as primary account"
                 );
 
                 $message = 'Primary account updated successfully!';
@@ -125,13 +147,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $messageType = 'danger';
         }
     }
+    } // end CSRF else
 }
 
 // 🔍 Get linked accounts
 $linkedAccounts = Database::fetchAll(
-    "SELECT * FROM tblUserLinkedAccounts
+    "SELECT * FROM tblOAuthAccounts
      WHERE userID = ?
-     ORDER BY isPrimary DESC, createdAt DESC",
+     ORDER BY isPrimary DESC, linkedAt DESC",
     [$userID],
     'i'
 ) ?? [];
@@ -245,9 +268,9 @@ include SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATO
                                                     <?php if ($account['isPrimary']): ?>
                                                         <span class="badge bg-primary">Primary</span>
                                                     <?php endif; ?>
-                                                    <?php if ($account['emailVerified']): ?>
-                                                        <span class="badge bg-success ms-1">✓ Verified</span>
-                                                    <?php endif; ?>
+                                                    <?php // 🐛 B-066: tblOAuthAccounts has NO `emailVerified` column
+                                                          // (verified against information_schema) — dropped this badge
+                                                          // rather than invent a column that doesn't exist. ?>
                                                 </div>
                                                 <small class="text-muted">
                                                     <?php echo htmlspecialchars($account['email']); ?>
@@ -255,7 +278,7 @@ include SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATO
                                                 <div class="mt-1">
                                                     <small class="text-muted">
                                                         <i class="fas fa-link"></i>
-                                                        Linked <?php echo timeAgo($account['createdAt']); ?>
+                                                        Linked <?php echo timeAgo($account['linkedAt']); ?>
                                                     </small>
                                                 </div>
                                             </div>
@@ -264,18 +287,19 @@ include SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATO
                                             <div class="dropdown">
                                                 <button class="btn btn-sm btn-outline-secondary dropdown-toggle"
                                                         type="button"
-                                                        id="account<?php echo $account['accountID']; ?>Menu"
+                                                        id="account<?php echo $account['oauthAccountID']; ?>Menu"
                                                         data-bs-toggle="dropdown"
                                                         aria-expanded="false">
                                                     Actions
                                                 </button>
                                                 <ul class="dropdown-menu dropdown-menu-end"
-                                                    aria-labelledby="account<?php echo $account['accountID']; ?>Menu">
+                                                    aria-labelledby="account<?php echo $account['oauthAccountID']; ?>Menu">
                                                     <?php if (!$account['isPrimary']): ?>
                                                         <li>
                                                             <form method="POST" action="" class="d-inline">
                                                                 <input type="hidden" name="action" value="set_primary">
-                                                                <input type="hidden" name="accountID" value="<?php echo $account['accountID']; ?>">
+                                                                <input type="hidden" name="accountID" value="<?php echo $account['oauthAccountID']; ?>">
+                                                                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrfToken); ?>">
                                                                 <button type="submit" class="dropdown-item">
                                                                     <i class="fas fa-star text-warning"></i> Set as Primary
                                                                 </button>
@@ -287,7 +311,7 @@ include SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATO
                                                         <a class="dropdown-item text-danger"
                                                            href="#"
                                                            data-bs-toggle="modal"
-                                                           data-bs-target="#unlinkModal<?php echo $account['accountID']; ?>">
+                                                           data-bs-target="#unlinkModal<?php echo $account['oauthAccountID']; ?>">
                                                             <i class="fas fa-unlink"></i> Unlink Account
                                                         </a>
                                                     </li>
@@ -298,7 +322,7 @@ include SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATO
                                 </div>
 
                                 <!-- Unlink Confirmation Modal -->
-                                <div class="modal fade" id="unlinkModal<?php echo $account['accountID']; ?>" tabindex="-1">
+                                <div class="modal fade" id="unlinkModal<?php echo $account['oauthAccountID']; ?>" tabindex="-1">
                                     <div class="modal-dialog">
                                         <div class="modal-content">
                                             <form method="POST" action="">
@@ -310,6 +334,7 @@ include SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATO
                                                     <input type="hidden" name="action" value="unlink_account">
                                                     <input type="hidden" name="provider" value="<?php echo htmlspecialchars($account['provider']); ?>">
                                                     <input type="hidden" name="providerUserID" value="<?php echo htmlspecialchars($account['providerUserID']); ?>">
+                                                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrfToken); ?>">
 
                                                     <div class="alert alert-warning">
                                                         <strong>⚠️ Are you sure?</strong>

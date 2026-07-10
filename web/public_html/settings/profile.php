@@ -80,11 +80,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 if ($result) {
                     // 📝 Log activity
+                    // 🐛 B-066: ActivityLogger::log()'s real signature is
+                    // (?int $userID, string $activityType, string $category = 'other',
+                    //  string $severity = 'info', string $description = '', array $metadata = [],
+                    //  ?int $sessionID = null) — it has NO $activityResult/$activityDetails
+                    // parameters. Calling it with those named arguments throws
+                    // `Error: Unknown named parameter $activityResult` in PHP 8
+                    // (named-argument matching is by declared parameter name, not
+                    // by position), which fatals this POST handler AFTER the DB
+                    // update already succeeded. Mapped to the real parameter
+                    // ($description) — $category/$severity keep their 'other'/'info'
+                    // defaults, matching every other successful-action log call site.
                     ActivityLogger::log(
                         userID: $userID,
                         activityType: 'profile_update',
-                        activityResult: 'success',
-                        activityDetails: 'Profile information updated'
+                        description: 'Profile information updated'
                     );
 
                     $message = 'Profile updated successfully!';
@@ -232,11 +242,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     // TODO: Implement email verification
 
                     // 📝 Log activity
+                    // 🐛 B-066: see the update_profile branch above for why
+                    // $activityResult/$activityDetails (not real ActivityLogger::log()
+                    // parameters) are replaced with $description here.
                     ActivityLogger::log(
                         userID: $userID,
                         activityType: 'email_change',
-                        activityResult: 'success',
-                        activityDetails: 'Email address changed to ' . $newEmail
+                        description: 'Email address changed to ' . $newEmail
                     );
 
                     $message = 'Email updated successfully! Please check your inbox to verify your new email address.';
@@ -280,10 +292,18 @@ if (class_exists('AvatarService')) {
     $currentAvatarUrl = AvatarService::resolve($userID, null, 128);
 
     // 🔗 Fetch linked OAuth accounts that have profile pictures
+    // 🐛 B-066: tblOAuthAccounts has NO `isActive` column (verified against
+    // information_schema — real columns: oauthAccountID, userID, provider,
+    // providerUserID, email, displayName, accountType, emailDomain,
+    // profilePicture, accessToken, refreshToken, tokenExpiresAt, scopes,
+    // isPrimary, linkedAt, lastUsedAt, updatedAt). This query used to fatal
+    // with "Unknown column 'isActive'" on every profile.php load — dropped
+    // the predicate; a linked OAuth account row IS the "active" state here
+    // (unlinking DELETEs the row rather than soft-disabling it).
     $oauthAccounts = Database::fetchAll(
         "SELECT oauthAccountID, provider, profilePicture, displayName, isPrimary
          FROM tblOAuthAccounts
-         WHERE userID = ? AND isActive = 1 AND profilePicture IS NOT NULL AND profilePicture != ''
+         WHERE userID = ? AND profilePicture IS NOT NULL AND profilePicture != ''
          ORDER BY isPrimary DESC, provider ASC",
         [$userID],
         'i'

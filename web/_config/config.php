@@ -765,4 +765,97 @@ function getCurrentUser(bool $refresh = false): ?array
     return Auth::getCurrentUser();
 }
 
+/**
+ * 🛡️ Is the current authenticated user an admin?
+ *
+ * 🐛 B-066: web/public_html/admin/email-webhooks.php, email-config.php and
+ * email-dashboard.php all gate on a bare `isAdmin()` call
+ * (`if (!isAdmin()) { http_response_code(403); die(...); }`), but that
+ * global function was never defined anywhere reachable from these pages —
+ * only a same-named LOCAL function inside admin/api/deploy-migration.php
+ * (a different script, never loaded here) and the unrelated
+ * `AccessControl::isAdmin()` INSTANCE method (web/_backend/AccessControl.php,
+ * a different/legacy session stack). Every request to those 3 pages fataled
+ * with "Call to undefined function isAdmin()" before any admin check could
+ * even run.
+ *
+ * Thin wrapper over the SAME `isAdmin` flag Auth::getCurrentUser() already
+ * derives (isSuperAdmin OR an active tblPartnerTeamMembers membership — see
+ * that method's own doc-block), so this delegates rather than
+ * re-implementing the admin-resolution logic a second time.
+ *
+ * @return bool True if there is a logged-in user AND they are an admin
+ * @see web/private_html/auth/Auth.php (Auth::getCurrentUser(), the `isAdmin` key)
+ */
+function isAdmin(): bool
+{
+    $user = getCurrentUser();
+
+    return !empty($user['isAdmin']);
+}
+
+/**
+ * ⏱️ Human-readable "time ago" formatter
+ *
+ * 🐛 B-066: settings/index.php, activity.php, privacy.php and
+ * connected-accounts.php all call `timeAgo($someDateTimeString)` to render
+ * "5 minutes ago"-style relative timestamps, but this function was never
+ * defined ANYWHERE in the codebase — every one of those pages fataled with
+ * "Call to undefined function timeAgo()" as soon as it had at least one row
+ * to render (e.g. the very first "login_success" activity row a real
+ * Auth::login() creates for the user rendering the page).
+ *
+ * Accepts a MySQL DATETIME string (as returned by Database::fetchOne()/
+ * fetchAll() — mysqli returns DATETIME columns as strings, never DateTime
+ * objects) and returns a short relative-time phrase. Gracefully degrades on
+ * null/blank/unparseable input rather than throwing, since callers pass
+ * values straight from a DB row that may be NULL (e.g. tblAPIKeys.lastUsedAt
+ * before the key has ever been used).
+ *
+ * @param string|null $datetime MySQL "Y-m-d H:i:s" datetime string, or null
+ * @return string Relative time phrase, e.g. "5 minutes ago", "2 days ago"
+ * @see https://www.php.net/manual/en/function.strtotime.php
+ */
+function timeAgo(?string $datetime): string
+{
+    if (empty($datetime)) {
+        return 'just now';
+    }
+
+    $timestamp = strtotime($datetime);
+
+    // 🛡️ strtotime() returns false on an unparseable string — degrade
+    // gracefully instead of feeding `false` into arithmetic below.
+    if ($timestamp === false) {
+        return 'unknown';
+    }
+
+    $diffSeconds = time() - $timestamp;
+
+    // 🕐 A timestamp in the future (clock skew, or a scheduled value) — treat
+    // as "just now" rather than showing a nonsensical negative duration.
+    if ($diffSeconds < 60) {
+        return 'just now';
+    }
+
+    // 📏 Largest-unit-first breakdown, mirroring the common "time ago" idiom.
+    $intervals = [
+        31536000 => 'year',
+        2592000  => 'month',
+        604800   => 'week',
+        86400    => 'day',
+        3600     => 'hour',
+        60       => 'minute',
+    ];
+
+    foreach ($intervals as $seconds => $label) {
+        $count = intdiv($diffSeconds, $seconds);
+        if ($count >= 1) {
+            return $count . ' ' . $label . ($count > 1 ? 's' : '') . ' ago';
+        }
+    }
+
+    return 'just now';
+}
+
 // ✅ Configuration loaded successfully

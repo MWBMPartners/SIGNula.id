@@ -50,15 +50,25 @@ $webhookStats = getWebhookStatistics();
  */
 function getWebhookLogs(int $limit = 50): array
 {
+    // 🐛 B-066: tblErrorLog has NO `contextData`, `errorContext`, or
+    // `loggedAt` columns (verified against information_schema — real
+    // columns: errorID, userID, sessionID, errorType, errorCode,
+    // errorMessage, errorFile, errorLine, errorTrace, severity, context,
+    // requestURL, requestMethod, requestHeaders, requestData, ipAddress,
+    // userAgent, resolved, resolvedAt, resolvedBy, notes, createdAt).
+    // Mapped: contextData -> context (the JSON-metadata column
+    // ErrorLogger::logError()'s $context param actually writes to),
+    // errorContext -> errorType (the closest real categorisation column —
+    // ErrorLogger::logError()'s $errorType param), loggedAt -> createdAt.
     $query = "
         SELECT
             el.*,
             eq.recipientEmail,
             eq.subject
         FROM tblErrorLog el
-        LEFT JOIN tblEmailQueue eq ON JSON_EXTRACT(el.contextData, '$.email_id') = eq.emailID
-        WHERE el.errorContext = 'email_webhook'
-        ORDER BY el.loggedAt DESC
+        LEFT JOIN tblEmailQueue eq ON JSON_EXTRACT(el.context, '$.email_id') = eq.emailID
+        WHERE el.errorType = 'email_webhook'
+        ORDER BY el.createdAt DESC
         LIMIT ?
     ";
 
@@ -73,16 +83,19 @@ function getWebhookLogs(int $limit = 50): array
 function getWebhookStatistics(): array
 {
     // Get stats from last 24 hours
+    // 🐛 B-066: see getWebhookLogs() above for the column-mapping rationale
+    // (contextData -> context, errorContext -> errorType, loggedAt -> createdAt,
+    // errorSeverity -> severity — the real tblErrorLog column).
     $query = "
         SELECT
-            JSON_EXTRACT(contextData, '$.provider') as provider,
+            JSON_EXTRACT(context, '$.provider') as provider,
             COUNT(*) as total_received,
-            SUM(CASE WHEN errorSeverity = 'info' THEN 1 ELSE 0 END) as successful,
-            SUM(CASE WHEN errorSeverity IN ('warning', 'error', 'critical') THEN 1 ELSE 0 END) as failed
+            SUM(CASE WHEN severity = 'info' THEN 1 ELSE 0 END) as successful,
+            SUM(CASE WHEN severity IN ('warning', 'error', 'critical') THEN 1 ELSE 0 END) as failed
         FROM tblErrorLog
-        WHERE errorContext = 'email_webhook'
-        AND loggedAt >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
-        GROUP BY JSON_EXTRACT(contextData, '$.provider')
+        WHERE errorType = 'email_webhook'
+        AND createdAt >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
+        GROUP BY JSON_EXTRACT(context, '$.provider')
     ";
 
     return Database::fetchAll($query) ?: [];
@@ -132,18 +145,31 @@ function getWebhookUrl(string $provider): ?string
 }
 
 // 🎨 Include header
-include SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'layout' . DIRECTORY_SEPARATOR . 'admin-header.php';
+//
+// 🐛 B-066: this used to include 'admin-header.php', which does not exist
+// anywhere in the codebase (grepped: this file is the ONLY one that
+// references it — header.php's own B-060 doc-block already flagged this
+// exact gap: "admin-header.php ... ALSO does not exist; flagged, not fixed
+// here"). With only one consumer, the smaller-blast-radius fix is to point
+// it at the shared, already-working layout/header.php (used by every
+// settings/*.php page) rather than invent a whole parallel admin layout
+// pair for a single caller. header.php's contract (see its own doc-block)
+// makes every one of its template variables optional, so this page's
+// existing $pageTitle is all it needs.
+include SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'layout' . DIRECTORY_SEPARATOR . 'header.php';
 ?>
 
 <div class="container-fluid">
     <div class="row">
-        <!-- Sidebar -->
-        <nav class="col-md-2 d-md-block bg-light sidebar">
-            <?php include SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'layout' . DIRECTORY_SEPARATOR . 'admin-sidebar.php'; ?>
-        </nav>
+        <!-- 🐛 B-066: the 'admin-sidebar.php' this used to include ALSO does
+             not exist anywhere in the codebase (same single-consumer
+             situation as admin-header.php above) — dropped the empty
+             sidebar column entirely and widened the main content column to
+             fill the row, rather than invent a new admin nav file for one
+             page. -->
 
         <!-- Main Content -->
-        <main class="col-md-10 ms-sm-auto px-md-4">
+        <main class="col-12 px-md-4">
             <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
                 <h1 class="h2">🔗 <?php echo htmlspecialchars($pageTitle); ?></h1>
             </div>
@@ -295,10 +321,13 @@ include SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATO
                                         <tbody>
                                             <?php foreach ($webhookLogs as $log): ?>
                                                 <?php
-                                                $contextData = json_decode($log['contextData'] ?? '{}', true);
+                                                // 🐛 B-066: tblErrorLog's real columns are `context` (not
+                                                // `contextData`), `severity` (not `errorSeverity`) and
+                                                // `createdAt` (not `loggedAt`) — see getWebhookLogs() above.
+                                                $contextData = json_decode($log['context'] ?? '{}', true);
                                                 $provider = $contextData['provider'] ?? 'Unknown';
                                                 $event = $contextData['event'] ?? 'Unknown';
-                                                $severityClass = match($log['errorSeverity']) {
+                                                $severityClass = match($log['severity'] ?? '') {
                                                     'info' => 'success',
                                                     'warning' => 'warning',
                                                     'error', 'critical' => 'danger',
@@ -306,14 +335,14 @@ include SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATO
                                                 };
                                                 ?>
                                                 <tr>
-                                                    <td><?php echo date('Y-m-d H:i:s', strtotime($log['loggedAt'])); ?></td>
+                                                    <td><?php echo date('Y-m-d H:i:s', strtotime($log['createdAt'])); ?></td>
                                                     <td><?php echo htmlspecialchars($provider); ?></td>
                                                     <td><span class="badge bg-<?php echo $severityClass; ?>"><?php echo htmlspecialchars($event); ?></span></td>
                                                     <td><?php echo htmlspecialchars($log['recipientEmail'] ?? 'N/A'); ?></td>
                                                     <td><?php echo htmlspecialchars(substr($log['subject'] ?? '', 0, 50)); ?></td>
                                                     <td>
                                                         <span class="badge bg-<?php echo $severityClass; ?>">
-                                                            <?php echo htmlspecialchars($log['errorSeverity']); ?>
+                                                            <?php echo htmlspecialchars($log['severity'] ?? ''); ?>
                                                         </span>
                                                     </td>
                                                     <td>
@@ -378,13 +407,17 @@ function testWebhook(provider) {
  */
 function showLogDetails(log) {
     const content = document.getElementById('logDetailContent');
-    const contextData = JSON.parse(log.contextData || '{}');
+    // 🐛 B-066: `log` is json_encode($log)'d straight from the tblErrorLog
+    // row (see the onclick="showLogDetails(...)" call site above) — its
+    // real keys are `context`/`severity`/`createdAt`, not `contextData`/
+    // `errorSeverity`/`loggedAt`.
+    const contextData = JSON.parse(log.context || '{}');
 
     let html = '<dl class="row">';
-    html += `<dt class="col-sm-3">Timestamp:</dt><dd class="col-sm-9">${log.loggedAt}</dd>`;
+    html += `<dt class="col-sm-3">Timestamp:</dt><dd class="col-sm-9">${log.createdAt}</dd>`;
     html += `<dt class="col-sm-3">Provider:</dt><dd class="col-sm-9">${contextData.provider || 'Unknown'}</dd>`;
     html += `<dt class="col-sm-3">Event Type:</dt><dd class="col-sm-9">${contextData.event || 'Unknown'}</dd>`;
-    html += `<dt class="col-sm-3">Severity:</dt><dd class="col-sm-9"><span class="badge bg-info">${log.errorSeverity}</span></dd>`;
+    html += `<dt class="col-sm-3">Severity:</dt><dd class="col-sm-9"><span class="badge bg-info">${log.severity}</span></dd>`;
 
     if (log.recipientEmail) {
         html += `<dt class="col-sm-3">Recipient:</dt><dd class="col-sm-9">${log.recipientEmail}</dd>`;
@@ -406,5 +439,7 @@ function showLogDetails(log) {
 
 <?php
 // 🎨 Include footer
-include SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'layout' . DIRECTORY_SEPARATOR . 'admin-footer.php';
+// 🐛 B-066: paired with the header.php swap above — see that comment for
+// the full rationale (admin-footer.php does not exist; only consumer).
+include SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'layout' . DIRECTORY_SEPARATOR . 'footer.php';
 ?>

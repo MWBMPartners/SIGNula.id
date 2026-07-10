@@ -13,18 +13,27 @@
  * ============================================================================
  */
 
-// 🚀 Initialize SIGNula
-define('SIGNULA_INIT', true);
-require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'bootstrap.php';
+// 🚀 Bootstrap the application
+//
+// 🐛 B-066: this page used to `require_once .../private_html/bootstrap.php`
+// (a file that does not exist anywhere in the codebase — there is no
+// web/private_html/bootstrap.php) and called isUserLoggedIn()/
+// getCurrentUserID(), neither of which is defined either. Every load
+// fataled with "Failed opening required .../bootstrap.php" before a single
+// byte of output. Only ONE other file in the whole tree
+// (web/public_html/api/oauth/disconnect.php) references that same missing
+// bootstrap.php — not enough call sites to justify inventing a shim file
+// (and disconnect.php is a separate, out-of-scope API endpoint for this
+// fix) — so this migrates the prologue to the SAME working pattern every
+// sibling settings/*.php page already uses: config.php + requireLogin() +
+// getCurrentUser(), both real, defined functions (see web/_config/config.php).
+require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . '_config' . DIRECTORY_SEPARATOR . 'config.php';
 
-// 🔐 Require authentication
-if (!isUserLoggedIn()) {
-    header('Location: /login?redirect=' . urlencode($_SERVER['REQUEST_URI']));
-    exit;
-}
+// 🔒 Require login
+requireLogin();
 
-$userID = getCurrentUserID();
 $user = getCurrentUser();
+$userID = $_SESSION['userID'];
 
 // 🔍 Load OAuth Token Manager
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'auth' . DIRECTORY_SEPARATOR . 'OAuthTokenManager.php';

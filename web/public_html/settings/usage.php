@@ -44,10 +44,13 @@ $usageBillingEnabled = getSetting('billing.usage.enabled') === '1';
 
 // 💳 Fetch the user's active subscription (if any)
 // Expected columns: subscriptionID, userID, tierID, partnerID, billingMode,
-//                   billingCycle, nextBillingDate, currentPeriodStart, currentPeriodEnd, status
+//                   billingCycle, nextBillingDate, currentPeriodStart, currentPeriodEnd, subscriptionStatus
+// 🐛 B-066: the real column is `subscriptionStatus`, not `status` (verified
+// against information_schema) — this fatals with "Unknown column 'status'"
+// on every load of this page.
 $subscription = Database::fetchOne(
     "SELECT * FROM tblSubscriptions
-     WHERE userID = ? AND status = 'active'
+     WHERE userID = ? AND subscriptionStatus = 'active'
      ORDER BY createdAt DESC
      LIMIT 1",
     [$userID],
@@ -115,23 +118,44 @@ $currentPeriodCost = 0.00;
 if ($subscription && $currentPeriodStart && $currentPeriodEnd) {
     // 📈 Fetch aggregated usage per metric for the current billing period
     // Groups by metricName, sums quantity, calculates billable quantity after free allowance
+    //
+    // 🐛 B-066: tblUsageRecords has NO metricName/freeAllowance/unitRate/
+    // unitLabel columns (verified against information_schema — its real
+    // columns are recordID, userID, partnerID, metricID, quantity,
+    // recordedAt, billingPeriodStart, billingPeriodEnd, metadata,
+    // isProcessed, processedAt). metricName/unitLabel live on
+    // tblUsageMetrics (joined via metricID); freeAllowance/ratePerUnit
+    // (renamed `unitRate` for display) live on tblUsageRates, one row per
+    // (metricID, tierID, tierType) — tierType is 'partner' when this
+    // subscription has a partnerID, otherwise 'global'. Only an
+    // active, currently-effective rate row is matched.
+    $rateTierType = !empty($subscription['partnerID']) ? 'partner' : 'global';
+
     $currentUsage = Database::fetchAll(
         "SELECT
-            metricName,
-            SUM(quantity) AS totalUsage,
-            COALESCE(MAX(freeAllowance), 0) AS freeAllowance,
-            GREATEST(SUM(quantity) - COALESCE(MAX(freeAllowance), 0), 0) AS billableQty,
-            COALESCE(MAX(unitRate), 0) AS unitRate,
-            GREATEST(SUM(quantity) - COALESCE(MAX(freeAllowance), 0), 0) * COALESCE(MAX(unitRate), 0) AS subtotal,
-            MAX(unitLabel) AS unitLabel
-         FROM tblUsageRecords
-         WHERE userID = ?
-           AND recordedAt >= ?
-           AND recordedAt <= ?
-         GROUP BY metricName
-         ORDER BY metricName ASC",
-        [$userID, $currentPeriodStart, $currentPeriodEnd],
-        'iss'
+            m.metricName,
+            SUM(ur.quantity) AS totalUsage,
+            COALESCE(MAX(r.freeAllowance), 0) AS freeAllowance,
+            GREATEST(SUM(ur.quantity) - COALESCE(MAX(r.freeAllowance), 0), 0) AS billableQty,
+            COALESCE(MAX(r.ratePerUnit), 0) AS unitRate,
+            GREATEST(SUM(ur.quantity) - COALESCE(MAX(r.freeAllowance), 0), 0) * COALESCE(MAX(r.ratePerUnit), 0) AS subtotal,
+            MAX(m.unitLabel) AS unitLabel
+         FROM tblUsageRecords ur
+         INNER JOIN tblUsageMetrics m ON m.metricID = ur.metricID
+         LEFT JOIN tblUsageRates r
+                ON r.metricID = ur.metricID
+               AND r.isActive = 1
+               AND r.tierID = ?
+               AND r.tierType = ?
+               AND r.effectiveFrom <= CURDATE()
+               AND (r.effectiveUntil IS NULL OR r.effectiveUntil >= CURDATE())
+         WHERE ur.userID = ?
+           AND ur.recordedAt >= ?
+           AND ur.recordedAt <= ?
+         GROUP BY m.metricName
+         ORDER BY m.metricName ASC",
+        [$subscription['tierID'], $rateTierType, $userID, $currentPeriodStart, $currentPeriodEnd],
+        'isiss'
     ) ?? [];
 
     // 💰 Sum up current period cost from all metrics
@@ -160,11 +184,16 @@ if ($billingMode === 'hybrid' && $monthlyPrice > 0) {
 
 $billingHistory = [];
 if ($subscription) {
+    // 🐛 B-066: tblUsageBillingSummary has NO `periodEnd` column (verified
+    // against information_schema) — the real columns are
+    // `billingPeriodStart`/`billingPeriodEnd`. This ORDER BY fatals with
+    // "Unknown column 'periodEnd'" on every load of this page (whenever the
+    // user has an active subscription).
     $billingHistory = Database::fetchAll(
         "SELECT *
          FROM tblUsageBillingSummary
          WHERE userID = ?
-         ORDER BY periodEnd DESC
+         ORDER BY billingPeriodEnd DESC
          LIMIT 12",
         [$userID],
         'i'
@@ -178,17 +207,20 @@ if ($subscription) {
 $usageHistory = [];
 if ($subscription) {
     // 📆 Fetch monthly aggregated usage per metric for the last 6 months
+    // 🐛 B-066: same tblUsageRecords.metricName issue as the current-period
+    // query above — joined to tblUsageMetrics for the real metric name.
     $usageHistory = Database::fetchAll(
         "SELECT
-            metricName,
-            DATE_FORMAT(recordedAt, '%Y-%m') AS monthKey,
-            DATE_FORMAT(recordedAt, '%b %Y') AS monthLabel,
-            SUM(quantity) AS totalUsage
-         FROM tblUsageRecords
-         WHERE userID = ?
-           AND recordedAt >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
-         GROUP BY metricName, monthKey, monthLabel
-         ORDER BY monthKey ASC, metricName ASC",
+            m.metricName,
+            DATE_FORMAT(ur.recordedAt, '%Y-%m') AS monthKey,
+            DATE_FORMAT(ur.recordedAt, '%b %Y') AS monthLabel,
+            SUM(ur.quantity) AS totalUsage
+         FROM tblUsageRecords ur
+         INNER JOIN tblUsageMetrics m ON m.metricID = ur.metricID
+         WHERE ur.userID = ?
+           AND ur.recordedAt >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
+         GROUP BY m.metricName, monthKey, monthLabel
+         ORDER BY monthKey ASC, m.metricName ASC",
         [$userID],
         'i'
     ) ?? [];
@@ -702,13 +734,21 @@ include SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATO
                                         <?php foreach ($billingHistory as $entry): ?>
                                             <?php
                                             // 📅 Format period dates for display
-                                            $periodStart = date('M j', strtotime($entry['periodStart'] ?? ''));
-                                            $periodEnd = date('M j, Y', strtotime($entry['periodEnd'] ?? ''));
+                                            // 🐛 B-066: tblUsageBillingSummary's real column names (verified
+                                            // against information_schema) differ from what this page originally
+                                            // read: periodStart/periodEnd -> billingPeriodStart/billingPeriodEnd,
+                                            // usageCost -> totalUsageCost, tierCap -> tierFixedPrice,
+                                            // amountCharged -> cappedAmount (the final charged amount after any
+                                            // cap is applied), savings -> savingsAmount. There is no invoiceUrl
+                                            // column (only an `invoiceID` FK) — left as an always-empty fallback
+                                            // rather than invent a URL column that doesn't exist.
+                                            $periodStart = date('M j', strtotime($entry['billingPeriodStart'] ?? ''));
+                                            $periodEnd = date('M j, Y', strtotime($entry['billingPeriodEnd'] ?? ''));
                                             $entryMode = $entry['billingMode'] ?? 'fixed';
-                                            $entryUsageCost = (float) ($entry['usageCost'] ?? 0);
-                                            $entryCap = (float) ($entry['tierCap'] ?? 0);
-                                            $entryCharged = (float) ($entry['amountCharged'] ?? 0);
-                                            $entrySavings = (float) ($entry['savings'] ?? 0);
+                                            $entryUsageCost = (float) ($entry['totalUsageCost'] ?? 0);
+                                            $entryCap = (float) ($entry['tierFixedPrice'] ?? 0);
+                                            $entryCharged = (float) ($entry['cappedAmount'] ?? 0);
+                                            $entrySavings = (float) ($entry['savingsAmount'] ?? 0);
                                             $entryStatus = $entry['status'] ?? 'unknown';
                                             $invoiceUrl = $entry['invoiceUrl'] ?? '';
                                             ?>

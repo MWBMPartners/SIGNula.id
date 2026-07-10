@@ -32,6 +32,13 @@ $page = max(1, intval($_GET['page'] ?? 1));
 $perPage = 25;
 $offset = ($page - 1) * $perPage;
 
+// 🐛 B-066: every `createdAt` reference below (SQL identifiers AND fetched
+// array-key reads) used to read `loggedAt` — tblActivityLog has NO such
+// column (verified against information_schema; the real timestamp column
+// is `createdAt`). The unconditional `ORDER BY loggedAt DESC` fatals with
+// "Unknown column 'loggedAt'" on every load, so this page 500'd
+// unconditionally regardless of which filters were applied.
+
 // 📝 Handle export
 if (isset($_GET['export'])) {
     $exportFormat = $_GET['export']; // 'csv' or 'json'
@@ -48,25 +55,32 @@ if (isset($_GET['export'])) {
     }
 
     if (!empty($filterResult)) {
-        $whereConditions[] = 'activityResult = ?';
-        $params[] = $filterResult;
-        $types .= 's';
+        // 🐛 B-066: tblActivityLog has no `activityResult` VARCHAR('success'|'failed')
+        // column — the real success indicator is `success` (tinyint 1/0), set
+        // by ActivityLogger::log() (see that file's INSERT — always TRUE
+        // today, but the column itself is what the schema actually offers).
+        // Converts the dropdown's 'success'/'failed' string into the boolean.
+        $whereConditions[] = 'success = ?';
+        $params[] = ($filterResult === 'success') ? 1 : 0;
+        $types .= 'i';
     }
 
     if (!empty($filterDateFrom)) {
-        $whereConditions[] = 'loggedAt >= ?';
+        $whereConditions[] = 'createdAt >= ?';
         $params[] = $filterDateFrom . ' 00:00:00';
         $types .= 's';
     }
 
     if (!empty($filterDateTo)) {
-        $whereConditions[] = 'loggedAt <= ?';
+        $whereConditions[] = 'createdAt <= ?';
         $params[] = $filterDateTo . ' 23:59:59';
         $types .= 's';
     }
 
     if (!empty($searchQuery)) {
-        $whereConditions[] = '(activityType LIKE ? OR activityDetails LIKE ? OR ipAddress LIKE ?)';
+        // 🐛 B-066: tblActivityLog has no `activityDetails` column — the real
+        // free-text column is `description`.
+        $whereConditions[] = '(activityType LIKE ? OR description LIKE ? OR ipAddress LIKE ?)';
         $searchTerm = '%' . $searchQuery . '%';
         $params[] = $searchTerm;
         $params[] = $searchTerm;
@@ -76,7 +90,7 @@ if (isset($_GET['export'])) {
 
     $whereClause = implode(' AND ', $whereConditions);
     $exportActivities = Database::fetchAll(
-        "SELECT * FROM tblActivityLog WHERE {$whereClause} ORDER BY loggedAt DESC",
+        "SELECT * FROM tblActivityLog WHERE {$whereClause} ORDER BY createdAt DESC",
         $params,
         $types
     ) ?? [];
@@ -91,10 +105,10 @@ if (isset($_GET['export'])) {
 
         foreach ($exportActivities as $activity) {
             fputcsv($output, [
-                $activity['loggedAt'],
+                $activity['createdAt'],
                 $activity['activityType'],
-                $activity['activityResult'] ?? '',
-                $activity['activityDetails'] ?? '',
+                !empty($activity['success']) ? 'success' : 'failed',
+                $activity['description'] ?? '',
                 $activity['ipAddress'] ?? '',
                 $activity['userAgent'] ?? ''
             ]);
@@ -125,25 +139,27 @@ if (!empty($filterType)) {
 }
 
 if (!empty($filterResult)) {
-    $whereConditions[] = 'activityResult = ?';
-    $params[] = $filterResult;
-    $types .= 's';
+    // 🐛 B-066: see the export branch above — real column is `success` (tinyint).
+    $whereConditions[] = 'success = ?';
+    $params[] = ($filterResult === 'success') ? 1 : 0;
+    $types .= 'i';
 }
 
 if (!empty($filterDateFrom)) {
-    $whereConditions[] = 'loggedAt >= ?';
+    $whereConditions[] = 'createdAt >= ?';
     $params[] = $filterDateFrom . ' 00:00:00';
     $types .= 's';
 }
 
 if (!empty($filterDateTo)) {
-    $whereConditions[] = 'loggedAt <= ?';
+    $whereConditions[] = 'createdAt <= ?';
     $params[] = $filterDateTo . ' 23:59:59';
     $types .= 's';
 }
 
 if (!empty($searchQuery)) {
-    $whereConditions[] = '(activityType LIKE ? OR activityDetails LIKE ? OR ipAddress LIKE ?)';
+    // 🐛 B-066: real free-text column is `description`, not `activityDetails`.
+    $whereConditions[] = '(activityType LIKE ? OR description LIKE ? OR ipAddress LIKE ?)';
     $searchTerm = '%' . $searchQuery . '%';
     $params[] = $searchTerm;
     $params[] = $searchTerm;
@@ -166,7 +182,7 @@ $totalPages = ceil($totalActivities / $perPage);
 $activities = Database::fetchAll(
     "SELECT * FROM tblActivityLog
      WHERE {$whereClause}
-     ORDER BY loggedAt DESC
+     ORDER BY createdAt DESC
      LIMIT ? OFFSET ?",
     array_merge($params, [$perPage, $offset]),
     $types . 'ii'
@@ -187,12 +203,17 @@ $stats = [
     'failed_logins' => 0
 ];
 
+// 🐛 B-066: `activityResult = 'failed'` referenced a column that does not
+// exist on tblActivityLog (real column: `success`, tinyint 1/0) — this
+// unconditional query fatals with "Unknown column 'activityResult'" on
+// EVERY load of this page (unlike the filter-only occurrences above, this
+// one always runs), which is the actual 500 this page was hitting.
 $statsData = Database::fetchOne(
     "SELECT
         COUNT(*) as total,
-        SUM(CASE WHEN loggedAt >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 1 ELSE 0 END) as last_7_days,
-        SUM(CASE WHEN loggedAt >= DATE_SUB(NOW(), INTERVAL 30 DAY) THEN 1 ELSE 0 END) as last_30_days,
-        SUM(CASE WHEN activityType = 'login' AND activityResult = 'failed' THEN 1 ELSE 0 END) as failed_logins
+        SUM(CASE WHEN createdAt >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 1 ELSE 0 END) as last_7_days,
+        SUM(CASE WHEN createdAt >= DATE_SUB(NOW(), INTERVAL 30 DAY) THEN 1 ELSE 0 END) as last_30_days,
+        SUM(CASE WHEN activityType = 'login' AND success = 0 THEN 1 ELSE 0 END) as failed_logins
      FROM tblActivityLog WHERE userID = ?",
     [$userID],
     'i'
@@ -408,22 +429,26 @@ include SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATO
                                             <div class="d-flex justify-content-between align-items-start mb-1">
                                                 <div>
                                                     <strong><?php echo ucwords(str_replace('_', ' ', $activity['activityType'])); ?></strong>
-                                                    <?php if ($activity['activityResult']): ?>
-                                                        <span class="badge bg-<?php echo $activity['activityResult'] === 'success' ? 'success' : 'danger'; ?> ms-2">
-                                                            <?php echo ucfirst($activity['activityResult']); ?>
-                                                        </span>
-                                                    <?php endif; ?>
+                                                    <?php
+                                                    // 🐛 B-066: real column is `success` (tinyint 1/0), not
+                                                    // `activityResult` ('success'/'failed' string).
+                                                    $activityResultLabel = !empty($activity['success']) ? 'success' : 'failed';
+                                                    ?>
+                                                    <span class="badge bg-<?php echo $activityResultLabel === 'success' ? 'success' : 'danger'; ?> ms-2">
+                                                        <?php echo ucfirst($activityResultLabel); ?>
+                                                    </span>
                                                 </div>
                                                 <small class="text-muted">
                                                     <i class="fas fa-clock"></i>
-                                                    <?php echo date('M j, Y g:i A', strtotime($activity['loggedAt'])); ?>
-                                                    <span class="ms-1">(<?php echo timeAgo($activity['loggedAt']); ?>)</span>
+                                                    <?php echo date('M j, Y g:i A', strtotime($activity['createdAt'])); ?>
+                                                    <span class="ms-1">(<?php echo timeAgo($activity['createdAt']); ?>)</span>
                                                 </small>
                                             </div>
 
-                                            <?php if ($activity['activityDetails']): ?>
+                                            <?php // 🐛 B-066: real column is `description`, not `activityDetails`. ?>
+                                            <?php if (!empty($activity['description'])): ?>
                                                 <div class="text-muted small mb-2">
-                                                    <?php echo htmlspecialchars($activity['activityDetails']); ?>
+                                                    <?php echo htmlspecialchars($activity['description']); ?>
                                                 </div>
                                             <?php endif; ?>
 
