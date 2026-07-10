@@ -53,10 +53,15 @@
  *   comment) — a DSAR can legitimately outlive the export row it references
  *   once the export file itself expires/is purged by
  *   `AccountManager::cleanupExpiredExports()`.
- * - **`regimeCode` / per-regime SLA are Layer 3** (a later build cycle) —
- *   `submit()` always uses the flat `dsar.default_sla_days` setting for now
- *   (same "soft column, not yet resolved" posture as `ConsentManager`'s
- *   `regimeCode` handling — see that class's docblock).
+ * - **`regimeCode` / per-regime SLA (G-004 Layer 3, migration 042).**
+ *   `submit()` now resolves the governing regime via `RegimeResolver::resolve()`
+ *   and computes `dueDate` from `RegimeResolver::slaDaysFor()` — see
+ *   `resolveRegimeAndSla()`. This is a BEST-EFFORT retro-wire (a resolver
+ *   failure degrades to the pre-L3 `dsar.default_sla_days` behaviour, never
+ *   breaks submission) and, in the SHIPPED state (every migration-042 seed
+ *   regime is `isActive = 0`), is a behavioural no-op: `regimeCode` still
+ *   ends up NULL and the SLA still ends up the default 30 days, identical
+ *   to pre-L3 behaviour, until an operator activates a regime.
  * - **No admin queue, no public request form, no regime resolver** ship in
  *   this cycle — `getQueue()`/`getComplianceReport()` are the DATA SOURCE a
  *   later Layer-1-Cycle-C admin queue will call; they have no UI yet.
@@ -91,6 +96,21 @@ if (file_exists($dsarTransitionExceptionPath)) {
 } else {
     error_log('🚨 [DSARManager] InvalidDSARTransitionException.php not found at: ' . $dsarTransitionExceptionPath);
     throw new RuntimeException('Required dependency InvalidDSARTransitionException.php is not available');
+}
+
+// 🌍 G-004 Layer 3 (migration 042): RegimeResolver — same "compliance/ is not
+// autoloaded" situation as InvalidDSARTransitionException.php above. UNLIKE
+// that exception class, a missing RegimeResolver.php is NOT fatal here:
+// submit()'s regime resolution is explicitly best-effort (see
+// resolveRegimeAndSla()'s docblock) — if this require can't find the file,
+// class_exists('RegimeResolver') simply stays false everywhere below and
+// submit() falls back to the exact pre-L3 behaviour (regimeCode=NULL,
+// SLA=dsar.default_sla_days).
+if (!class_exists('RegimeResolver')) {
+    $regimeResolverPath = __DIR__ . DIRECTORY_SEPARATOR . 'RegimeResolver.php';
+    if (file_exists($regimeResolverPath)) {
+        require_once $regimeResolverPath;
+    }
 }
 
 class DSARManager
@@ -239,6 +259,11 @@ class DSARManager
      *     @type string|null $details       Free-text detail, sanitised via SecurityUtils::sanitizeString()
      *     @type string|null $actorType     Who is submitting: user|admin|system|cron (default 'user')
      *     @type int|null    $actorID       Explicit actor ID for the audit event (defaults to $userID)
+     *     @type int|null    $partnerID     G-004 L3: optional partner/tenant hint passed to
+     *                                      RegimeResolver::resolve() (see resolveRegimeAndSla())
+     *     @type string|null $countryHint   G-004 L3: optional ISO country hint passed to
+     *                                      RegimeResolver::resolve() — the caller's own knowledge
+     *                                      (e.g. a user's declared residency), never a geo-IP lookup
      * }
      * @return int New requestID (tblDataSubjectRequests.requestID)
      *
@@ -295,22 +320,26 @@ class DSARManager
             $ipPacked = null;
         }
 
-        // ⏰ dueDate = submission time + SLA days. Per-regime SLA override is
-        // L3 (tblComplianceRegimes / RegimeResolver do not exist yet) — this
-        // cycle always falls back to the flat 'dsar.default_sla_days' setting
-        // (migration 040 seeds it to 30, the most-protective GDPR default).
-        $slaDays = (int) getSetting('dsar.default_sla_days', 30);
+        // 🌍 G-004 Layer 3: resolve the governing regime + SLA ONCE via
+        // RegimeResolver (migration 042) — see resolveRegimeAndSla()'s own
+        // docblock for the best-effort/never-fail-open contract and the
+        // "shipped state = no-op" guarantee.
+        $partnerID = isset($req['partnerID']) ? (int) $req['partnerID'] : null;
+        $countryHint = !empty($req['countryHint']) ? (string) $req['countryHint'] : null;
+        ['regimeCode' => $regimeCode, 'slaDays' => $slaDays] = self::resolveRegimeAndSla($userID, $partnerID, $countryHint);
+
+        // ⏰ dueDate = submission time + the resolved regime's SLA days.
         $now = date('Y-m-d H:i:s');
         $dueDate = self::computeDueDate($now, $slaDays);
 
-        // 💾 INSERT the request. regimeCode is intentionally omitted (column
-        // DEFAULT NULL) — see the class docblock's "regimeCode is Layer 3" note.
+        // 💾 INSERT the request, including regimeCode (migration 040 column,
+        // now populated via the G-004 Layer 3 resolver above).
         $requestID = Database::insert(
             "INSERT INTO tblDataSubjectRequests
-                (userID, requestType, status, requesterEmail, subjectRef, details, dueDate, ipAddress, submittedAt)
-             VALUES (?, ?, 'submitted', ?, ?, ?, ?, ?, ?)",
-            [$userID, $requestType, $requesterEmail, $subjectRef, $details, $dueDate, $ipPacked, $now],
-            'isssssss'
+                (userID, requestType, status, regimeCode, requesterEmail, subjectRef, details, dueDate, ipAddress, submittedAt)
+             VALUES (?, ?, 'submitted', ?, ?, ?, ?, ?, ?, ?)",
+            [$userID, $requestType, $regimeCode, $requesterEmail, $subjectRef, $details, $dueDate, $ipPacked, $now],
+            'issssssss'
         );
 
         // 📝 Append the initial 'submitted' audit event (fromStatus NULL —
@@ -1104,6 +1133,45 @@ class DSARManager
             [$requestID, $fromStatus, $toStatus, $actorType, $actorID, $note, date('Y-m-d H:i:s')],
             'isssiss'
         );
+    }
+
+    /**
+     * 🌍 Resolve The Governing Regime + SLA (G-004 Layer 3 retro-wire)
+     *
+     * The ONLY place submit() touches RegimeResolver. Deliberately
+     * best-effort at every step — a missing RegimeResolver.php (see the
+     * guarded require at the top of this file), a resolve() failure, or a
+     * slaDaysFor() failure ALL degrade to the exact pre-L3 behaviour
+     * (`regimeCode => null`, `slaDays => dsar.default_sla_days`) rather than
+     * ever letting a resolver problem break DSAR submission — per the class
+     * docblock's "regimeCode / per-regime SLA" contract.
+     *
+     * @param int|null    $userID
+     * @param int|null    $partnerID
+     * @param string|null $countryHint
+     * @return array{regimeCode: string|null, slaDays: int}
+     */
+    private static function resolveRegimeAndSla(?int $userID, ?int $partnerID, ?string $countryHint): array
+    {
+        if (!class_exists('RegimeResolver')) {
+            return ['regimeCode' => null, 'slaDays' => (int) getSetting('dsar.default_sla_days', 30)];
+        }
+
+        $regimeCode = null;
+        try {
+            $resolved = RegimeResolver::resolve($userID, $partnerID, $countryHint);
+            $regimeCode = $resolved['regimeCode'] ?? null;
+        } catch (Throwable $e) {
+            $regimeCode = null; // best-effort — never let a resolver failure break submission
+        }
+
+        try {
+            $slaDays = RegimeResolver::slaDaysFor($regimeCode);
+        } catch (Throwable $e) {
+            $slaDays = (int) getSetting('dsar.default_sla_days', 30);
+        }
+
+        return ['regimeCode' => $regimeCode, 'slaDays' => $slaDays];
     }
 
     /**

@@ -32,11 +32,14 @@
  *   (userID=NULL, ipAddress=NULL, userAgent='REDACTED') rather than
  *   cascading a delete. That anonymisation edit belongs to the DSAR cycle
  *   (Layer 1 / Cycle B), NOT to this class.
- * - `regimeCode` is a nullable soft column in THIS cycle. The regime
- *   configuration model (tblComplianceRegimes / RegimeResolver) is Layer 3
- *   (a later build cycle) — until then this class simply stores whatever the
- *   caller passes via $opts['regimeCode'] (typically nothing => NULL) and
- *   never invents a value.
+ * - `regimeCode` (G-004 Layer 3, migration 042): an explicitly-passed
+ *   `$opts['regimeCode']` is always honoured first; otherwise record() now
+ *   best-effort resolves one via `RegimeResolver::resolve($userID, null, null)`
+ *   (see resolveRegimeCode()). This is guarded so a resolver failure NEVER
+ *   breaks append-only consent capture, and — because migration 042 seeds
+ *   every regime `isActive = 0` — resolves to NULL in the shipped state
+ *   exactly as before this cycle (a behavioural no-op until an operator
+ *   activates a regime).
  *
  * Database Tables:
  * - tblConsentRecords: append-only consent audit trail (see migration 040)
@@ -51,6 +54,20 @@
 if (!defined('SIGNULA_INIT')) {
     http_response_code(403);
     die('Direct access not permitted');
+}
+
+// 🌍 G-004 Layer 3 (migration 042): RegimeResolver — web/private_html/compliance/
+// is not covered by config.php's spl_autoload_register() directory list (see
+// DSARManager.php's identical note), so this needs an explicit require. A
+// missing RegimeResolver.php is NOT fatal here: record()'s regime resolution
+// is explicitly best-effort (see resolveRegimeCode()'s docblock) — if this
+// require can't find the file, class_exists('RegimeResolver') simply stays
+// false and record() falls back to the exact pre-L3 behaviour (regimeCode=NULL).
+if (!class_exists('RegimeResolver')) {
+    $regimeResolverPath = __DIR__ . DIRECTORY_SEPARATOR . 'RegimeResolver.php';
+    if (file_exists($regimeResolverPath)) {
+        require_once $regimeResolverPath;
+    }
 }
 
 class ConsentManager
@@ -118,9 +135,11 @@ class ConsentManager
         // truncation error under strict mode), so we fail safe to 'banner'.
         $mechanism = self::resolveMechanism($opts['mechanism'] ?? null);
 
-        // 🌍 L3 (regime configuration model) is a later build cycle — leave
-        // NULL unless the caller explicitly supplies a resolved regime code.
-        $regimeCode = $opts['regimeCode'] ?? null;
+        // 🌍 G-004 Layer 3 (migration 042): honour an explicitly-passed
+        // regimeCode first; otherwise best-effort resolve one via
+        // RegimeResolver — see resolveRegimeCode()'s docblock for the
+        // hot-path perf note and the never-fail-open contract.
+        $regimeCode = $opts['regimeCode'] ?? self::resolveRegimeCode($userID);
 
         // 📜 Policy/banner version the decision was made against (L2 will
         // populate this from tblPolicyVersions; NULL is a valid "unversioned" state).
@@ -412,6 +431,45 @@ class ConsentManager
         }
 
         return [null, [], ''];
+    }
+
+    /**
+     * 🌍 Best-Effort Regime Resolution (G-004 Layer 3 retro-wire)
+     *
+     * record() is the CONSENT HOT PATH — every banner click, preference-
+     * center toggle, and GPC auto-opt-out (config.php's per-request GPC
+     * bootstrap call) runs through it — so this method must be cheap and
+     * must NEVER throw. `RegimeResolver::resolve()` already keeps a static
+     * per-request memo keyed on its full (userID, partnerID, countryHint)
+     * tuple (see that class's own docblock), so repeated calls for the same
+     * userID within one request are effectively free after the first.
+     *
+     * partnerID/countryHint are NOT threaded through record()'s own
+     * signature this cycle — this mirrors the exact integration point the
+     * spec names (G-004 §4.2: "ConsentManager::record() calls
+     * RegimeResolver::resolve($userID, null, null)"). A caller that already
+     * has a resolved regimeCode can still pass it explicitly via
+     * $opts['regimeCode'], which always takes priority over this fallback
+     * (see record()'s call site).
+     *
+     * @param int|null $userID
+     * @return string|null
+     */
+    private static function resolveRegimeCode(?int $userID): ?string
+    {
+        if (!class_exists('RegimeResolver')) {
+            return null;
+        }
+
+        try {
+            $resolved = RegimeResolver::resolve($userID, null, null);
+
+            return $resolved['regimeCode'] ?? null;
+        } catch (Throwable $e) {
+            // 🛡️ Best-effort — never let a resolver failure break
+            // append-only consent capture.
+            return null;
+        }
     }
 
     /**

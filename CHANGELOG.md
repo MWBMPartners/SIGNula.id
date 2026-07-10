@@ -74,6 +74,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     **off by default** and enabled via a setting when the operator is ready.
   - No policy text is shipped — the new policy-version table carries version
     anchors only; wording remains the operator's/counsel's to provide.
+- **Multi-jurisdiction compliance — Layer 3 core: data-driven regime model (G-004).**
+  - New regime tables let every jurisdiction-specific value — a right, an SLA in
+    days, an age threshold, a breach-notification window — live in **configuration,
+    not code**. Adding a new jurisdiction is a data change; no PHP edits.
+  - **19 jurisdictions are pre-seeded as drafts** (GDPR, UK GDPR, CCPA/CPRA, VCDPA,
+    CPA, CTDPA, UCPA, HIPAA, COPPA, LGPD, PIPEDA, APPI, PIPA, POPIA, DPDP, PIPL, and
+    the Australia/New Zealand Privacy Acts) — **inactive, with their legal values
+    left blank** for the operator/counsel to fill and activate. Well-known public
+    reference numbers are included only as clearly-labelled "confirm with legal"
+    notes, never as live values.
+  - A new resolver stamps each data-subject request and consent record with its
+    governing regime and SLA, always falling back to the **most-protective default**
+    when nothing is configured (it never fails open). With the shipped (all-draft)
+    seed this is a no-op — existing behaviour is unchanged until a regime is
+    activated. (The admin UI to fill and activate regimes lands next.)
 
 ### Fixed
 
