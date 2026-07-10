@@ -727,6 +727,15 @@ class Auth
     /**
      * 👥 Get Current User Data
      *
+     * 🐛 B-053 fix (HIGH): the SELECT below previously omitted the 4 admin/
+     * partner-context flags (`isSuperAdmin`, `isAdmin`, `isPartnerAdmin`,
+     * `partnerID`) that 50 call sites across web/public_html read straight off
+     * this array (e.g. `$userInfo['isSuperAdmin']`, `(int)($userInfo['partnerID']
+     * ?? 0)`). Every admin/partner gate therefore failed CLOSED (undefined
+     * array key -> falsy/0), 403'ing real admins. This method now enriches the
+     * base tblUsers row with those 4 keys — ADDITIVELY, so every pre-existing
+     * key/consumer keeps working unchanged.
+     *
      * @return array|null User data or null if not authenticated
      */
     public static function getCurrentUser(): ?array
@@ -741,15 +750,71 @@ class Auth
             return null;
         }
 
+        // 🔑 `isSuperAdmin` is a REAL tblUsers column (BOOLEAN NOT NULL DEFAULT
+        // FALSE, added by _database/migrations/009_multi_tier_admin.sql, with
+        // its own idx_super_admin index) — this is the SIGNula-owner "god mode"
+        // flag, global and NOT tied to any partner.
         $query = "
             SELECT userID, userUUID, username, email, firstName, lastName,
                    displayName, profilePicture, phoneNumber, locale, timezone,
-                   accountStatus, accountTier, emailVerified, lastLoginAt
+                   accountStatus, accountTier, emailVerified, lastLoginAt,
+                   isSuperAdmin
             FROM tblUsers
             WHERE userID = ? AND deletedAt IS NULL
         ";
 
-        self::$currentUser = Database::fetchOne($query, [$userID], 'i');
+        $user = Database::fetchOne($query, [$userID], 'i');
+
+        if ($user === null) {
+            return null;
+        }
+
+        // 🔢 mysqli returns BOOLEAN columns as the string '0'/'1' — normalise
+        // to a real PHP bool so `$userInfo['isSuperAdmin']` truthiness checks
+        // behave exactly as the 28 call sites across web/public_html expect.
+        $user['isSuperAdmin'] = (bool)(int)$user['isSuperAdmin'];
+
+        // 🤝 `partnerID` is NOT a tblUsers column — it is derived from the
+        // user's ACTIVE partner-team membership in tblPartnerTeamMembers
+        // (see _database/migrations/009_multi_tier_admin.sql). A user can, in
+        // principle, belong to more than one partner's team; we resolve a
+        // single "primary" membership (root-admin memberships preferred, then
+        // lowest partnerID for a stable/deterministic pick) since the 50
+        // consumers all treat `partnerID` as a single active-partner-context
+        // value (e.g. `(int)($userInfo['partnerID'] ?? 0)`).
+        //
+        // Mirrors AccessControl::isAdmin()/isPartnerAdmin() semantics
+        // (web/_backend/AccessControl.php): isAdmin = isSuperAdmin() ||
+        // has-any-active-membership; isPartnerAdmin (in THIS additive,
+        // membership-count sense) = has-any-active-membership. We deliberately
+        // do NOT instantiate AccessControl here (its constructor takes
+        // ($db, $sessionManager) and pulling it into Auth risks an
+        // Auth <-> SessionManager <-> AccessControl load cycle) — this is a
+        // single, self-contained, resilient (zero-row-safe) prepared query.
+        $membership = Database::fetchOne(
+            "
+                SELECT partnerID, isRootAdmin
+                FROM tblPartnerTeamMembers
+                WHERE userID = ? AND status = 'active'
+                ORDER BY isRootAdmin DESC, partnerID ASC
+                LIMIT 1
+            ",
+            [$userID],
+            'i'
+        );
+
+        $hasActiveMembership = ($membership !== null);
+
+        // 🚩 Enriched, DERIVED flags — additive keys only, every pre-existing
+        // key above is untouched.
+        $user['partnerID']      = $hasActiveMembership ? (int)$membership['partnerID'] : null;
+        $user['isPartnerAdmin'] = $hasActiveMembership;
+        $user['isAdmin']        = $user['isSuperAdmin'] || $hasActiveMembership;
+
+        // 💾 Cache the FULLY ENRICHED array (not the raw DB row) so repeat
+        // calls within the same request stay consistent with this first
+        // resolution.
+        self::$currentUser = $user;
 
         return self::$currentUser;
     }
