@@ -321,18 +321,59 @@ class InvoiceManager
             $paymentID      = $options['paymentID'] ?? null;
             $subscriptionID = $options['subscriptionID'] ?? null;
             $currency       = $options['currency'] ?? self::DEFAULT_CURRENCY;
-            $billingName    = $options['billingName'] ?? null;
-            $billingEmail   = $options['billingEmail'] ?? null;
             $companyName    = $options['companyName'] ?? null;
             $vatNumber      = $options['vatNumber'] ?? null;
             $notes          = $options['notes'] ?? null;
             $dueDate        = $options['dueDate'] ?? null;
             $autoIssue      = (bool)($options['autoIssue'] ?? false);
 
+            // ─────────────────────────────────────────────────────────────────
+            // 👤 Resolve the billed-to party.
+            //
+            // 🩹 G-002 S2 fix: tblInvoices.billedToName/billedToEmail are
+            // NOT NULL with no DB default (migration 012 —
+            // `_database/migrations/012_payment_expansion.sql`), and the
+            // real column names are billedToName/billedToEmail/
+            // billedToAddress/billedToVATNumber — NOT billingName/
+            // billingEmail/billingAddress/vatNumber, and there is NO
+            // companyName column at all. The INSERT immediately below used
+            // to target the wrong column names entirely, so EVERY prior
+            // call to createInvoice() (including the existing
+            // PaymentManager::completePayment() renewal-invoice path)
+            // failed on every real database with an "Unknown column"
+            // mysqli_sql_exception, silently swallowed by the caller's own
+            // non-fatal try/catch. This block + the corrected INSERT below
+            // make invoice creation actually succeed against the real
+            // schema, without altering the PUBLIC $options contract
+            // ('billingName'/'billingEmail'/'billingAddress'/'companyName'/
+            // 'vatNumber' keys are unchanged) — only the internal SQL target
+            // columns are corrected.
+            //
+            // When the caller does not supply 'billingName'/'billingEmail'
+            // explicitly, fall back to the invoiced user's own tblUsers
+            // record (mirrors PaymentManager::completePayment()'s own
+            // "SELECT email, displayName FROM tblUsers" pattern for the
+            // payment-receipt email).
+            // ─────────────────────────────────────────────────────────────────
+            $billedToName  = $options['billingName'] ?? null;
+            $billedToEmail = $options['billingEmail'] ?? null;
+
+            if ($billedToName === null || $billedToEmail === null) {
+                $billedToUser = Database::fetchOne("SELECT displayName, email FROM tblUsers WHERE userID = ?", [$userID], 'i');
+                $billedToName  ??= $billedToUser['displayName'] ?? 'Customer';
+                $billedToEmail ??= $billedToUser['email'] ?? '';
+            }
+
+            // 🏢 Fold an optional company name into the billed-to name —
+            // tblInvoices has no dedicated companyName column.
+            if (!empty($companyName)) {
+                $billedToName .= ' (' . $companyName . ')';
+            }
+
             // Encode complex fields as JSON for storage in the database
             // @see https://www.php.net/manual/en/function.json-encode.php
-            $lineItemsJson    = json_encode($lineItems, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-            $billingAddressJson = isset($options['billingAddress'])
+            $lineItemsJson = json_encode($lineItems, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            $billedToAddressJson = isset($options['billingAddress'])
                 ? json_encode($options['billingAddress'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
                 : null;
 
@@ -347,49 +388,53 @@ class InvoiceManager
             // 💾 INSERT into tblInvoices
             // Uses Database::query() with prepared statement parameters
             // @see https://www.php.net/manual/en/mysqli-stmt.bind-param.php
+            //
+            // 🩹 Column names below match the REAL schema (migration 012 /
+            // the consolidated installer) — see the "Resolve the billed-to
+            // party" comment above for why this differs from the column
+            // names used prior to G-002 S2.
             // ─────────────────────────────────────────────────────────────────
             $sql = "INSERT INTO tblInvoices (
                         invoiceNumber, userID, partnerID, paymentID, subscriptionID,
                         invoiceType, status, currency,
-                        subtotal, discountAmount, taxRate, taxAmount, totalAmount,
-                        lineItems, billingName, billingEmail, billingAddress,
-                        companyName, vatNumber, notes,
+                        subtotal, discountAmount, taxRate, taxAmount, total,
+                        lineItems, billedToName, billedToEmail, billedToAddress,
+                        billedToVATNumber, notes,
                         issuedAt, dueDate
                     ) VALUES (
                         ?, ?, ?, ?, ?,
                         ?, ?, ?,
                         ?, ?, ?, ?, ?,
                         ?, ?, ?, ?,
-                        ?, ?, ?,
+                        ?, ?,
                         ?, ?
                     )";
 
             $params = [
-                $invoiceNumber,       // s — invoiceNumber
-                $userID,              // i — userID
-                $partnerID,           // i — partnerID (nullable)
-                $paymentID,           // i — paymentID (nullable)
-                $subscriptionID,      // i — subscriptionID (nullable)
-                $invoiceType,         // s — invoiceType
-                $status,              // s — status
-                $currency,            // s — currency
-                $subtotal,            // d — subtotal
-                $discountAmount,      // d — discountAmount
-                $taxRate,             // d — taxRate
-                $taxAmount,           // d — taxAmount
-                $totalAmount,         // d — totalAmount
-                $lineItemsJson,       // s — lineItems (JSON)
-                $billingName,         // s — billingName
-                $billingEmail,        // s — billingEmail
-                $billingAddressJson,  // s — billingAddress (JSON)
-                $companyName,         // s — companyName
-                $vatNumber,           // s — vatNumber
-                $notes,               // s — notes
-                $issuedAt,            // s — issuedAt (nullable datetime string)
-                $dueDate,             // s — dueDate (nullable date string)
+                $invoiceNumber,        // s — invoiceNumber
+                $userID,               // i — userID
+                $partnerID,            // i — partnerID (nullable)
+                $paymentID,            // i — paymentID (nullable)
+                $subscriptionID,       // i — subscriptionID (nullable)
+                $invoiceType,          // s — invoiceType
+                $status,               // s — status
+                $currency,             // s — currency
+                $subtotal,             // d — subtotal
+                $discountAmount,       // d — discountAmount
+                $taxRate,              // d — taxRate
+                $taxAmount,            // d — taxAmount
+                $totalAmount,          // d — total
+                $lineItemsJson,        // s — lineItems (JSON)
+                $billedToName,         // s — billedToName (NOT NULL)
+                $billedToEmail,        // s — billedToEmail (NOT NULL)
+                $billedToAddressJson,  // s — billedToAddress (JSON, nullable)
+                $vatNumber,            // s — billedToVATNumber
+                $notes,                // s — notes
+                $issuedAt,             // s — issuedAt (nullable datetime string)
+                $dueDate,              // s — dueDate (nullable date string)
             ];
 
-            $types = 'siiiisssdddddssssssssss';
+            $types = 'siiiisssdddddssssssss';
 
             Database::query($sql, $params, $types);
 
