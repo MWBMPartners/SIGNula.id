@@ -132,6 +132,51 @@ class TokenService
         return self::mintPair($userID, $familyID, $scope, $aud);
     }
 
+    /**
+     * 🪪 Issue an access + refresh pair on behalf of an OAuth2/OIDC Relying-Party
+     * CLIENT (G-001 Stage A3 — the `/oauth/token` authorization_code grant).
+     *
+     * Identical machinery to {@see self::issueTokens()} (new rotation family,
+     * same hashed-refresh-token persistence, same access-token signing path)
+     * with TWO RP-specific differences threaded through to {@see self::mintPair()}:
+     *   • the ACCESS token's `aud` claim is the RP's `clientIdentifier` (its
+     *     public client_id) — NOT the default first-party `jwt.audience` — so a
+     *     resource server can enforce "this token is only good for client X".
+     *   • the refresh-token row records `clientID` (tblRefreshTokens.clientID,
+     *     reserved for G-001 since migration 030) so a later rotation
+     *     ({@see self::refresh()}) can re-resolve the SAME client identifier
+     *     for the rotated access token, and so an RP's tokens are attributable
+     *     to it for revocation/audit (a future "Connected Apps" hub).
+     *
+     * @param int    $userID           The SIGNula user id the tokens are for.
+     * @param int    $clientID         The RP's internal clientID (tblOAuthClients.clientID PK).
+     * @param string $clientIdentifier The RP's public client_id — becomes the
+     *                                 access token's `aud` claim.
+     * @param array<int,string> $scope Scope strings GRANTED for this exchange
+     *                                 (already validated ⊆ requested ⊆ allowed
+     *                                 by the /oauth/authorize-idp + /oauth/token
+     *                                 flow — this method does not re-check).
+     * @return array{
+     *     access_token:string,
+     *     refresh_token:string,
+     *     token_type:string,
+     *     expires_in:int,
+     *     scope:string,
+     *     family_id:string,
+     *     jti:string
+     * }
+     * @throws JwtException On signing failure (propagated from Jwt::sign()).
+     */
+    public static function issueForClient(int $userID, int $clientID, string $clientIdentifier, array $scope = []): array
+    {
+        // 🧵 An authorization_code exchange always starts a NEW rotation family
+        //    — mirrors issueTokens(); there is no "existing family" concept at
+        //    initial code exchange (only refresh() continues one).
+        $familyID = self::newFamilyId();
+
+        return self::mintPair($userID, $familyID, $scope, $clientIdentifier, $clientID);
+    }
+
     // ========================================================================
     // 🔄 REFRESH (single-use rotation + reuse detection)
     // ========================================================================
@@ -175,7 +220,7 @@ class TokenService
         $hash = self::hashRefreshToken($refreshToken);
 
         $row = Database::fetchOne(
-            "SELECT tokenID, userID, familyID, scope, expiresAt, rotatedAt, revoked
+            "SELECT tokenID, userID, familyID, scope, clientID, expiresAt, rotatedAt, revoked
              FROM tblRefreshTokens
              WHERE tokenHash = ?
              LIMIT 1",
@@ -192,6 +237,10 @@ class TokenService
         $userID   = (int) $row['userID'];
         $familyID = (string) $row['familyID'];
         $scopeStr = $row['scope'] ?? '';
+        // 🪪 G-001: NULL for a first-party token; the RP's internal clientID
+        //    for one minted via issueForClient(). Threaded through the rotate
+        //    below so an RP's tokens STAY attributable to it across rotation.
+        $clientID = $row['clientID'] !== null ? (int) $row['clientID'] : null;
 
         // 🚨 2. REUSE DETECTION — a spent (rotatedAt set) or revoked token was
         //    presented again. This is the theft signal. Kill the whole family.
@@ -233,9 +282,29 @@ class TokenService
             throw new JwtException('Refresh token reuse detected (lost rotation race) — family revoked');
         }
 
-        // 🎁 Issue the successor pair in the SAME family, carrying the same scope.
+        // 🎯 Resolve the audience for the RE-MINTED access token. A first-party
+        //    token (clientID NULL) keeps the default (null → Jwt::sign()'s
+        //    jwt.audience fallback). An RP-issued token (clientID set) MUST
+        //    keep aud = that client's clientIdentifier — resolved FRESH here
+        //    (not cached anywhere) so the rotated access token still targets
+        //    the exact same resource server the original code exchange did.
+        //    A missing/deactivated client (should not normally happen — the
+        //    client row is never hard-deleted while grants exist) falls back
+        //    to the default audience rather than throwing, so a refresh never
+        //    hard-fails purely because of this lookup.
+        $aud = null;
+        if ($clientID !== null && class_exists('OAuthClientManager')) {
+            $client = OAuthClientManager::getClientByID($clientID);
+            if ($client !== null && !empty($client['clientIdentifier'])) {
+                $aud = (string) $client['clientIdentifier'];
+            }
+        }
+
+        // 🎁 Issue the successor pair in the SAME family, carrying the same
+        //    scope AND the same clientID (G-001 — see mintPair()'s $clientID
+        //    param), so tblRefreshTokens.clientID never gets "lost" on rotation.
         $scopeArray = $scopeStr !== '' ? explode(' ', (string) $scopeStr) : [];
-        $pair = self::mintPair($userID, $familyID, $scopeArray, null);
+        $pair = self::mintPair($userID, $familyID, $scopeArray, $aud, $clientID);
 
         // 🔗 Link the spent token to its replacement (audit trail / forensics).
         Database::query(
@@ -486,18 +555,29 @@ class TokenService
 
     /**
      * 🎫 Mint one access+refresh pair in a GIVEN family and persist the refresh
-     * row (hashed). Shared by issueTokens() (new family) and refresh() (same
-     * family). Returns the public payload PLUS an internal '_new_token_id' the
-     * refresh() caller uses to set replacedByID (stripped before returning).
+     * row (hashed). Shared by issueTokens() (new family, first-party),
+     * issueForClient() (new family, RP-owned — G-001 Stage A3) and refresh()
+     * (same family, either kind). Returns the public payload PLUS an internal
+     * '_new_token_id' the refresh() caller uses to set replacedByID (stripped
+     * before returning).
      *
      * @param int                $userID   Owner.
      * @param string             $familyID Rotation family for the refresh token.
      * @param array<int,string>  $scope    Scope strings.
-     * @param string|null        $aud      Audience override for the access token.
+     * @param string|null        $aud      Audience override for the access token
+     *                                     (the RP's clientIdentifier for an
+     *                                     RP-issued pair; null → jwt.audience).
+     * @param int|null           $clientID Owning RP's internal clientID
+     *                                     (tblOAuthClients.clientID), persisted
+     *                                     onto tblRefreshTokens.clientID — NULL
+     *                                     for a first-party token (the default;
+     *                                     UNCHANGED behaviour for the existing
+     *                                     issueTokens()/refresh() call sites
+     *                                     that don't pass it).
      * @return array<string,mixed> access_token/refresh_token/… + _new_token_id.
      * @throws JwtException On signing failure.
      */
-    private static function mintPair(int $userID, string $familyID, array $scope, ?string $aud): array
+    private static function mintPair(int $userID, string $familyID, array $scope, ?string $aud, ?int $clientID = null): array
     {
         // 📏 Normalise the scope to a single space-delimited string (same
         //    vocabulary as tblAPIKeys.permissions — §5 coexistence).
@@ -539,12 +619,15 @@ class TokenService
         // 💾 Persist the refresh row (hash only). The UNIQUE index on tokenHash
         //    guarantees no duplicate; a collision is astronomically improbable
         //    (256-bit token) and would surface as a query exception, not silent.
+        //    clientID (G-001) is NULL for a first-party token — the column has
+        //    existed since migration 030 ("Reserved for G-001 RP clients") and
+        //    is populated here now that issueForClient()/refresh() supply it.
         $newTokenId = Database::insert(
             "INSERT INTO tblRefreshTokens
-                (userID, familyID, tokenHash, scope, issuedAt, expiresAt, ipAddress, userAgent, createdAt)
-             VALUES (?, ?, ?, ?, NOW(), ?, ?, ?, NOW())",
-            [$userID, $familyID, $refreshHash, $scopeStr, $expiresAtSql, $ip, $ua],
-            'issssss'
+                (userID, familyID, tokenHash, clientID, scope, issuedAt, expiresAt, ipAddress, userAgent, createdAt)
+             VALUES (?, ?, ?, ?, ?, NOW(), ?, ?, ?, NOW())",
+            [$userID, $familyID, $refreshHash, $clientID, $scopeStr, $expiresAtSql, $ip, $ua],
+            'ississss'
         );
 
         return [

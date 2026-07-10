@@ -449,6 +449,82 @@ class JwtTest extends TestCase
     }
 
     // ========================================================================
+    // 🪪 signIdToken() — OIDC ID TOKEN (G-001 Stage A3, gotcha fix 1a)
+    // ========================================================================
+
+    /**
+     * signIdToken() sets header typ=JWT (NOT at+jwt), carries NO scope claim,
+     * defaults iss from oidc.issuer (falling back to jwt.issuer), and forces
+     * aud to the given client_id — verifiable via Jwt::verify() itself when
+     * given the matching expectations.
+     */
+    public function testSignIdTokenSetsTypJwtNoScopeAndVerifiableClaims(): void
+    {
+        setTestSetting('oidc.issuer', 'https://signula.id');
+        setTestSetting('oidc.id_token_ttl', 3600);
+
+        $jwt = \Jwt::signIdToken(
+            ['sub' => 'pairwise-sub-abc', 'auth_time' => 1234567890, 'nonce' => 'nonce-xyz'],
+            'client-abc-123'
+        );
+
+        // 🔖 Header: typ = JWT (a plain OIDC id_token), NOT the RFC 9068
+        //    at+jwt access-token marker.
+        $header = json_decode(\KeyManager::base64UrlDecode(explode('.', $jwt)[0]), true);
+        $this->assertSame('JWT', $header['typ']);
+        $this->assertSame('RS256', $header['alg']);
+        $this->assertSame($this->kid, $header['kid']);
+
+        // ✅ Verifies with the id_token's OWN typ/iss/aud expectations.
+        $claims = \Jwt::verify($jwt, ['typ' => 'JWT', 'iss' => 'https://signula.id', 'aud' => 'client-abc-123']);
+
+        $this->assertSame('pairwise-sub-abc', $claims['sub']);
+        $this->assertSame('https://signula.id', $claims['iss']);
+        $this->assertSame('client-abc-123', $claims['aud']);
+        $this->assertSame(1234567890, $claims['auth_time']);
+        $this->assertSame('nonce-xyz', $claims['nonce']);
+        $this->assertArrayHasKey('iat', $claims);
+        $this->assertArrayHasKey('exp', $claims);
+        $this->assertArrayHasKey('jti', $claims);
+
+        // 🚫 NO scope claim is ever carried on an id_token.
+        $this->assertArrayNotHasKey('scope', $claims);
+    }
+
+    /**
+     * A caller-supplied 'scope' entry is stripped, and a caller-supplied 'aud'
+     * entry is OVERRIDDEN by the forced $aud parameter (never smuggled through
+     * $claims).
+     */
+    public function testSignIdTokenStripsScopeAndForcesAudienceOverCallerSuppliedValue(): void
+    {
+        $jwt = \Jwt::signIdToken(
+            ['sub' => '99', 'scope' => 'user:read user:write', 'aud' => 'attacker-supplied-aud'],
+            'real-client-id'
+        );
+
+        $claims = \Jwt::verify($jwt, ['typ' => 'JWT', 'aud' => 'real-client-id']);
+
+        $this->assertArrayNotHasKey('scope', $claims, 'id_token must never carry a scope claim');
+        $this->assertSame('real-client-id', $claims['aud'], 'aud must be the forced parameter, not the caller-supplied claim');
+    }
+
+    /**
+     * oidc.issuer, when set, takes precedence over jwt.issuer for the
+     * id_token's iss claim.
+     */
+    public function testSignIdTokenPrefersOidcIssuerOverJwtIssuer(): void
+    {
+        setTestSetting('oidc.issuer', 'https://oidc.signula.id');
+        setTestSetting('jwt.issuer', 'https://signula.id'); // still set from setUp(), kept distinct here
+
+        $jwt = \Jwt::signIdToken(['sub' => '1'], 'some-client');
+        $claims = \Jwt::verify($jwt, ['typ' => 'JWT', 'iss' => 'https://oidc.signula.id', 'aud' => 'some-client']);
+
+        $this->assertSame('https://oidc.signula.id', $claims['iss']);
+    }
+
+    // ========================================================================
     // 🧱 MALFORMED INPUT
     // ========================================================================
 

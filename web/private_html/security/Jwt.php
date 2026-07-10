@@ -71,6 +71,13 @@ class Jwt
     public const TYP_ACCESS = 'at+jwt';
 
     /**
+     * @var string OIDC ID Token media type carried in the JWT header `typ` — a
+     *             plain 'JWT', deliberately NOT the RFC 9068 'at+jwt' marker
+     *             (see {@see self::signIdToken()} for why).
+     */
+    public const TYP_ID_TOKEN = 'JWT';
+
+    /**
      * 🚫 Optional jti-denylist checker.
      *
      * A callable (string $jti): bool that returns TRUE when the jti is REVOKED.
@@ -165,6 +172,105 @@ class Jwt
             );
         } catch (\Throwable $e) {
             throw new JwtException('JWT signing failed', 0, $e);
+        }
+    }
+
+    // ========================================================================
+    // 🪪 SIGN — OIDC ID TOKEN (G-001 Stage A3)
+    // ========================================================================
+
+    /**
+     * 🪪 Sign a set of claims into an OIDC id_token (RS256).
+     *
+     * Distinct from {@see self::sign()} (which mints RFC 9068 ACCESS tokens) in
+     * three deliberate ways — id_tokens are OIDC identity ASSERTIONS a Relying
+     * Party verifies, not OAuth access grants a resource server enforces scope
+     * against:
+     *   • header `typ` = {@see self::TYP_ID_TOKEN} ('JWT'), NOT 'at+jwt'. RFC
+     *     9068 §2.1 defines 'at+jwt' specifically for OAuth ACCESS tokens;
+     *     marking an id_token that way would incorrectly imply RFC 9068
+     *     access-token semantics to any RP OIDC library that inspects `typ`.
+     *   • NO `scope` claim is ever carried — any caller-supplied 'scope' entry
+     *     in `$claims` is deliberately stripped before signing. Scope belongs
+     *     on the access token; an id_token carrying it too could be misread by
+     *     an RP OIDC library as an authorization signal rather than the pure
+     *     identity assertion OIDC Core defines it as.
+     *   • `iss` defaults from the `oidc.issuer` setting (falling back to
+     *     `jwt.issuer` if unset) and `ttl` from `oidc.id_token_ttl` (default
+     *     3600s) — id_tokens are a G-001/Stage-A3 concept with their own
+     *     policy knobs (migration 031), distinct from the G-003 `jwt.*` ones
+     *     `sign()` reads for access tokens.
+     *
+     * `aud` is REQUIRED (unlike sign()'s optional override) and is FORCED —
+     * placed in the claim set AFTER `$claims` so a caller cannot smuggle a
+     * different audience through the claims array. Per OIDC Core §2, an
+     * id_token's audience is ALWAYS the requesting RP's client_id.
+     *
+     * `nbf` is not a standard OIDC id_token claim, but we set it (= `iat`)
+     * anyway for defence-in-depth consistency with the access-token signer —
+     * a harmless extra restriction (rejects a not-yet-valid token) that any
+     * spec-compliant verifier simply ignores if it does not check `nbf`.
+     *
+     * @param array<string,mixed> $claims Custom + registered claims (`sub`,
+     *                                     and any of the standard OIDC identity
+     *                                     claims the caller wants asserted —
+     *                                     `auth_time`, `nonce`, `name`,
+     *                                     `email`, …). `iss`/`iat`/`nbf`/`exp`/
+     *                                     `jti` are auto-filled/forced; any
+     *                                     `scope`/`aud` entry is stripped/
+     *                                     overridden (see above).
+     * @param string   $aud The client_id of the Relying Party this id_token is
+     *                       issued to (required, always forced).
+     * @param int|null $ttl id_token lifetime in seconds (else
+     *                       `oidc.id_token_ttl`, default 3600).
+     * @return string The signed compact JWT.
+     * @throws JwtException On signing failure / missing active key.
+     */
+    public static function signIdToken(array $claims, string $aud, ?int $ttl = null): string
+    {
+        self::ensureLibrary();
+
+        try {
+            $active = KeyManager::getActiveKey();
+        } catch (\Throwable $e) {
+            throw new JwtException('No active signing key available', 0, $e);
+        }
+
+        $now = time();
+        $ttl = $ttl ?? (int) getSetting('oidc.id_token_ttl', 3600);
+
+        // 🚫 id_tokens never carry a scope claim — strip any caller-supplied
+        //    value before merging (see method-level rationale above).
+        unset($claims['scope']);
+
+        $payload = array_merge(
+            [
+                'iss' => (string) getSetting('oidc.issuer', getSetting('jwt.issuer', 'https://signula.id')),
+            ],
+            $claims,
+            [
+                'aud' => $aud, // 🔒 forced — always the RP client_id, never caller-overridable via $claims
+                'iat' => $now,
+                'nbf' => $now,
+                'exp' => $now + $ttl,
+                'jti' => $claims['jti'] ?? SecurityUtils::generateToken(32), // 16 bytes → 32 hex
+            ]
+        );
+
+        // 🔖 Header: pin alg + carry kid + mark as a plain OIDC id_token (NOT
+        //    the RFC 9068 access-token typ — see method doc above).
+        $header = ['typ' => self::TYP_ID_TOKEN];
+
+        try {
+            return FirebaseJWT::encode(
+                $payload,
+                $active['private_pem'],
+                self::ALG,          // 🔒 alg pinned — never taken from input
+                $active['kid'],     // 🆔 kid header
+                $header
+            );
+        } catch (\Throwable $e) {
+            throw new JwtException('id_token signing failed', 0, $e);
         }
     }
 

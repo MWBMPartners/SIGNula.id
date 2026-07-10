@@ -63,6 +63,9 @@ requireSource('private_html/utils/ActivityLogger.php');
 requireSource('private_html/utils/ErrorLogger.php');
 requireSource('private_html/security/SecurityAlertManager.php');
 requireSource('private_html/security/TokenService.php');
+// 🪪 G-001 Stage A3 gotcha-fix tests (issueForClient() / refresh() clientID
+// preservation) need a REAL registered client to resolve aud on rotation.
+requireSource('private_html/auth/OAuthClientManager.php');
 
 /**
  * 🎟️ TokenService Integration test suite.
@@ -79,6 +82,9 @@ class TokenServiceTest extends DatabaseTestCase
         'tblRevokedTokens',
         'tblSecurityAlerts',
         'tblActivityLog',
+        'tblOAuthClientRedirectUris',
+        'tblOAuthClients',
+        'tblPartners',
         'tblUsers',
     ];
 
@@ -186,6 +192,39 @@ class TokenServiceTest extends DatabaseTestCase
             's'
         );
         return (int) ($row['c'] ?? 0);
+    }
+
+    /**
+     * Register a real, active, confidential OAuth client (G-001 Stage A1) so
+     * the clientID-preservation tests can resolve a REAL clientIdentifier via
+     * OAuthClientManager::getClientByID() (exactly as TokenService::refresh()
+     * does in production).
+     *
+     * @return array{clientID:int,clientIdentifier:string}
+     */
+    private function createClient(): array
+    {
+        $partnerID = \Database::insert(
+            "INSERT INTO tblPartners (partnerName, partnerEmail, accountTier, isActive, isVerified, verifiedAt)
+             VALUES (?, ?, 'premium', 1, 1, NOW())",
+            ['TS Partner ' . bin2hex(random_bytes(4)), 'ts_partner_' . bin2hex(random_bytes(4)) . '@example.com'],
+            'ss'
+        );
+
+        $result = \OAuthClientManager::registerClient(
+            $partnerID,
+            'TS Test RP',
+            'confidential',
+            ['https://rp.example.com/callback'],
+            ['openid', 'profile']
+        );
+
+        $this->assertIsArray($result, 'client registration must succeed for this fixture');
+
+        return [
+            'clientID'         => (int) $result['clientID'],
+            'clientIdentifier' => (string) $result['clientIdentifier'],
+        ];
     }
 
     // ========================================================================
@@ -532,6 +571,104 @@ class TokenServiceTest extends DatabaseTestCase
     {
         $this->expectException(JwtException::class);
         \TokenService::refresh(bin2hex(random_bytes(32)));
+    }
+
+    // ========================================================================
+    // 🪪 G-001 STAGE A3 GOTCHA FIXES — issueForClient() + clientID preservation
+    // ========================================================================
+
+    /**
+     * issueForClient() mints an access token whose `aud` is the CLIENT's
+     * clientIdentifier (not the default jwt.audience), and the refresh row
+     * persists clientID (the column reserved since migration 030).
+     */
+    public function testIssueForClientSetsClientAudienceAndPersistsClientId(): void
+    {
+        $userID = $this->createUser();
+        $client = $this->createClient();
+
+        $pair = \TokenService::issueForClient($userID, $client['clientID'], $client['clientIdentifier'], ['openid', 'profile']);
+
+        // ✅ The access token verifies ONLY against the CLIENT's audience —
+        //    not the default first-party jwt.audience.
+        $claims = \Jwt::verify($pair['access_token'], ['aud' => $client['clientIdentifier']]);
+        $this->assertSame((string) $userID, $claims['sub']);
+
+        try {
+            \Jwt::verify($pair['access_token']); // default aud (jwt.audience) must NOT match
+            $this->fail('An RP-issued access token must NOT verify against the default first-party audience');
+        } catch (JwtException $e) {
+            // expected — aud mismatch
+        }
+
+        // 💾 The refresh row records the RP's clientID (previously always NULL).
+        $row = \Database::fetchOne(
+            "SELECT clientID FROM tblRefreshTokens WHERE tokenHash = ?",
+            [hash('sha256', $pair['refresh_token'])],
+            's'
+        );
+        $this->assertSame($client['clientID'], (int) $row['clientID']);
+    }
+
+    /**
+     * refresh() on an RP-issued token PRESERVES both the audience (re-resolved
+     * fresh from the client's clientIdentifier) and the clientID linkage on
+     * the newly-minted refresh row — an RP's rotated token must still target
+     * the SAME resource server and stay attributable to the SAME client.
+     */
+    public function testRefreshPreservesClientIdAndAudienceAcrossRotation(): void
+    {
+        $userID = $this->createUser();
+        $client = $this->createClient();
+
+        $first = \TokenService::issueForClient($userID, $client['clientID'], $client['clientIdentifier'], ['openid']);
+
+        $second = \TokenService::refresh($first['refresh_token']);
+
+        // ✅ The ROTATED access token still verifies against the SAME client
+        //    audience — the clientID → clientIdentifier resolution survived
+        //    rotation.
+        $claims = \Jwt::verify($second['access_token'], ['aud' => $client['clientIdentifier']]);
+        $this->assertSame((string) $userID, $claims['sub']);
+
+        // 💾 The NEW refresh row also carries the same clientID.
+        $row = \Database::fetchOne(
+            "SELECT clientID FROM tblRefreshTokens WHERE tokenHash = ?",
+            [hash('sha256', $second['refresh_token'])],
+            's'
+        );
+        $this->assertSame($client['clientID'], (int) $row['clientID']);
+    }
+
+    /**
+     * A first-party token (issueTokens(), no client) is completely unaffected
+     * by the clientID threading — clientID stays NULL and refresh() behaves
+     * exactly as before (default audience).
+     */
+    public function testFirstPartyTokenClientIdStaysNullThroughRefresh(): void
+    {
+        $userID = $this->createUser();
+
+        $pair = \TokenService::issueTokens($userID, ['user:read']);
+
+        $row = \Database::fetchOne(
+            "SELECT clientID FROM tblRefreshTokens WHERE tokenHash = ?",
+            [hash('sha256', $pair['refresh_token'])],
+            's'
+        );
+        $this->assertNull($row['clientID'], 'a first-party token must never gain a clientID');
+
+        $rotated = \TokenService::refresh($pair['refresh_token']);
+        $row2 = \Database::fetchOne(
+            "SELECT clientID FROM tblRefreshTokens WHERE tokenHash = ?",
+            [hash('sha256', $rotated['refresh_token'])],
+            's'
+        );
+        $this->assertNull($row2['clientID'], 'clientID must stay NULL across rotation for a first-party token');
+
+        // Still verifies against the DEFAULT (first-party) audience.
+        $claims = \Jwt::verify($rotated['access_token']);
+        $this->assertSame((string) $userID, $claims['sub']);
     }
 
     // ========================================================================
