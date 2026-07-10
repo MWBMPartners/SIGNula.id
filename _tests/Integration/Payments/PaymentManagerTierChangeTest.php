@@ -34,9 +34,9 @@ use PaymentManager;
 // (inside the relevant method, file_exists-guarded — house convention), so
 // InvoiceManager.php is pre-loaded here purely so InvoiceManager::
 // createInvoice()'s own dependencies resolve cleanly on first call.
-// CreditManager.php is intentionally NOT pre-loaded/imported here — this
-// suite never calls it directly (see the "PRE-EXISTING, OUT-OF-SCOPE BUG"
-// comment below for why).
+// CreditManager.php is likewise NOT pre-loaded here — changeTier() requires
+// it itself, lazily, at the point it needs to realise the unused-time
+// credit (see the B-071 fix note in testChangeTierDowngrade... below).
 requireSource('_config/database.php');
 requireSource('private_html/utils/ActivityLogger.php');
 requireSource('private_html/payments/InvoiceManager.php');
@@ -176,26 +176,38 @@ class PaymentManagerTierChangeTest extends DatabaseTestCase
         // SHOULD be credited (always right, driven purely by the proration
         // formula this suite is otherwise verifying).
         //
-        // 🐛 PRE-EXISTING, OUT-OF-SCOPE BUG (found while building G-002 S2,
-        // NOT introduced by it): CreditManager::deposit() is currently
-        // non-functional against a real MySQL server for two independent
-        // reasons — (1) tblCreditBalances has no totalDeposited/
-        // totalWithdrawn columns, yet deposit()/withdraw()/etc. read+write
-        // them; (2) deposit()/withdraw()/payFromCredits()/refundToCredits()/
-        // adjustBalance()/transfer() all call
-        // `Database::query("START TRANSACTION"/"COMMIT"/"ROLLBACK", [], '')`
-        // — MySQL error 1295, "This command is not supported in the
-        // prepared statement protocol yet", because Database::query()
-        // always prepares. The fix is mechanical (use the ALREADY-EXISTING
-        // Database::beginTransaction()/commit()/rollback() instead) but
-        // touches ~7 methods across a class outside G-002 S2's scope, so it
-        // is intentionally left for a dedicated follow-up rather than fixed
-        // here (see the S2 build report). changeTier() is deliberately
-        // ROBUST to this: the deposit call is non-fatal (try/catch) and
-        // 'creditDeposited' honestly reports '0.00' rather than falsely
-        // claiming the ledger was updated — asserted below.
-        $this->assertSame('20.00', $result['creditOwed'], 'the OWED credit must be bcmath-correct regardless of the ledger issue');
-        $this->assertSame('0.00', $result['creditDeposited'], 'creditDeposited must honestly reflect that CreditManager::deposit() did not succeed (pre-existing, unrelated bug — see comment above)');
+        // 🩹 B-071 FIXED (G-002 S4): CreditManager::deposit() was previously
+        // non-functional against a real MySQL server for three independent
+        // reasons — (1) `Database::query("START TRANSACTION"/"COMMIT"/
+        // "ROLLBACK", [], '')` always prepares, and mysqli rejects those
+        // three statements via the prepared-statement protocol (MySQL error
+        // 1295) — fixed by switching to the existing
+        // Database::beginTransaction()/commit()/rollback() helpers; (2) the
+        // real tblCreditBalances table has no totalDeposited/totalWithdrawn
+        // columns, yet deposit()/withdraw()/etc. read+wrote them — fixed by
+        // dropping those running-total writes (derivable from the
+        // tblCreditTransactions ledger; nothing else read them); (3) the
+        // ledger INSERT's mysqli bind type-string had one extra character
+        // vs its bound-param count, throwing "the number of elements in the
+        // type definition string must match the number of bind variables"
+        // on every call regardless of (1)/(2). See CreditManagerRoundTripTest
+        // for the dedicated round-trip proof of all 7 CreditManager methods.
+        // changeTier()'s own deposit call REMAINS non-fatal (try/catch) —
+        // that safety net is unchanged — but now the happy path actually
+        // lands: 'creditDeposited' matches 'creditOwed', and a real
+        // tblCreditBalances/tblCreditTransactions round trip is asserted below.
+        $this->assertSame('20.00', $result['creditOwed'], 'the OWED credit must be bcmath-correct');
+        $this->assertSame('20.00', $result['creditDeposited'], 'B-071 fixed — CreditManager::deposit() now actually succeeds, so creditDeposited must match creditOwed');
+
+        // 🔍 DB-level proof: the credit really landed in the ledger, not just
+        // in the in-memory result payload.
+        $balanceRow = $this->getRecord('tblCreditBalances', ['ownerType' => 'user', 'ownerID' => $sub['userID']]);
+        $this->assertNotNull($balanceRow, 'CreditManager::deposit() must have created a tblCreditBalances row');
+        $this->assertSame('20.00', $balanceRow['balance'], 'a real tblCreditBalances row must reflect the deposited proration credit');
+
+        $ledgerRow = $this->getRecord('tblCreditTransactions', ['balanceID' => $balanceRow['balanceID'], 'type' => 'deposit']);
+        $this->assertNotNull($ledgerRow, 'a matching tblCreditTransactions deposit row must exist');
+        $this->assertSame('20.00', $ledgerRow['amount']);
     }
 
     // ========================================================================
@@ -300,14 +312,22 @@ class PaymentManagerTierChangeTest extends DatabaseTestCase
         ]));
         // 💰 The idempotency-key replay (step 8️⃣) returns BEFORE step 1️⃣3️⃣'s
         // CreditManager call is ever reached — so the credit ledger is only
-        // ATTEMPTED once, not twice, on a double-submit. (CreditManager::
-        // deposit() itself is currently non-functional against real MySQL —
-        // a pre-existing, unrelated bug documented in the previous test —
-        // so we prove "attempted once" via the warning it logs on failure,
-        // rather than a real ledger balance.)
+        // ATTEMPTED once, not twice, on a double-submit.
+        //
+        // 🩹 B-071 FIXED (G-002 S4): CreditManager::deposit() now actually
+        // succeeds against real MySQL (see CreditManagerRoundTripTest), so
+        // "attempted once" is now proven directly against the REAL ledger —
+        // exactly ONE tblCreditTransactions deposit row + a balance of
+        // 20.00 (NOT 40.00, which a double-deposit would produce).
         $this->assertSame('20.00', $first['creditOwed']);
         $this->assertSame('20.00', $second['creditOwed'], 'the replayed result must carry the SAME creditOwed as the original');
-        $this->assertSame(1, $this->countRecords('tblActivityLog', ['activityType' => 'tier_change_credit_warning']), 'CreditManager::deposit() must only be ATTEMPTED once across the double-submit');
+        $this->assertSame('20.00', $first['creditDeposited']);
+        $this->assertSame('20.00', $second['creditDeposited'], 'the replayed result must report the SAME creditDeposited, not a second deposit');
+
+        $balanceRow = $this->getRecord('tblCreditBalances', ['ownerType' => 'user', 'ownerID' => $sub['userID']]);
+        $this->assertNotNull($balanceRow);
+        $this->assertSame('20.00', $balanceRow['balance'], 'the double-submit must NOT double-deposit the credit');
+        $this->assertSame(1, $this->countRecords('tblCreditTransactions', ['balanceID' => $balanceRow['balanceID'], 'type' => 'deposit']), 'CreditManager::deposit() must only be ATTEMPTED (and succeed) once across the double-submit');
     }
 
     // ========================================================================

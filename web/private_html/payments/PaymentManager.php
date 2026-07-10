@@ -1674,6 +1674,33 @@ class PaymentManager
             'from' => $fromStatus, 'to' => $targetStatus, 'reason' => $reason,
         ]);
 
+        // 🩹 G-002 S4: entering `past_due` for the FIRST time starts the
+        // dunning retry ladder (spec §5). Guarded by `$fromStatus !==
+        // $targetStatus` so a REPEAT payment-failed webhook for a
+        // subscription that is already `past_due` never restarts the ladder
+        // at rung 1 — the idempotent-replay short-circuit above already
+        // covers an exact duplicate event; this covers a DIFFERENT event
+        // (e.g. a second, distinct PAYMENT.FAILED) reporting the same
+        // already-in-progress state. Mirrors completePayment()'s established
+        // lazy-require + non-fatal try/catch convention for calling into
+        // BillingScheduler.
+        if ($targetStatus === 'past_due' && $fromStatus !== $targetStatus) {
+            try {
+                $billingSchedulerPath = __DIR__ . DIRECTORY_SEPARATOR . 'BillingScheduler.php';
+                if (file_exists($billingSchedulerPath)) {
+                    require_once $billingSchedulerPath;
+                    if (class_exists('BillingScheduler')) {
+                        BillingScheduler::scheduleDunningRetry($subscriptionID, 1);
+                    }
+                }
+            } catch (\Throwable $e) {
+                // ⚠️ Non-fatal — the state transition itself already
+                // succeeded; a dunning-scheduling hiccup must not undo it or
+                // fail the webhook. Logged for visibility only.
+                ActivityLogger::log($userID, 'dunning_schedule_warning', 'payment', 'warning', 'Failed to schedule the initial dunning retry for subscription ' . $subscriptionID . ': ' . $e->getMessage(), ['subscriptionID' => $subscriptionID]);
+            }
+        }
+
         return ['transitioned' => true, 'from' => $fromStatus, 'to' => $targetStatus];
     }
 

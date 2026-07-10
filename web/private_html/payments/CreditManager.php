@@ -77,9 +77,18 @@ class CreditManager
     /** @var array Valid owner types for credit balances */
     const VALID_OWNER_TYPES = ['user', 'partner'];
 
-    /** @var array Valid transaction types matching the ENUM in tblCreditTransactions */
+    /**
+     * @var array Valid transaction types matching the REAL `type` ENUM column
+     * on tblCreditTransactions (migration 012 — verified against
+     * information_schema; the column is named `type`, NOT `transactionType`,
+     * and its ENUM does NOT include a 'transfer' member — B-071 fix).
+     * self::transfer() therefore records its two ledger rows as an ordinary
+     * 'withdrawal' (source) + 'deposit' (destination), tagged
+     * `referenceType = 'transfer'` so they remain identifiable/linkable —
+     * see self::transfer()'s doc-comment.
+     */
     const VALID_TRANSACTION_TYPES = [
-        'deposit', 'withdrawal', 'payment', 'refund', 'adjustment', 'transfer'
+        'deposit', 'withdrawal', 'payment', 'refund', 'adjustment', 'remittance', 'promotional'
     ];
 
     /** @var float Minimum transaction amount (must be positive and non-zero) */
@@ -122,8 +131,10 @@ class CreditManager
      * 📋 Get the full balance record for an owner
      *
      * Returns the complete row from tblCreditBalances including balanceID,
-     * totalDeposited, totalWithdrawn, lastTransactionAt, timestamps, etc.
-     * If no record exists, one is created with a 0.00 initial balance.
+     * balance, currency, lastTransactionAt, timestamps, etc. (the table has
+     * no totalDeposited/totalWithdrawn columns — see B-071 fix note in
+     * self::getBalanceRecord()'s body). If no record exists, one is created
+     * with a 0.00 initial balance.
      *
      * @param string   $ownerType  Owner type: 'user' or 'partner'
      * @param int      $ownerID    The owner's unique identifier
@@ -179,11 +190,27 @@ class CreditManager
         }
 
         // 🆕 No record found — create a new one with 0.00 balance
+        //
+        // 🩹 B-071 fix: the REAL tblCreditBalances table (migration 012) has
+        // NO `totalDeposited`/`totalWithdrawn` columns — only `balance`. The
+        // running-lifetime-total columns this class previously wrote to are
+        // an immutable ledger concern, not a balance-row concern: every
+        // deposit/withdrawal/payment/refund/adjustment/transfer already
+        // writes a full audit row to tblCreditTransactions (balanceBefore/
+        // balanceAfter/amount/type), so a lifetime total is always exactly
+        // `SUM(amount) WHERE type = 'deposit'` (etc.) over that ledger —
+        // nothing is lost by not persisting a running total here, and NOT
+        // persisting one removes an entire class of drift bug (a running
+        // total that silently disagrees with its own ledger after a manual
+        // DB fix, a failed mid-transaction write, etc). No caller anywhere
+        // in the codebase reads totalDeposited/totalWithdrawn (grep-verified
+        // — see the CreditManager.php class doc-comment / build report), so
+        // this is a clean removal, not a stub.
         try {
             Database::query(
                 "INSERT INTO tblCreditBalances
-                    (ownerType, ownerID, partnerID, currency, balance, totalDeposited, totalWithdrawn)
-                 VALUES (?, ?, ?, ?, 0.00, 0.00, 0.00)",
+                    (ownerType, ownerID, partnerID, currency, balance)
+                 VALUES (?, ?, ?, ?, 0.00)",
                 [$ownerType, $ownerID, $partnerID, $currency],
                 'siis'
             );
@@ -220,8 +247,6 @@ class CreditManager
                 'partnerID'        => $partnerID,
                 'currency'         => $currency,
                 'balance'          => '0.00',
-                'totalDeposited'   => '0.00',
-                'totalWithdrawn'   => '0.00',
                 'lastTransactionAt' => null,
                 'createdAt'        => date('Y-m-d H:i:s'),
                 'updatedAt'        => date('Y-m-d H:i:s'),
@@ -273,8 +298,6 @@ class CreditManager
                 'partnerID'        => $partnerID,
                 'currency'         => $currency,
                 'balance'          => '0.00',
-                'totalDeposited'   => '0.00',
-                'totalWithdrawn'   => '0.00',
                 'lastTransactionAt' => null,
                 'createdAt'        => date('Y-m-d H:i:s'),
                 'updatedAt'        => date('Y-m-d H:i:s'),
@@ -343,9 +366,25 @@ class CreditManager
         $metadata      = $options['metadata'] ?? [];
         $ipAddress     = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
 
+        // 💰 Normalise the incoming float to a canonical 2dp bcmath STRING
+        // ONCE, at the boundary — every arithmetic step below is then pure
+        // bcmath (bcadd/bccomp, scale 2), never native float, matching the
+        // house convention established by PaymentManager::changeTier()
+        // (§5.3 bcmath rule). B-071 fix.
+        $amountStr = number_format($amount, 2, '.', '');
+
         try {
-            // 🔒 BEGIN TRANSACTION — all balance mutations must be atomic
-            Database::query("START TRANSACTION", [], '');
+            // 🔒 BEGIN TRANSACTION — all balance mutations must be atomic.
+            // 🩹 B-071 fix: Database::query() ALWAYS prepares its statement
+            // (see Database::query()), and mysqli rejects "START
+            // TRANSACTION"/"COMMIT"/"ROLLBACK" via the prepared-statement
+            // protocol (MySQL error 1295, "This command is not supported in
+            // the prepared statement protocol yet") — every one of these
+            // calls raised a fatal on a real MySQL server. The fix is the
+            // ALREADY-EXISTING Database::beginTransaction()/commit()/
+            // rollback() helpers, which call mysqli's native
+            // begin_transaction()/commit()/rollback() directly (no prepare).
+            Database::beginTransaction();
 
             // 📋 Ensure the balance record exists (creates if needed)
             $balanceRecord = self::getBalanceRecord($ownerType, $ownerID, $partnerID, $currency);
@@ -361,31 +400,35 @@ class CreditManager
 
             if (!$locked) {
                 // 🚨 Should not happen if getBalanceRecord succeeded — rollback to be safe
-                Database::query("ROLLBACK", [], '');
+                Database::rollback();
                 return ['success' => false, 'message' => 'Balance record not found during lock acquisition'];
             }
 
-            // 💰 Calculate new balance
-            $balanceBefore = (float)$locked['balance'];
-            $balanceAfter  = round($balanceBefore + $amount, 2);
-            $newTotalDeposited = round((float)$locked['totalDeposited'] + $amount, 2);
+            // 💰 Calculate new balance — bcmath throughout (B-071 fix)
+            $balanceBeforeStr = number_format((float)$locked['balance'], 2, '.', '');
+            $balanceAfterStr  = bcadd($balanceBeforeStr, $amountStr, 2);
+            $balanceBefore    = (float)$balanceBeforeStr;
+            $balanceAfter     = (float)$balanceAfterStr;
 
-            // 📝 Update the balance record with new totals
+            // 📝 Update the balance record.
+            // 🩹 B-071 fix: tblCreditBalances has NO totalDeposited column —
+            // see the "B-071 fix" comment in self::getBalanceRecord().
             Database::query(
                 "UPDATE tblCreditBalances
                  SET balance = ?,
-                     totalDeposited = ?,
                      lastTransactionAt = NOW(),
                      updatedAt = NOW()
                  WHERE balanceID = ?",
-                [$balanceAfter, $newTotalDeposited, $balanceID],
-                'ddi'
+                [$balanceAfter, $balanceID],
+                'di'
             );
 
-            // 📝 Create the transaction record in the immutable ledger
+            // 📝 Create the transaction record in the immutable ledger.
+            // 🩹 B-071 fix: the real column is `type`, not `transactionType`
+            // (grep + information_schema-verified against migration 012).
             Database::query(
                 "INSERT INTO tblCreditTransactions
-                    (balanceID, transactionType, amount, balanceBefore, balanceAfter,
+                    (balanceID, type, amount, balanceBefore, balanceAfter,
                      currency, description, referenceType, referenceID,
                      performedBy, ipAddress, metadata, createdAt)
                  VALUES (?, 'deposit', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())",
@@ -402,13 +445,13 @@ class CreditManager
                     $ipAddress,
                     !empty($metadata) ? json_encode($metadata, JSON_UNESCAPED_UNICODE) : null,
                 ],
-                'idddsssiiiss'
+                'idddsssiiss'
             );
 
             $transactionID = Database::getLastInsertId();
 
             // ✅ COMMIT — all changes are now permanent
-            Database::query("COMMIT", [], '');
+            Database::commit();
 
             // 📝 Log the deposit activity for audit trail
             ActivityLogger::log(
@@ -454,11 +497,11 @@ class CreditManager
                 'transactionID' => $transactionID,
                 'newBalance'    => $balanceAfter,
             ];
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             // 🚨 ROLLBACK — undo any partial changes on failure
             try {
-                Database::query("ROLLBACK", [], '');
-            } catch (\Exception $rollbackException) {
+                Database::rollback();
+            } catch (\Throwable $rollbackException) {
                 // ⚠️ Rollback itself failed — log but continue with the original error
                 ActivityLogger::log(
                     ($ownerType === 'user') ? $ownerID : null,
@@ -550,9 +593,12 @@ class CreditManager
         $metadata      = $options['metadata'] ?? [];
         $ipAddress     = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
 
+        // 💰 Normalise to a canonical 2dp bcmath string once, at the boundary (B-071 fix).
+        $amountStr = number_format($amount, 2, '.', '');
+
         try {
-            // 🔒 BEGIN TRANSACTION
-            Database::query("START TRANSACTION", [], '');
+            // 🔒 BEGIN TRANSACTION (B-071 fix — see self::deposit()'s doc-comment)
+            Database::beginTransaction();
 
             // 📋 Ensure the balance record exists
             $balanceRecord = self::getBalanceRecord($ownerType, $ownerID, $partnerID, $currency);
@@ -566,16 +612,17 @@ class CreditManager
             );
 
             if (!$locked) {
-                Database::query("ROLLBACK", [], '');
+                Database::rollback();
                 return ['success' => false, 'message' => 'Balance record not found during lock acquisition'];
             }
 
-            // 💰 Check sufficient balance
-            $balanceBefore = (float)$locked['balance'];
+            // 💰 Check sufficient balance — bcmath comparison (B-071 fix)
+            $balanceBeforeStr = number_format((float)$locked['balance'], 2, '.', '');
+            $balanceBefore    = (float)$balanceBeforeStr;
 
-            if ($balanceBefore < $amount) {
+            if (bccomp($balanceBeforeStr, $amountStr, 2) < 0) {
                 // 🚫 Insufficient funds — rollback the transaction lock
-                Database::query("ROLLBACK", [], '');
+                Database::rollback();
 
                 // 📝 Log the failed withdrawal attempt
                 ActivityLogger::log(
@@ -601,26 +648,27 @@ class CreditManager
                 ];
             }
 
-            // 💰 Calculate new balance
-            $balanceAfter = round($balanceBefore - $amount, 2);
-            $newTotalWithdrawn = round((float)$locked['totalWithdrawn'] + $amount, 2);
+            // 💰 Calculate new balance — bcmath (B-071 fix)
+            $balanceAfterStr = bcsub($balanceBeforeStr, $amountStr, 2);
+            $balanceAfter    = (float)$balanceAfterStr;
 
-            // 📝 Update the balance record
+            // 📝 Update the balance record.
+            // 🩹 B-071 fix: tblCreditBalances has NO totalWithdrawn column.
             Database::query(
                 "UPDATE tblCreditBalances
                  SET balance = ?,
-                     totalWithdrawn = ?,
                      lastTransactionAt = NOW(),
                      updatedAt = NOW()
                  WHERE balanceID = ?",
-                [$balanceAfter, $newTotalWithdrawn, $balanceID],
-                'ddi'
+                [$balanceAfter, $balanceID],
+                'di'
             );
 
-            // 📝 Create the transaction record
+            // 📝 Create the transaction record.
+            // 🩹 B-071 fix: the real column is `type`, not `transactionType`.
             Database::query(
                 "INSERT INTO tblCreditTransactions
-                    (balanceID, transactionType, amount, balanceBefore, balanceAfter,
+                    (balanceID, type, amount, balanceBefore, balanceAfter,
                      currency, description, referenceType, referenceID,
                      performedBy, ipAddress, metadata, createdAt)
                  VALUES (?, 'withdrawal', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())",
@@ -637,13 +685,13 @@ class CreditManager
                     $ipAddress,
                     !empty($metadata) ? json_encode($metadata, JSON_UNESCAPED_UNICODE) : null,
                 ],
-                'idddsssiiiss'
+                'idddsssiiss'
             );
 
             $transactionID = Database::getLastInsertId();
 
             // ✅ COMMIT
-            Database::query("COMMIT", [], '');
+            Database::commit();
 
             // 📝 Log the successful withdrawal
             ActivityLogger::log(
@@ -684,11 +732,11 @@ class CreditManager
                 'transactionID' => $transactionID,
                 'newBalance'    => $balanceAfter,
             ];
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             // 🚨 ROLLBACK on failure
             try {
-                Database::query("ROLLBACK", [], '');
-            } catch (\Exception $rollbackException) {
+                Database::rollback();
+            } catch (\Throwable $rollbackException) {
                 ActivityLogger::log(
                     ($ownerType === 'user') ? $ownerID : null,
                     'credit_rollback_error',
@@ -776,9 +824,12 @@ class CreditManager
             $metadata['paymentID'] = $paymentID;
         }
 
+        // 💰 Normalise to a canonical 2dp bcmath string once, at the boundary (B-071 fix).
+        $amountStr = number_format($amount, 2, '.', '');
+
         try {
-            // 🔒 BEGIN TRANSACTION
-            Database::query("START TRANSACTION", [], '');
+            // 🔒 BEGIN TRANSACTION (B-071 fix — see self::deposit()'s doc-comment)
+            Database::beginTransaction();
 
             // 📋 Ensure balance record exists
             $balanceRecord = self::getBalanceRecord($ownerType, $ownerID, $partnerID, $currency);
@@ -792,15 +843,16 @@ class CreditManager
             );
 
             if (!$locked) {
-                Database::query("ROLLBACK", [], '');
+                Database::rollback();
                 return ['success' => false, 'message' => 'Balance record not found during lock acquisition'];
             }
 
-            // 💰 Insufficient funds check
-            $balanceBefore = (float)$locked['balance'];
+            // 💰 Insufficient funds check — bcmath comparison (B-071 fix)
+            $balanceBeforeStr = number_format((float)$locked['balance'], 2, '.', '');
+            $balanceBefore    = (float)$balanceBeforeStr;
 
-            if ($balanceBefore < $amount) {
-                Database::query("ROLLBACK", [], '');
+            if (bccomp($balanceBeforeStr, $amountStr, 2) < 0) {
+                Database::rollback();
 
                 ActivityLogger::log(
                     ($ownerType === 'user') ? $ownerID : null,
@@ -825,25 +877,26 @@ class CreditManager
                 ];
             }
 
-            // 💰 Deduct the payment
-            $balanceAfter = round($balanceBefore - $amount, 2);
-            $newTotalWithdrawn = round((float)$locked['totalWithdrawn'] + $amount, 2);
+            // 💰 Deduct the payment — bcmath (B-071 fix)
+            $balanceAfterStr = bcsub($balanceBeforeStr, $amountStr, 2);
+            $balanceAfter    = (float)$balanceAfterStr;
 
+            // 🩹 B-071 fix: tblCreditBalances has NO totalWithdrawn column.
             Database::query(
                 "UPDATE tblCreditBalances
                  SET balance = ?,
-                     totalWithdrawn = ?,
                      lastTransactionAt = NOW(),
                      updatedAt = NOW()
                  WHERE balanceID = ?",
-                [$balanceAfter, $newTotalWithdrawn, $balanceID],
-                'ddi'
+                [$balanceAfter, $balanceID],
+                'di'
             );
 
-            // 📝 Create the transaction record — note: transactionType = 'payment'
+            // 📝 Create the transaction record — note: type = 'payment'.
+            // 🩹 B-071 fix: the real column is `type`, not `transactionType`.
             Database::query(
                 "INSERT INTO tblCreditTransactions
-                    (balanceID, transactionType, amount, balanceBefore, balanceAfter,
+                    (balanceID, type, amount, balanceBefore, balanceAfter,
                      currency, description, referenceType, referenceID,
                      performedBy, ipAddress, metadata, createdAt)
                  VALUES (?, 'payment', ?, ?, ?, ?, ?, 'payment', ?, ?, ?, ?, NOW())",
@@ -859,13 +912,13 @@ class CreditManager
                     $ipAddress,
                     !empty($metadata) ? json_encode($metadata, JSON_UNESCAPED_UNICODE) : null,
                 ],
-                'idddssiiiss'
+                'idddssiiss'
             );
 
             $transactionID = Database::getLastInsertId();
 
             // ✅ COMMIT
-            Database::query("COMMIT", [], '');
+            Database::commit();
 
             // 📝 Log the payment
             ActivityLogger::log(
@@ -906,11 +959,11 @@ class CreditManager
                 'transactionID' => $transactionID,
                 'newBalance'    => $balanceAfter,
             ];
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             // 🚨 ROLLBACK
             try {
-                Database::query("ROLLBACK", [], '');
-            } catch (\Exception $rollbackException) {
+                Database::rollback();
+            } catch (\Throwable $rollbackException) {
                 ActivityLogger::log(
                     ($ownerType === 'user') ? $ownerID : null,
                     'credit_rollback_error',
@@ -998,9 +1051,12 @@ class CreditManager
             $metadata['paymentID'] = $paymentID;
         }
 
+        // 💰 Normalise to a canonical 2dp bcmath string once, at the boundary (B-071 fix).
+        $amountStr = number_format($amount, 2, '.', '');
+
         try {
-            // 🔒 BEGIN TRANSACTION
-            Database::query("START TRANSACTION", [], '');
+            // 🔒 BEGIN TRANSACTION (B-071 fix — see self::deposit()'s doc-comment)
+            Database::beginTransaction();
 
             // 📋 Ensure balance record exists
             $balanceRecord = self::getBalanceRecord($ownerType, $ownerID, $partnerID, $currency);
@@ -1014,31 +1070,32 @@ class CreditManager
             );
 
             if (!$locked) {
-                Database::query("ROLLBACK", [], '');
+                Database::rollback();
                 return ['success' => false, 'message' => 'Balance record not found during lock acquisition'];
             }
 
-            // 💰 Calculate new balance (refund adds to balance)
-            $balanceBefore = (float)$locked['balance'];
-            $balanceAfter  = round($balanceBefore + $amount, 2);
-            $newTotalDeposited = round((float)$locked['totalDeposited'] + $amount, 2);
+            // 💰 Calculate new balance (refund adds to balance) — bcmath (B-071 fix)
+            $balanceBeforeStr = number_format((float)$locked['balance'], 2, '.', '');
+            $balanceAfterStr  = bcadd($balanceBeforeStr, $amountStr, 2);
+            $balanceBefore    = (float)$balanceBeforeStr;
+            $balanceAfter     = (float)$balanceAfterStr;
 
-            // 📝 Update the balance record
+            // 🩹 B-071 fix: tblCreditBalances has NO totalDeposited column.
             Database::query(
                 "UPDATE tblCreditBalances
                  SET balance = ?,
-                     totalDeposited = ?,
                      lastTransactionAt = NOW(),
                      updatedAt = NOW()
                  WHERE balanceID = ?",
-                [$balanceAfter, $newTotalDeposited, $balanceID],
-                'ddi'
+                [$balanceAfter, $balanceID],
+                'di'
             );
 
-            // 📝 Create the transaction record — note: transactionType = 'refund'
+            // 📝 Create the transaction record — note: type = 'refund'.
+            // 🩹 B-071 fix: the real column is `type`, not `transactionType`.
             Database::query(
                 "INSERT INTO tblCreditTransactions
-                    (balanceID, transactionType, amount, balanceBefore, balanceAfter,
+                    (balanceID, type, amount, balanceBefore, balanceAfter,
                      currency, description, referenceType, referenceID,
                      performedBy, ipAddress, metadata, createdAt)
                  VALUES (?, 'refund', ?, ?, ?, ?, ?, 'payment', ?, ?, ?, ?, NOW())",
@@ -1054,13 +1111,13 @@ class CreditManager
                     $ipAddress,
                     !empty($metadata) ? json_encode($metadata, JSON_UNESCAPED_UNICODE) : null,
                 ],
-                'idddssiiiss'
+                'idddssiiss'
             );
 
             $transactionID = Database::getLastInsertId();
 
             // ✅ COMMIT
-            Database::query("COMMIT", [], '');
+            Database::commit();
 
             // 📝 Log the refund
             ActivityLogger::log(
@@ -1101,11 +1158,11 @@ class CreditManager
                 'transactionID' => $transactionID,
                 'newBalance'    => $balanceAfter,
             ];
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             // 🚨 ROLLBACK
             try {
-                Database::query("ROLLBACK", [], '');
-            } catch (\Exception $rollbackException) {
+                Database::rollback();
+            } catch (\Throwable $rollbackException) {
                 ActivityLogger::log(
                     ($ownerType === 'user') ? $ownerID : null,
                     'credit_rollback_error',
@@ -1193,9 +1250,14 @@ class CreditManager
         $metadata['adjustedBy'] = $performedBy;
         $metadata['adjustmentDirection'] = ($amount > 0) ? 'credit' : 'debit';
 
+        // 💰 Normalise to a canonical 2dp bcmath string once, at the boundary
+        // (B-071 fix). $amount may be negative here (debit) — bcadd() below
+        // handles the sign correctly since it's a signed bcmath operand.
+        $amountStr = number_format($amount, 2, '.', '');
+
         try {
-            // 🔒 BEGIN TRANSACTION
-            Database::query("START TRANSACTION", [], '');
+            // 🔒 BEGIN TRANSACTION (B-071 fix — see self::deposit()'s doc-comment)
+            Database::beginTransaction();
 
             // 📋 Ensure balance record exists
             $balanceRecord = self::getBalanceRecord($ownerType, $ownerID, $partnerID, $currency);
@@ -1209,17 +1271,19 @@ class CreditManager
             );
 
             if (!$locked) {
-                Database::query("ROLLBACK", [], '');
+                Database::rollback();
                 return ['success' => false, 'message' => 'Balance record not found during lock acquisition'];
             }
 
-            // 💰 Calculate new balance
-            $balanceBefore = (float)$locked['balance'];
-            $balanceAfter  = round($balanceBefore + $amount, 2);
+            // 💰 Calculate new balance — bcmath (B-071 fix)
+            $balanceBeforeStr = number_format((float)$locked['balance'], 2, '.', '');
+            $balanceAfterStr  = bcadd($balanceBeforeStr, $amountStr, 2);
+            $balanceBefore    = (float)$balanceBeforeStr;
+            $balanceAfter     = (float)$balanceAfterStr;
 
             // 🚫 Prevent negative balance from adjustment
-            if ($balanceAfter < 0) {
-                Database::query("ROLLBACK", [], '');
+            if (bccomp($balanceAfterStr, '0.00', 2) < 0) {
+                Database::rollback();
 
                 ActivityLogger::log(
                     $performedBy,
@@ -1243,36 +1307,26 @@ class CreditManager
                 ];
             }
 
-            // 📊 Update lifetime totals based on direction
-            $newTotalDeposited  = (float)$locked['totalDeposited'];
-            $newTotalWithdrawn  = (float)$locked['totalWithdrawn'];
-
-            if ($amount > 0) {
-                // ➕ Positive adjustment counts toward totalDeposited
-                $newTotalDeposited = round($newTotalDeposited + $amount, 2);
-            } else {
-                // ➖ Negative adjustment counts toward totalWithdrawn
-                $newTotalWithdrawn = round($newTotalWithdrawn + abs($amount), 2);
-            }
-
-            // 📝 Update the balance record
+            // 🩹 B-071 fix: tblCreditBalances has NO totalDeposited/
+            // totalWithdrawn columns — the running-lifetime-total update
+            // that used to live here is removed; see self::getBalanceRecord().
             Database::query(
                 "UPDATE tblCreditBalances
                  SET balance = ?,
-                     totalDeposited = ?,
-                     totalWithdrawn = ?,
                      lastTransactionAt = NOW(),
                      updatedAt = NOW()
                  WHERE balanceID = ?",
-                [$balanceAfter, $newTotalDeposited, $newTotalWithdrawn, $balanceID],
-                'dddi'
+                [$balanceAfter, $balanceID],
+                'di'
             );
 
-            // 📝 Create the transaction record — transactionType = 'adjustment'
-            // Note: amount stored is always the absolute value; direction is inferred from balanceBefore/After
+            // 📝 Create the transaction record — type = 'adjustment'.
+            // Note: amount stored is signed (positive=credit, negative=debit);
+            // direction is also inferrable from balanceBefore/After.
+            // 🩹 B-071 fix: the real column is `type`, not `transactionType`.
             Database::query(
                 "INSERT INTO tblCreditTransactions
-                    (balanceID, transactionType, amount, balanceBefore, balanceAfter,
+                    (balanceID, type, amount, balanceBefore, balanceAfter,
                      currency, description, referenceType, referenceID,
                      performedBy, ipAddress, metadata, createdAt)
                  VALUES (?, 'adjustment', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())",
@@ -1289,13 +1343,13 @@ class CreditManager
                     $ipAddress,
                     !empty($metadata) ? json_encode($metadata, JSON_UNESCAPED_UNICODE) : null,
                 ],
-                'idddsssiiiss'
+                'idddsssiiss'
             );
 
             $transactionID = Database::getLastInsertId();
 
             // ✅ COMMIT
-            Database::query("COMMIT", [], '');
+            Database::commit();
 
             // 📝 Log the adjustment — use the admin's userID as the actor
             $direction = ($amount > 0) ? 'increase' : 'decrease';
@@ -1340,11 +1394,11 @@ class CreditManager
                 'transactionID' => $transactionID,
                 'newBalance'    => $balanceAfter,
             ];
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             // 🚨 ROLLBACK
             try {
-                Database::query("ROLLBACK", [], '');
-            } catch (\Exception $rollbackException) {
+                Database::rollback();
+            } catch (\Throwable $rollbackException) {
                 ActivityLogger::log(
                     $performedBy,
                     'credit_rollback_error',
@@ -1442,7 +1496,7 @@ class CreditManager
         if (!empty($filters['transactionType'])) {
             // 🛡️ Validate the transaction type to prevent injection
             if (in_array($filters['transactionType'], self::VALID_TRANSACTION_TYPES, true)) {
-                $sql .= " AND ct.transactionType = ?";
+                $sql .= " AND ct.type = ?";
                 $params[] = $filters['transactionType'];
                 $types .= 's';
             }
@@ -1519,7 +1573,7 @@ class CreditManager
         // 🏷️ Filter by transaction type
         if (!empty($filters['transactionType'])) {
             if (in_array($filters['transactionType'], self::VALID_TRANSACTION_TYPES, true)) {
-                $sql .= " AND ct.transactionType = ?";
+                $sql .= " AND ct.type = ?";
                 $params[] = $filters['transactionType'];
                 $types .= 's';
             }
@@ -1624,9 +1678,12 @@ class CreditManager
         $metadata      = $options['metadata'] ?? [];
         $ipAddress     = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
 
+        // 💰 Normalise to a canonical 2dp bcmath string once, at the boundary (B-071 fix).
+        $amountStr = number_format($amount, 2, '.', '');
+
         try {
-            // 🔒 BEGIN TRANSACTION
-            Database::query("START TRANSACTION", [], '');
+            // 🔒 BEGIN TRANSACTION (B-071 fix — see self::deposit()'s doc-comment)
+            Database::beginTransaction();
 
             // 📋 Ensure both balance records exist
             $fromRecord = self::getBalanceRecord($fromOwnerType, $fromOwnerID, $fromPartnerID, $currency);
@@ -1663,15 +1720,16 @@ class CreditManager
             }
 
             if (!$fromLocked || !$toLocked) {
-                Database::query("ROLLBACK", [], '');
+                Database::rollback();
                 return ['success' => false, 'message' => 'One or both balance records not found during lock acquisition'];
             }
 
-            // 💰 Check sufficient balance on source
-            $fromBalanceBefore = (float)$fromLocked['balance'];
+            // 💰 Check sufficient balance on source — bcmath comparison (B-071 fix)
+            $fromBalanceBeforeStr = number_format((float)$fromLocked['balance'], 2, '.', '');
+            $fromBalanceBefore    = (float)$fromBalanceBeforeStr;
 
-            if ($fromBalanceBefore < $amount) {
-                Database::query("ROLLBACK", [], '');
+            if (bccomp($fromBalanceBeforeStr, $amountStr, 2) < 0) {
+                Database::rollback();
 
                 ActivityLogger::log(
                     $performedBy,
@@ -1696,36 +1754,36 @@ class CreditManager
                 ];
             }
 
-            // 💰 Calculate new balances
-            $fromBalanceAfter = round($fromBalanceBefore - $amount, 2);
-            $toBalanceBefore  = (float)$toLocked['balance'];
-            $toBalanceAfter   = round($toBalanceBefore + $amount, 2);
+            // 💰 Calculate new balances — bcmath (B-071 fix)
+            $fromBalanceAfterStr = bcsub($fromBalanceBeforeStr, $amountStr, 2);
+            $fromBalanceAfter    = (float)$fromBalanceAfterStr;
+            $toBalanceBeforeStr  = number_format((float)$toLocked['balance'], 2, '.', '');
+            $toBalanceAfterStr   = bcadd($toBalanceBeforeStr, $amountStr, 2);
+            $toBalanceBefore     = (float)$toBalanceBeforeStr;
+            $toBalanceAfter      = (float)$toBalanceAfterStr;
 
-            $fromNewTotalWithdrawn = round((float)$fromLocked['totalWithdrawn'] + $amount, 2);
-            $toNewTotalDeposited   = round((float)$toLocked['totalDeposited'] + $amount, 2);
-
+            // 🩹 B-071 fix: tblCreditBalances has NO totalWithdrawn/
+            // totalDeposited columns — see self::getBalanceRecord().
             // 📝 Update source balance (debit)
             Database::query(
                 "UPDATE tblCreditBalances
                  SET balance = ?,
-                     totalWithdrawn = ?,
                      lastTransactionAt = NOW(),
                      updatedAt = NOW()
                  WHERE balanceID = ?",
-                [$fromBalanceAfter, $fromNewTotalWithdrawn, $fromBalanceID],
-                'ddi'
+                [$fromBalanceAfter, $fromBalanceID],
+                'di'
             );
 
             // 📝 Update destination balance (credit)
             Database::query(
                 "UPDATE tblCreditBalances
                  SET balance = ?,
-                     totalDeposited = ?,
                      lastTransactionAt = NOW(),
                      updatedAt = NOW()
                  WHERE balanceID = ?",
-                [$toBalanceAfter, $toNewTotalDeposited, $toBalanceID],
-                'ddi'
+                [$toBalanceAfter, $toBalanceID],
+                'di'
             );
 
             // 📝 Build shared transfer metadata for cross-referencing
@@ -1739,16 +1797,29 @@ class CreditManager
             ]);
             $metadataJson = json_encode($transferMeta, JSON_UNESCAPED_UNICODE);
 
-            // 📝 Create withdrawal transaction record (source side)
+            // 📝 Create the SOURCE-side ledger row.
+            // 🩹 B-071 fix (two independent bugs):
+            //  1. The real column is `type`, not `transactionType`.
+            //  2. The real `type` ENUM (migration 012) does NOT include a
+            //     'transfer' member — only deposit/withdrawal/payment/refund/
+            //     adjustment/remittance/promotional — so the previous
+            //     `type = 'transfer'` INSERT violated the column's ENUM
+            //     constraint on every real MySQL server. A transfer IS, at
+            //     the ledger level, an ordinary withdrawal from one balance
+            //     paired with an ordinary deposit into another — so this now
+            //     records exactly that (type='withdrawal'/'deposit'), tagged
+            //     `referenceType = 'transfer'` (the default set above) so
+            //     the pair remains identifiable/filterable/linkable via
+            //     metadata.linkedTransactionID, without touching the schema.
             Database::query(
                 "INSERT INTO tblCreditTransactions
-                    (balanceID, transactionType, amount, balanceBefore, balanceAfter,
+                    (balanceID, type, amount, balanceBefore, balanceAfter,
                      currency, description, referenceType, referenceID,
                      performedBy, ipAddress, metadata, createdAt)
-                 VALUES (?, 'transfer', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())",
+                 VALUES (?, 'withdrawal', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())",
                 [
                     $fromBalanceID,
-                    -$amount,
+                    $amount,
                     $fromBalanceBefore,
                     $fromBalanceAfter,
                     $currency,
@@ -1759,22 +1830,22 @@ class CreditManager
                     $ipAddress,
                     $metadataJson,
                 ],
-                'idddsssiiiss'
+                'idddsssiiss'
             );
 
             $withdrawalTransactionID = Database::getLastInsertId();
 
-            // 📝 Create deposit transaction record (destination side)
+            // 📝 Create the DESTINATION-side ledger row (type='deposit').
             // Link to the withdrawal transaction via metadata for traceability
             $transferMeta['linkedTransactionID'] = $withdrawalTransactionID;
             $depositMetaJson = json_encode($transferMeta, JSON_UNESCAPED_UNICODE);
 
             Database::query(
                 "INSERT INTO tblCreditTransactions
-                    (balanceID, transactionType, amount, balanceBefore, balanceAfter,
+                    (balanceID, type, amount, balanceBefore, balanceAfter,
                      currency, description, referenceType, referenceID,
                      performedBy, ipAddress, metadata, createdAt)
-                 VALUES (?, 'transfer', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())",
+                 VALUES (?, 'deposit', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())",
                 [
                     $toBalanceID,
                     $amount,
@@ -1788,13 +1859,13 @@ class CreditManager
                     $ipAddress,
                     $depositMetaJson,
                 ],
-                'idddsssiiiss'
+                'idddsssiiss'
             );
 
             $depositTransactionID = Database::getLastInsertId();
 
             // ✅ COMMIT — both sides updated atomically
-            Database::query("COMMIT", [], '');
+            Database::commit();
 
             // 📝 Log the transfer
             ActivityLogger::log(
@@ -1842,11 +1913,11 @@ class CreditManager
                 'fromNewBalance'             => $fromBalanceAfter,
                 'toNewBalance'               => $toBalanceAfter,
             ];
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             // 🚨 ROLLBACK
             try {
-                Database::query("ROLLBACK", [], '');
-            } catch (\Exception $rollbackException) {
+                Database::rollback();
+            } catch (\Throwable $rollbackException) {
                 ActivityLogger::log(
                     $performedBy,
                     'credit_rollback_error',
@@ -1911,28 +1982,36 @@ class CreditManager
      *               - 'avgTransactionAmount' (float) Average transaction amount
      */
     public static function getAdminStats(int $days = 30): array {
-        // 📊 Fetch transaction-level statistics for the specified time window
+        // 📊 Fetch transaction-level statistics for the specified time window.
+        // 🩹 B-071 fix: the real column is `type`, not `transactionType`
+        // (grep + information_schema-verified against migration 012). The
+        // real `type` ENUM also has no 'transfer' member — self::transfer()
+        // now records its two ledger rows as an ordinary 'withdrawal' +
+        // 'deposit' tagged `referenceType = 'transfer'` (see transfer()'s
+        // doc-comment), so transfer volume/count is derived from THAT tag
+        // instead — only the destination ('deposit') leg is summed for
+        // totalTransfers so a single transfer isn't double-counted.
         $txStats = Database::fetchOne(
             "SELECT
                 COUNT(*) AS transactionCount,
 
-                SUM(CASE WHEN transactionType = 'deposit' THEN amount ELSE 0 END) AS totalDeposits,
-                SUM(CASE WHEN transactionType = 'deposit' THEN 1 ELSE 0 END) AS depositCount,
+                SUM(CASE WHEN type = 'deposit' THEN amount ELSE 0 END) AS totalDeposits,
+                SUM(CASE WHEN type = 'deposit' THEN 1 ELSE 0 END) AS depositCount,
 
-                SUM(CASE WHEN transactionType = 'withdrawal' THEN amount ELSE 0 END) AS totalWithdrawals,
-                SUM(CASE WHEN transactionType = 'withdrawal' THEN 1 ELSE 0 END) AS withdrawalCount,
+                SUM(CASE WHEN type = 'withdrawal' THEN amount ELSE 0 END) AS totalWithdrawals,
+                SUM(CASE WHEN type = 'withdrawal' THEN 1 ELSE 0 END) AS withdrawalCount,
 
-                SUM(CASE WHEN transactionType = 'payment' THEN amount ELSE 0 END) AS totalPayments,
-                SUM(CASE WHEN transactionType = 'payment' THEN 1 ELSE 0 END) AS paymentCount,
+                SUM(CASE WHEN type = 'payment' THEN amount ELSE 0 END) AS totalPayments,
+                SUM(CASE WHEN type = 'payment' THEN 1 ELSE 0 END) AS paymentCount,
 
-                SUM(CASE WHEN transactionType = 'refund' THEN amount ELSE 0 END) AS totalRefunds,
-                SUM(CASE WHEN transactionType = 'refund' THEN 1 ELSE 0 END) AS refundCount,
+                SUM(CASE WHEN type = 'refund' THEN amount ELSE 0 END) AS totalRefunds,
+                SUM(CASE WHEN type = 'refund' THEN 1 ELSE 0 END) AS refundCount,
 
-                SUM(CASE WHEN transactionType = 'adjustment' THEN amount ELSE 0 END) AS totalAdjustments,
-                SUM(CASE WHEN transactionType = 'adjustment' THEN 1 ELSE 0 END) AS adjustmentCount,
+                SUM(CASE WHEN type = 'adjustment' THEN amount ELSE 0 END) AS totalAdjustments,
+                SUM(CASE WHEN type = 'adjustment' THEN 1 ELSE 0 END) AS adjustmentCount,
 
-                SUM(CASE WHEN transactionType = 'transfer' AND amount > 0 THEN amount ELSE 0 END) AS totalTransfers,
-                SUM(CASE WHEN transactionType = 'transfer' THEN 1 ELSE 0 END) AS transferCount,
+                SUM(CASE WHEN type = 'deposit' AND referenceType = 'transfer' THEN amount ELSE 0 END) AS totalTransfers,
+                SUM(CASE WHEN type = 'deposit' AND referenceType = 'transfer' THEN 1 ELSE 0 END) AS transferCount,
 
                 AVG(ABS(amount)) AS avgTransactionAmount
              FROM tblCreditTransactions
