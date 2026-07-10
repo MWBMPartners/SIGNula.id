@@ -1,0 +1,89 @@
+<!--
+============================================================================
+iHymns × SIGNula.id reference integration — button-embed.html
+============================================================================
+COPY this into the iHymns web/PWA login page (github.com/MWBMPartners/
+iHymns) — NOT a live SIGNula runtime route. This is the exact, unmodified
+"/assets/signin-button" drop-in from the SIGNula repo (see
+web/public_html/assets/signin-button/README.md for the full contract),
+pre-filled with iHymns-specific `data-*` config.
+
+Replace `IHYMNS_CLIENT_ID` with the real client_id you receive from Step 1
+of README.md (Dashboard → OAuth / OIDC Clients →
+https://signula.id/partners/admin/oauth-clients). The redirect_uri below
+MUST match, byte-for-byte, a URI registered for that client.
+
+Zero dependencies: no Bootstrap/jQuery/build step. Self-hosting note: if
+you don't want to load signula-signin.css/.js from signula.id at request
+time, copy both files from web/public_html/assets/signin-button/ in the
+SIGNula repo into your own static assets — they have no external
+references (no @import, no CDN fetches, no fonts).
+============================================================================
+-->
+
+<!-- 1) Stylesheet — self-host, or load from signula.id as shown here -->
+<link rel="stylesheet" href="https://signula.id/assets/signin-button/signula-signin.css">
+
+<!-- 2) The button itself. data-client-id / data-redirect-uri are REQUIRED;
+        data-scope / data-signula-base are shown explicitly here for
+        clarity but both already match the library defaults. -->
+<button type="button" class="signula-btn signula-btn--brand"
+        data-client-id="IHYMNS_CLIENT_ID"
+        data-redirect-uri="https://ihymns.app/auth/signula/callback"
+        data-scope="openid email profile"
+        data-signula-base="https://signula.id">
+  <span class="signula-btn__icon" aria-hidden="true">
+    <svg class="signula-btn__icon-svg" viewBox="0 0 100 100" width="20" height="20" aria-hidden="true" focusable="false">
+      <g class="signula-btn__icon-key">
+        <circle class="signula-btn__icon-ring" cx="17" cy="50" r="9"/>
+        <rect class="signula-btn__icon-fill" x="26" y="47" width="34" height="7" rx="1.5"/>
+        <rect class="signula-btn__icon-fill" x="46" y="54" width="5" height="6"/>
+        <rect class="signula-btn__icon-fill" x="54" y="54" width="6" height="9"/>
+      </g>
+      <g class="signula-btn__icon-lock">
+        <rect class="signula-btn__icon-fill" x="60" y="18" width="28" height="64" rx="8"/>
+        <circle class="signula-btn__icon-punch" cx="70" cy="48" r="6"/>
+        <path class="signula-btn__icon-punch" d="M 64.5 49 L 75.5 49 L 72 63 L 68 63 Z"/>
+      </g>
+      <g class="signula-btn__icon-check">
+        <circle class="signula-btn__icon-punch" cx="80" cy="75" r="13"/>
+        <circle class="signula-btn__icon-badge-ring" cx="80" cy="75" r="13"/>
+        <path class="signula-btn__icon-tick" d="M 73.5 75 L 78.5 80 L 88.5 67.5"/>
+      </g>
+    </svg>
+  </span>
+  <span class="signula-btn__label">Sign in with SIGNula.id</span>
+</button>
+
+<!-- 3) The PKCE flow initiator — auto-wires any .signula-btn[data-client-id]
+        element on DOMContentLoaded. No extra JS required beyond this tag. -->
+<script src="https://signula.id/assets/signin-button/signula-signin.js"></script>
+
+<!--
+============================================================================
+What happens when the user clicks this button (see signula-signin.js):
+  1. Generates a PKCE code_verifier (32 random bytes, base64url) and its
+     S256 code_challenge, plus fresh `state` and `nonce` values (16 random
+     bytes each, base64url) — all via window.crypto (secure context only:
+     HTTPS or http://localhost).
+  2. Persists them to:
+       sessionStorage["signula:pkce:<state>"] = JSON.stringify({
+         codeVerifier, nonce, redirectUri, clientId, signulaBase, createdAt
+       })
+  3. Navigates to:
+       GET https://signula.id/oauth/authorize-idp
+         ?response_type=code&client_id=IHYMNS_CLIENT_ID
+         &redirect_uri=https%3A%2F%2Fihymns.app%2Fauth%2Fsignula%2Fcallback
+         &scope=openid%20email%20profile
+         &state=...&nonce=...
+         &code_challenge=...&code_challenge_method=S256
+
+Your https://ihymns.app/auth/signula/callback handler (callback.php or
+callback.js in this same reference directory) takes it from there — see
+README.md Step 3.
+
+Alternative markup (no inline <svg>, e.g. if your CMS strips SVG tags):
+use the <img> + base64 data-URI fallback documented in
+/assets/signin-button/README.md ("Minimal / no-inline-SVG snippet").
+============================================================================
+-->
