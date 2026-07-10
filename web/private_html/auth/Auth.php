@@ -521,6 +521,19 @@ class Auth
 
             // 💾 Store in PHP session
             $_SESSION['user_id'] = $userID;
+            // 🐛 B-065: ALSO set a camelCase alias. All 13 settings/*.php pages
+            // (profile, security, mfa, passkeys, privacy, …) read the user id
+            // as `$_SESSION['userID']` directly (e.g. `$userID = $_SESSION['userID'];`),
+            // but every browser login flow (password Auth::login(), OAuth
+            // Auth::loginOAuth(), and browser MFA completion via mfa/verify.php)
+            // funnels through THIS method, which only ever wrote the snake_case
+            // `user_id`. Result: for a genuinely-logged-in user, `$userID` came
+            // out null on those pages → AvatarService::resolve(null) TypeError →
+            // fatal BEFORE the page ever reached its layout. Writing BOTH keys
+            // makes the legacy camelCase readers work unchanged while every
+            // existing `user_id` reader (Auth, SessionGuard, BaseController,
+            // Auth/MFA API controllers) is untouched. NEVER remove `user_id`.
+            $_SESSION['userID'] = $userID;
             $_SESSION['session_id'] = $sessionID;
             $_SESSION['session_token'] = $sessionToken;
 
@@ -728,6 +741,11 @@ class Auth
             if ($session) {
                 // Restore session
                 $_SESSION['user_id'] = $session['userID'];
+                // 🐛 B-065: camelCase alias for the 13 settings/*.php pages that
+                // read `$_SESSION['userID']` (see completeLogin() above for the
+                // full rationale). Cast to int to match what those pages then
+                // pass into typed APIs like AvatarService::resolve(int $userID).
+                $_SESSION['userID'] = (int)$session['userID'];
                 $_SESSION['session_id'] = $session['sessionID'];
                 $_SESSION['session_token'] = $_COOKIE['signula_session'];
 

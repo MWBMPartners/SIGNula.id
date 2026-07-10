@@ -594,6 +594,11 @@ class MFAController extends BaseController
         );
 
         $_SESSION['user_id'] = $userId;
+        // 🐛 B-065: camelCase alias for the settings/*.php pages that read
+        // `$_SESSION['userID']` (see AuthController's establishSession() for the
+        // full rationale). Additive — `user_id` is left in place for every
+        // existing reader.
+        $_SESSION['userID'] = $userId;
         $_SESSION['session_token'] = hash('sha256', $sessionToken);
 
         return $sessionToken;

@@ -572,6 +572,11 @@ class AuthController extends BaseController
 
         // Set session variables
         $_SESSION['user_id'] = $userId;
+        // 🐛 B-065: camelCase alias so a browser that authenticates through the
+        // API and then navigates to a settings/*.php page (which read
+        // `$_SESSION['userID']`) resolves the same user. Additive — the
+        // snake_case `user_id` every other reader uses is left untouched.
+        $_SESSION['userID'] = $userId;
         $_SESSION['session_token'] = hash('sha256', $sessionToken);
 
         return $sessionToken;

@@ -1,9 +1,24 @@
-
-
 <?php
 /**
  * ============================================================================
  * 📁 SIGNula Universal Login System - Database Connection
+ *
+ * 🐛 B-060 (found while smoke-testing requireLogin()): this file previously
+ * started with TWO blank lines BEFORE the opening `<?php` tag. Those two
+ * newline bytes are literal output — emitted the instant this file is
+ * require_once'd (very first thing web/_config/config.php does after
+ * defining path constants) — which flips headers_sent() to TRUE for the
+ * REST of the request, on every single page. That silently defeated:
+ *   - Every `if (!headers_sent()) { header(...); }` security header in
+ *     config.php (X-Frame-Options, CSP, HSTS, Referrer-Policy, …never sent).
+ *   - `redirect()` (web/_config/config.php), which no-ops instead of
+ *     redirecting whenever headers_sent() is true — meaning requireLogin()
+ *     (Auth::requireAuth() -> redirect('/login?...')) silently failed to
+ *     bounce unauthenticated users away from gated pages; execution fell
+ *     through into the page body with no authenticated user.
+ * Removing the stray leading whitespace is the entire fix — no other line
+ * in this file changed.
+ * ============================================================================
  * ============================================================================
  *
  * Purpose: Secure database connection using MySQLi with prepared statements

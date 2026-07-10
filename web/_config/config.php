@@ -34,6 +34,27 @@ define('SIGNULA_INIT', true);
 define('ROOT_DIR', dirname(__DIR__));
 
 /**
+ * 🔗 SIGNULA_ROOT — legacy alias for ROOT_DIR
+ *
+ * 🐛 B-060: 37 files under web/public_html/ (settings/*, webhooks/*,
+ * api/webauthn/*, auth/passkey-*.php + auth/passwordless-*.php, checkout/*,
+ * pricing/index.php, admin/email-*.php) predate the introduction of
+ * ROOT_DIR above and reference SIGNULA_ROOT as their web-root path prefix —
+ * always as `SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . …`.
+ * SIGNULA_ROOT was never actually define()'d anywhere in the codebase, so
+ * PHP 8's promotion of undefined-constant use to a fatal Error meant every
+ * one of those 37 files died on load. Rather than rewrite 37 files' path
+ * prefixes, define the missing alias ONCE, here, pointing at the exact same
+ * directory ROOT_DIR resolves to (web/) — every existing use already assumes
+ * that target directory.
+ *
+ * @see https://www.php.net/manual/en/language.constants.php
+ */
+if (!defined('SIGNULA_ROOT')) {
+    define('SIGNULA_ROOT', ROOT_DIR);
+}
+
+/**
  * 🔒 Private files directory (outside web root)
  */
 define('PRIVATE_DIR', ROOT_DIR . DIRECTORY_SEPARATOR . '_private');
@@ -649,6 +670,99 @@ function jsonResponse(bool $success, string $message, mixed $data = null, int $s
     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
     exit;
+}
+
+// ============================================================================
+// 🔐 AUTHENTICATION HELPERS (B-060)
+// ============================================================================
+// 🐛 While defining SIGNULA_ROOT above (see that constant's doc-block), the
+// same set of pages turned out to depend on THREE more bare global helper
+// functions that were never defined anywhere in the codebase either —
+// requireLogin() (15 call sites), getCurrentUser() (13 call sites, DISTINCT
+// from the Auth::getCurrentUser() STATIC METHOD and BaseController::
+// getCurrentUser() PROTECTED METHOD — neither of those is a bare global
+// function), and isLoggedIn() (5 call sites). Without these too, "fixing"
+// SIGNULA_ROOT alone would still leave nearly every settings/* and
+// auth/passkey-*|passwordless-*.php page fataling on its very next line —
+// so they're fixed here as the same class of shared plumbing.
+//
+// All three are thin wrappers over the PROVEN-WORKING Auth class
+// (web/private_html/auth/Auth.php) — the same class settings/connected-
+// apps.php and oauth/authorize-idp.php already gate on successfully.
+
+/**
+ * 🔐 Require an authenticated session, or redirect to /login
+ *
+ * Delegates to Auth::requireAuth(), which redirects to /login preserving the
+ * current URL as ?redirect=, AND enforces this app's email-verification
+ * policy (Auth::requiresEmailVerification()) — both checks are the correct
+ * default for the account-management pages that call this (settings/*,
+ * auth/passkey-register.php, admin/email-webhooks.php).
+ *
+ * Every call site invokes requireLogin() with zero arguments; Auth::
+ * requireAuth() already falls back to the current request URL via
+ * getCurrentURL() when no explicit redirect target is supplied, so no
+ * parameter is needed here either.
+ *
+ * @return void
+ * @see web/private_html/auth/Auth.php (Auth::requireAuth())
+ */
+function requireLogin(): void
+{
+    if (class_exists('Auth')) {
+        Auth::requireAuth();
+        return;
+    }
+
+    // 🚨 Defensive fallback only — Auth.php is autoloadable via the
+    // spl_autoload_register() above and should always be present. A gated
+    // page must never silently render if, somehow, it isn't.
+    redirect('/login?redirect=' . urlencode($_SERVER['REQUEST_URI'] ?? '/dashboard'));
+}
+
+/**
+ * ✅ Is there a currently authenticated user?
+ *
+ * Thin wrapper over Auth::isAuthenticated() — used by pre-login pages
+ * (auth/passkey-login.php, auth/passwordless-login.php, auth/passwordless-
+ * request.php, api/webauthn/register-options.php, api/webauthn/register-
+ * verify.php) to short-circuit away when a session already exists.
+ *
+ * @return bool
+ * @see web/private_html/auth/Auth.php (Auth::isAuthenticated())
+ */
+function isLoggedIn(): bool
+{
+    return class_exists('Auth') && Auth::isAuthenticated();
+}
+
+/**
+ * 👤 Get the current authenticated user's full record (or null)
+ *
+ * Thin wrapper over Auth::getCurrentUser(). Several call sites pass
+ * `$refresh = true` immediately after mutating the user's own row (e.g.
+ * settings/profile.php after an avatar/profile update, settings/mfa.php
+ * after enabling MFA) and expect the NEXT call to see the fresh data —
+ * Auth::$currentUser is a PUBLIC static property specifically so callers
+ * outside Auth can invalidate its memoized cache (the same reset mechanism
+ * _tests/Integration/Auth/GetCurrentUserAdminFlagsTest.php uses), so
+ * `$refresh` clears it before delegating.
+ *
+ * @param bool $refresh Bust Auth's memoized user cache before returning
+ * @return array|null
+ * @see web/private_html/auth/Auth.php (Auth::getCurrentUser(), Auth::$currentUser)
+ */
+function getCurrentUser(bool $refresh = false): ?array
+{
+    if (!class_exists('Auth')) {
+        return null;
+    }
+
+    if ($refresh) {
+        Auth::$currentUser = null;
+    }
+
+    return Auth::getCurrentUser();
 }
 
 // ✅ Configuration loaded successfully
