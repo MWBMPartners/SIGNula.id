@@ -297,3 +297,57 @@ same pairwise subject the id_token/userinfo already use.**
 - `_tests/Security/OAuthProviderRedTeamTest.php` — 7 tests, all passing (3 confirmed
   exploits F-01/F-02/F-03 + 4 defense-confirmations). Run:
   `DB_USER=root DB_NAME=signula_test php vendor/bin/phpunit _tests/Security/OAuthProviderRedTeamTest.php`
+
+---
+
+# G-002 Recurring-Billing / Subscription Engine — Independent Red-Team
+
+> Adversarial review of the G-002 billing surface (BillingMode, PaymentManager,
+> SubscriptionStateMachine, CreditManager, InvoiceManager, BillingScheduler, the
+> PayPal/Stripe/Coinbase providers + inbound webhooks). Reviewer did NOT build
+> the code. TEST/SANDBOX only, local `signula_test` DB, mocked providers.
+> Date: 2026-07-10. Model: Fable 5.
+
+## Verdict
+
+**NOT SAFE — the documented #1 safety property is violated.** With
+`billing.test_mode_guard = '1'` (ON) a provider set to `mode = 'live'` still
+reaches a real charge through the PUBLIC one-time checkout flow, because the
+one-time entry points are not wired to `BillingMode::assertTestMode()`.
+**Single most important fix: add `BillingMode::assertTestMode()` to
+`PayPalProvider::createOrder()` + `::captureOrder()`, `CoinbaseProvider::createCharge()`,
+and `StripeProvider::createPaymentIntent()` (before any provider/network call).**
+
+## Findings
+
+| ID | Severity | Title | Vector | Status | PoC |
+|----|----------|-------|--------|--------|-----|
+| F-B01 | **Critical** | One-time checkout bypasses the TEST-MODE guard (B-069) | 1 (test-mode bypass) | Confirmed-with-PoC | `_tests/Security/BillingTestModeBypassTest.php` |
+| F-B02 | Medium | `chargeStoredMethod()` is a phantom method → uncaught `\Error` aborts the whole billing cron batch; self-driven charge path is DOA | 1/misc (reliability) | Confirmed (grep: no definition) | static |
+| F-B03 | Medium | `PaymentManager::processUsagePayment()` calls `recordPayment()` with wrong arg order/count (TypeError) + phantom `chargeViaProvider` | misc | Confirmed (source) | static |
+| F-B04 | Medium | Discount code reusable beyond `maxUses` — main flow never calls `incrementDiscountUsage()` | 6 (coupon abuse) | Confirmed-with-PoC | `_tests/Security/DiscountCodeReuseTest.php` |
+| F-B05 | Low | Inbound-webhook dedup (`tblInboundWebhooks`) + state-machine idempotency are not atomic (SELECT-then-INSERT, no lock) → concurrent identical signed deliveries could double-process | 4 (replay) | Plausible (narrow race) | static |
+
+### F-B01 (Critical) — repro
+1. Set `billing.test_mode_guard='1'`, `payment.paypal.mode='live'`, PayPal enabled with live creds.
+2. Authenticated user POSTs `web/public_html/checkout/process.php` (`provider=paypal`).
+3. `PayPalProvider::createOrder()` runs — `getBaseURL()` returns the LIVE endpoint and NO `assertTestMode('paypal')` is called (guard is silently skipped). `web/public_html/checkout/success.php` then calls `PayPalProvider::captureOrder()` (also unguarded) which captures REAL money.
+- Expected: guard ON blocks any live charge (as it does for `createSubscription`/`refund`, which write a `blocked` tblBillingAttempts row and throw).
+- Actual: money moves. `CoinbaseProvider::createCharge()` (process.php crypto path) and `StripeProvider::createPaymentIntent()` share the gap. Stripe *Checkout* (`createCheckoutSession`) is the only correctly-guarded checkout path.
+- Fix: call `BillingMode::assertTestMode($provider)` at the top of each of the four methods, before `isEnabled()`/`getBaseURL()`/`apiRequest()`.
+- File refs: `PayPalProvider.php:659` (createOrder), `:875` (captureOrder); `StripeProvider.php:650` (createPaymentIntent); `CoinbaseProvider.php:570` (createCharge); wired-correctly controls: `PayPalProvider.php:1091`,`:2015`, `StripeProvider.php:278`,`:1182`.
+
+### F-B02 (Medium) — repro
+`BillingScheduler::executeProviderCharge()` (`BillingScheduler.php:2764/2776/2788`) and `PaymentManager::chargeViaProvider()` (`PaymentManager.php:2936/2940/2944`) call `PayPalProvider/StripeProvider/CoinbaseProvider::chargeStoredMethod()` — grep-confirmed the method is defined NOWHERE. In PHP this raises `\Error` (Call to undefined method), which the surrounding `catch (\Exception)` blocks in `executeProviderCharge`, `processSubscriptionCharge`, and `processDueTasks` do NOT catch — so a single due `charge_subscription` task for a card provider crashes the entire cron batch (all later dunning/suspension/reminder tasks are skipped). No live charge results (it crashes first), so this is availability/correctness, not a bypass.
+
+## Refuted vectors (coverage)
+- **2 · amount/tier tampering** — REFUTED. Checkout price is server-derived from `tblSubscriptionTiers` (`process.php:95`); `changeTier()` reads OLD price from `tblSubscriptions.amount` and NEW from `getTier()`, ignoring any `$opts` amount (`PaymentManager.php:735-739`); webhook renewal advances the period by server date math, not the payload amount (`PaymentManager.php:1404-1415`).
+- **3 · IDOR** — REFUTED. Every user-facing subscription mutation binds `WHERE subscriptionID=? AND userID=?` (`PaymentManager.php:358,411,445,688,1194`). Partner/admin credit APIs enforce per-partner `AccessControl::canViewPartnerFinancials()/canManagePartnerPayments()` + CSRF (`partners/api/credit-actions.php:272,529`); admin credit API is super-admin gated.
+- **4 · webhook forgery** — REFUTED (forgery). Both `webhooks/stripe.php` and `webhooks/paypal.php` verify the provider signature FIRST, then dedup on `tblInboundWebhooks(provider,eventID,status='processed')`, then call `handleWebhookEvent`; unsigned/bad-sig requests are rejected 400/401 before any handling. Illegal transitions are rejected by `SubscriptionStateMachine`. (Residual non-atomic-dedup race = F-B05.)
+- **5 · credit negative/double-spend/race** — REFUTED. `CreditManager` deposit/withdraw/payFromCredits/adjustBalance/transfer each wrap `Database::beginTransaction()` + `SELECT … FOR UPDATE` on the balance row and compare via bcmath; withdraw/pay reject when `bccomp(balance,amount) < 0`; adjust rejects a negative result; transfer locks both rows in balanceID order and checks the source (`CreditManager.php:387-454,599-694,1684-1787`).
+- **7 · PCI / secrets** — REFUTED. No PAN/CVV stored; `tblPaymentMethods` holds only token (`providerMethodID`), `lastFour`, `brand`. Provider secrets are `SecurityUtils::decrypt()`-ed from tblSettings and never logged; cURL uses `SSL_VERIFYPEER/HOST`.
+- **8 · SQLi / overflow / info-leak** — REFUTED. All payment queries are prepared with bound types; `getTransactionHistory` allowlists `transactionType` before use; money math is bcmath at scale 2 with documented half-up rounding.
+
+## PoC files created (G-002)
+- `_tests/Security/BillingTestModeBypassTest.php` — 3 tests, all passing (F-B01 confirmed + guard-works control). Run: `php vendor/bin/phpunit _tests/Security/BillingTestModeBypassTest.php`
+- `_tests/Security/DiscountCodeReuseTest.php` — 1 test, passing (F-B04 confirmed). Run: `php vendor/bin/phpunit _tests/Security/DiscountCodeReuseTest.php`

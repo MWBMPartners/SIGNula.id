@@ -663,6 +663,14 @@ class PayPalProvider
         array $options = []
     ): array {
         try {
+            // 🛡️ TEST-MODE GUARD (G-002 §0/§9.1) — checked FIRST, before any other
+            // logic or PayPal API call. If billing.test_mode_guard is ON and
+            // payment.paypal.mode is 'live', this throws BillingModeException,
+            // which the catch(\Exception) block below converts into the usual
+            // ['success' => false, 'message' => …] response — no HTTP call is
+            // ever reached. @see BillingMode::assertTestMode()
+            BillingMode::assertTestMode('paypal');
+
             // 🔍 Verify PayPal is enabled before attempting API call
             if (!self::isEnabled()) {
                 return [
@@ -875,6 +883,14 @@ class PayPalProvider
     public static function captureOrder(string $orderID): array
     {
         try {
+            // 🛡️ TEST-MODE GUARD (G-002 §0/§9.1) — checked FIRST, before any other
+            // logic or PayPal API call. If billing.test_mode_guard is ON and
+            // payment.paypal.mode is 'live', this throws BillingModeException,
+            // which the catch(\Exception) block below converts into the usual
+            // ['success' => false, 'message' => …] response — no HTTP call is
+            // ever reached. @see BillingMode::assertTestMode()
+            BillingMode::assertTestMode('paypal');
+
             // 🔍 Validate the order ID
             if (empty($orderID)) {
                 return [

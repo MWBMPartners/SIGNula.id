@@ -230,8 +230,19 @@ class PaymentManager
             if (!empty($options['promoCode'])) {
                 $discount = self::validateDiscountCode($options['promoCode'], $tier['tierSlug'], $paymentMethod, $amount);
                 if ($discount['valid']) {
-                    $discountAmount = $discount['discountAmount'];
-                    $amount = max(0, $amount - $discountAmount);
+                    // 🔒 F-B04 FIX: redeem the code ATOMICALLY (increments
+                    // currentUses AND re-checks the maxUses cap in one
+                    // guarded UPDATE — @see incrementDiscountUsage()) right
+                    // at the point this subscription is about to commit with
+                    // the code applied. Only apply the discount amount if we
+                    // actually won the redemption; if a concurrent request
+                    // already exhausted the cap between validateDiscountCode()
+                    // above and this call, proceed at full price rather than
+                    // fail the whole subscription over a lost race.
+                    if (self::incrementDiscountUsage($options['promoCode'])) {
+                        $discountAmount = $discount['discountAmount'];
+                        $amount = max(0, $amount - $discountAmount);
+                    }
                 }
             }
 
@@ -2117,7 +2128,24 @@ class PaymentManager
                     $partnerID,
                     $paymentContext,
                 ],
-                'iisssddsdddssssssis'
+                // 🩹 F-B03 FOLLOW-ON FIX: the bind_param type string was
+                // misaligned with the column list above — discovered because
+                // the F-B03 fix to processUsagePayment()'s recordPayment()
+                // call finally exercised a path that passes a real
+                // 'currency' option, which surfaced it immediately (a new
+                // regression test asserted currency = 'GBP' and got '0').
+                // Position-by-position against the 19 placeholders:
+                //   7  currency       was 'd' (double) — MUST be 's' (VARCHAR(3)).
+                //      mysqli_stmt::bind_param('d', 'GBP') coerces the
+                //      string to (float)'GBP' === 0.0, so every payment
+                //      silently stored currency = '0' instead of 'GBP'/'USD'/…
+                //   8  discountAmount was 's' — MUST be 'd' (DECIMAL).
+                //   9  discountCode   was 'd' — MUST be 's' (VARCHAR, nullable;
+                //      harmless whenever NULL, but corrupts a REAL code like
+                //      'WELCOME10' to '0' the same way currency was corrupted).
+                //  12  netAmount      was 's' — MUST be 'd' (DECIMAL).
+                // @see https://www.php.net/manual/en/mysqli-stmt.bind-param.php
+                'iisssdsdsdddsssssis'
             );
 
             $paymentID = Database::getLastInsertId();
@@ -2429,17 +2457,58 @@ class PaymentManager
     }
 
     /**
-     * 📊 Increment discount code usage
+     * 📊 Atomically Redeem a Discount Code (increment usage, re-check the cap)
      *
-     * @param string $code Discount code
+     * 🔒 F-B04 FIX: previously this was an unconditional `currentUses + 1`
+     * UPDATE with no cap re-check, and — worse — it was never even CALLED
+     * from the main redemption paths (PaymentManager::createSubscription(),
+     * web/public_html/checkout/process.php), so a maxUses=1 discount code
+     * was infinitely reusable (currentUses stayed 0 forever).
+     *
+     * This is now the single ATOMIC "spend" operation for a discount code,
+     * mirroring the compare-and-set idiom already used elsewhere in this
+     * codebase for exactly-once semantics under concurrency
+     * @see TokenService::refreshAccessToken() (rotatedAt IS NULL AND revoked = 0)
+     * @see OAuthTokenService.php:289 (same guarded-UPDATE + getAffectedRows() pattern)
+     *
+     * The WHERE clause both increments AND re-validates
+     * `currentUses < maxUses` in the SAME statement, so two concurrent
+     * redemption attempts against a maxUses=1 code can race to this UPDATE
+     * but only ONE of them can ever flip a row (MySQL's row-level locking
+     * during the UPDATE serialises the read-modify-write) — the other gets
+     * affected_rows = 0 and MUST treat that as "the cap was already reached",
+     * NOT retry, NOT apply the discount.
+     *
+     * @param string $code Discount code to redeem
+     *
+     * @return bool True if THIS call actually consumed a use (caller should
+     *              apply the discount); false if the code doesn't exist,
+     *              isn't active, or the cap was already reached by another
+     *              concurrent redemption — caller must NOT apply the discount.
+     *
+     * @see https://dev.mysql.com/doc/refman/8.0/en/innodb-locking-reads.html (UPDATE row locking)
      */
-    public static function incrementDiscountUsage(string $code): void
+    public static function incrementDiscountUsage(string $code): bool
     {
+        // 🔒 Guarded UPDATE: `maxUses IS NULL` = unlimited-use code (always
+        // redeemable); otherwise only flip the row if there is still room
+        // under the cap. This is the ONLY gate that matters under
+        // concurrency — validateDiscountCode()'s earlier SELECT-based check
+        // is advisory (nice error message) but NOT the enforcement point.
         Database::query(
-            "UPDATE tblDiscountCodes SET currentUses = currentUses + 1 WHERE code = ?",
+            "UPDATE tblDiscountCodes
+                SET currentUses = currentUses + 1
+              WHERE code = ?
+                AND isActive = 1
+                AND (maxUses IS NULL OR currentUses < maxUses)",
             [$code],
             's'
         );
+
+        // 🏁 Exactly one row flipped ⇒ we won the redemption. Zero rows
+        // flipped ⇒ someone else already consumed the last use (or the code
+        // is inactive/missing) between our validate() and this call.
+        return Database::getAffectedRows() === 1;
     }
 
     // ========================================================================
@@ -2771,17 +2840,46 @@ class PaymentManager
             }
 
             // 💰 Record the payment attempt
+            //
+            // 🩹 F-B03 FIX: the real signature is
+            // recordPayment(int $userID, float $amount, string $paymentMethod,
+            // string $paymentProvider, array $options = []) — 5 params. The
+            // previous call here passed 7 positional args in the wrong
+            // order/count ($subscriptionID where $amount belongs, $currency
+            // where $paymentMethod belongs, a bare string where the $options
+            // ARRAY belongs), which PHP's weak typing could not coerce for
+            // the array parameter — every usage-billing charge attempt threw
+            // an uncaught TypeError. Fixed to match the real signature, with
+            // subscriptionID/currency/invoiceID/summaryID routed through
+            // $options exactly as recordPayment() expects (subscriptionID +
+            // currency are named options it reads directly; invoiceID/
+            // summaryID are preserved via metadata, which recordPayment()
+            // JSON-encodes into tblPayments.metadata).
+            //
+            // 🩹 Also fixed the no-payment-method fallback value: tblPayments.
+            // paymentMethod is a NOT NULL ENUM('paypal', 'apple_pay',
+            // 'google_pay', 'crypto_btc', 'crypto_eth', 'crypto_usdt',
+            // 'stripe', 'manual') — 'pending' is not a member and (under the
+            // strict SQL mode this project targets) would have made the
+            // INSERT itself fail with a NEW error the instant the TypeError
+            // above stopped masking it. 'manual' is the correct member here
+            // (a manual/offline payment awaiting the user adding a payment
+            // method) and already matches the paymentPROVIDER fallback on
+            // the next line.
             $paymentResult = self::recordPayment(
                 $userID,
-                $subscriptionID,
                 $amount,
-                $currency,
-                $defaultMethod ? $defaultMethod['paymentMethod'] : 'pending',
+                $defaultMethod ? $defaultMethod['paymentMethod'] : 'manual',
                 $defaultMethod ? $defaultMethod['provider'] : 'manual',
                 [
-                    'invoiceID'  => $invoiceID,
-                    'summaryID'  => $summaryID,
-                    'type'       => 'usage_billing',
+                    'subscriptionID' => $subscriptionID,
+                    'currency'       => $currency,
+                    'description'    => 'Usage billing payment (invoice #' . $invoiceID . ')',
+                    'metadata'       => [
+                        'invoiceID' => $invoiceID,
+                        'summaryID' => $summaryID,
+                        'type'      => 'usage_billing',
+                    ],
                 ]
             );
 
@@ -2887,7 +2985,10 @@ class PaymentManager
                 ];
             }
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
+            // 🩹 F-B02/F-B03: \Throwable — a bad recordPayment()/chargeViaProvider()
+            // call (TypeError) must fail closed through this method's normal
+            // ['success' => false, ...] contract, not fatal the caller.
             ErrorLogger::log($e);
             return [
                 'success'   => false,
@@ -2929,25 +3030,68 @@ class PaymentManager
         int $paymentID
     ): array {
         try {
-            // 🔀 Route to provider-specific implementation
-            // Each provider class handles tokenised charging
+            // 🩹 F-B02 SAFETY FIX: {Stripe,PayPal}Provider::chargeStoredMethod()
+            // does NOT exist on either provider class (grep-confirmed zero
+            // hits — @see BillingMode.php's class doc-comment for the same
+            // finding). G-002 is provider-MANAGED recurring billing (PayPal
+            // Subscriptions / Stripe Billing renew themselves and notify us
+            // via webhook — @see StripeProvider::handleWebhookEvent(),
+            // PayPalProvider::handleWebhookEvent()); a self-driven "pull a
+            // stored card on a timer" engine is explicitly OUT of scope for
+            // G-002 (see spec §14) — that is tracked separately as B-075.
+            //
+            // Calling a nonexistent static method raises a PHP \Error ("Call
+            // to undefined method"), which is NOT an \Exception and was
+            // therefore NOT caught by this method's own try/catch — it
+            // propagated all the way out of the whole billing cron batch,
+            // aborting every later task (dunning, suspension, …) in the run.
+            // method_exists() detects this BEFORE the call and fails
+            // closed + informatively instead of ever reaching that call.
+            // @see https://www.php.net/manual/en/function.method-exists.php
+            if (in_array($provider, ['stripe', 'paypal'], true)) {
+                $providerClass = $provider === 'stripe' ? 'StripeProvider' : 'PayPalProvider';
+
+                if (!class_exists($providerClass)) {
+                    return ['success' => false, 'message' => ucfirst($provider) . ' provider not available'];
+                }
+
+                if (!method_exists($providerClass, 'chargeStoredMethod')) {
+                    return [
+                        'success' => false,
+                        'message' => 'unsupported: card-on-file self-charge not implemented for ' . $provider
+                            . ' (provider-managed subscriptions renew via webhook — see G-002 spec §14 / B-075)',
+                    ];
+                }
+
+                // 🚧 Unreachable today (the method never exists — see above)
+                // but kept so a future, deliberately-implemented
+                // chargeStoredMethod() is dispatched to correctly once B-075
+                // lands, without another edit here.
+                return $providerClass::chargeStoredMethod($userID, $amount, $currency, $paymentMethod, $paymentID);
+            }
+
+            // 🔀 Route to provider-specific implementation for providers that
+            // DO have a real charge-creation entry point today.
             return match ($provider) {
-                'stripe' => class_exists('StripeProvider')
-                    ? StripeProvider::chargeStoredMethod($userID, $amount, $currency, $paymentMethod, $paymentID)
-                    : ['success' => false, 'message' => 'Stripe provider not available'],
-
-                'paypal' => class_exists('PayPalProvider')
-                    ? PayPalProvider::chargeStoredMethod($userID, $amount, $currency, $paymentMethod, $paymentID)
-                    : ['success' => false, 'message' => 'PayPal provider not available'],
-
+                // 🩹 Argument order fixed to match CoinbaseProvider::createCharge()'s
+                // real signature: (float $amount, string $currency, string
+                // $description, int $userID, array $metadata = []). The
+                // previous call passed an array where $userID (int) is
+                // declared — a guaranteed TypeError (also an \Error, not an
+                // \Exception) on every usage-billing crypto charge attempt.
                 'coinbase' => class_exists('CoinbaseProvider')
-                    ? CoinbaseProvider::createCharge($amount, $currency, 'Usage billing payment', ['paymentID' => $paymentID])
+                    ? CoinbaseProvider::createCharge($amount, $currency, 'Usage billing payment', $userID, ['paymentID' => $paymentID])
                     : ['success' => false, 'message' => 'Coinbase provider not available'],
 
                 default => ['success' => false, 'message' => 'Unsupported provider: ' . $provider],
             };
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
+            // 🩹 F-B02: \Throwable (not just \Exception) — a provider call
+            // that fails in an unexpected way (e.g. a future signature
+            // change, a TypeError from bad input) must still fail closed
+            // through this method's normal ['success' => false, ...]
+            // contract rather than fatal the caller.
             ErrorLogger::log($e);
             return [
                 'success' => false,

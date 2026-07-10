@@ -653,6 +653,14 @@ class StripeProvider
         array $options = []
     ): array {
         try {
+            // 🛡️ TEST-MODE GUARD (G-002 §0/§9.1) — checked FIRST, before any other
+            // logic or Stripe API call. If billing.test_mode_guard is ON and
+            // payment.stripe.mode is 'live', this throws BillingModeException,
+            // which the catch(\Exception) block below converts into the usual
+            // ['success' => false, 'error' => …] response — no HTTP call is
+            // ever reached. @see BillingMode::assertTestMode()
+            BillingMode::assertTestMode('stripe');
+
             // ⚠️ Validate amount is positive
             if ($amount <= 0) {
                 return [

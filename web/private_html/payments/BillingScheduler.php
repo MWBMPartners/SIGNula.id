@@ -254,8 +254,16 @@ class BillingScheduler
                         'message'  => $result['message'] ?? '',
                     ];
 
-                } catch (\Exception $e) {
-                    // 🛑 Catch per-task exceptions so one failing task doesn't abort the batch
+                } catch (\Throwable $e) {
+                    // 🛑 F-B02 FIX: \Throwable (not just \Exception) — a
+                    // phantom-method \Error (e.g. the now-guarded
+                    // chargeStoredMethod() call chain — @see
+                    // self::executeProviderCharge()) previously escaped this
+                    // catch entirely (Error does NOT extend Exception),
+                    // propagating out of the WHOLE cron batch and skipping
+                    // every later due task (dunning, suspension, reminders,
+                    // …). Catching \Throwable here is what actually makes
+                    // "one failing task doesn't abort the batch" true.
                     self::markTaskProcessed($taskID, 'failed', $e->getMessage());
                     $failed++;
 
@@ -543,8 +551,13 @@ class BillingScheduler
                 ];
             }
 
-        } catch (\Exception $e) {
-            // 🛑 Unexpected exception during charge processing
+        } catch (\Throwable $e) {
+            // 🛑 F-B02 FIX: \Throwable — defence-in-depth so a direct call to
+            // processSubscriptionCharge() (this method is also called
+            // directly by callers other than the per-task loop, e.g. admin
+            // manual-retry tooling) fails closed through the normal
+            // ['success' => false, ...] contract even if executeProviderCharge()
+            // ever throws an \Error again in the future.
             ActivityLogger::log(
                 null,
                 'charge_exception',
@@ -1898,7 +1911,11 @@ class BillingScheduler
                         }
                     }
 
-                } catch (\Exception $e) {
+                } catch (\Throwable $e) {
+                    // 🛑 F-B02 FIX: \Throwable — mirrors the same fix in
+                    // self::processDueTasks()'s per-task loop; a phantom-
+                    // method \Error must fail just this one task, not abort
+                    // the lazy safety-net batch.
                     self::markTaskProcessed($taskID, 'failed', $e->getMessage());
                 }
             }
@@ -2756,52 +2773,66 @@ class BillingScheduler
         $providerMethodID = $paymentMethod['providerMethodID'] ?? null;
 
         try {
-            // 🔀 Route to the appropriate payment provider
-            switch ($provider) {
-                case 'paypal':
-                    // 💳 PayPal charge via stored billing agreement or payment token
-                    if (class_exists('PayPalProvider')) {
-                        return PayPalProvider::chargeStoredMethod(
-                            $providerMethodID,
-                            $amount,
-                            $currency,
-                            $invoiceNumber
-                        );
-                    }
-                    return ['success' => false, 'message' => 'PayPalProvider class not available'];
+            // 🩹 F-B02 SAFETY FIX: NONE of PayPalProvider / StripeProvider /
+            // CoinbaseProvider actually declare a chargeStoredMethod() method
+            // (grep-confirmed zero hits — @see BillingMode.php's class
+            // doc-comment and PaymentManager::chargeViaProvider() for the
+            // same finding). G-002 is provider-MANAGED recurring billing —
+            // PayPal Subscriptions / Stripe Billing renew themselves and
+            // notify us via webhook (@see PayPalProvider::handleWebhookEvent(),
+            // StripeProvider::handleWebhookEvent()); a self-driven "pull a
+            // stored card on a timer" engine is explicitly OUT of scope for
+            // G-002 (spec §14) and tracked separately as B-075.
+            //
+            // Calling a nonexistent static method raises a PHP \Error ("Call
+            // to undefined method"), which is NOT an \Exception — the
+            // catch(\Exception) below did NOT catch it, so it propagated all
+            // the way out of the per-task loop in processDueTasks()/
+            // processLazyBatch() (which also only caught \Exception),
+            // FATALLY crashing the entire cron batch and skipping every
+            // later task (dunning, suspension, reminders, …) in that run.
+            // method_exists() detects this BEFORE the call and fails
+            // closed + informatively instead. @see self::processDueTasks()
+            // and self::processLazyBatch() for the matching \Throwable
+            // widening on the per-task catch that makes this defence-in-depth.
+            $providerClassByKey = [
+                'paypal'   => 'PayPalProvider',
+                'stripe'   => 'StripeProvider',
+                'coinbase' => 'CoinbaseProvider',
+            ];
 
-                case 'stripe':
-                    // 💳 Stripe charge via stored payment method
-                    if (class_exists('StripeProvider')) {
-                        return StripeProvider::chargeStoredMethod(
-                            $providerMethodID,
-                            $amount,
-                            $currency,
-                            $invoiceNumber
-                        );
-                    }
-                    return ['success' => false, 'message' => 'StripeProvider class not available'];
-
-                case 'coinbase':
-                    // 🪙 Cryptocurrency charge via Coinbase Commerce
-                    if (class_exists('CoinbaseProvider')) {
-                        return CoinbaseProvider::chargeStoredMethod(
-                            $providerMethodID,
-                            $amount,
-                            $currency,
-                            $invoiceNumber
-                        );
-                    }
-                    return ['success' => false, 'message' => 'CoinbaseProvider class not available'];
-
-                default:
-                    return [
-                        'success' => false,
-                        'message' => 'Unsupported payment provider: ' . $provider,
-                    ];
+            if (!array_key_exists($provider, $providerClassByKey)) {
+                return [
+                    'success' => false,
+                    'message' => 'Unsupported payment provider: ' . $provider,
+                ];
             }
 
-        } catch (\Exception $e) {
+            $providerClass = $providerClassByKey[$provider];
+
+            if (!class_exists($providerClass)) {
+                return ['success' => false, 'message' => $providerClass . ' class not available'];
+            }
+
+            if (!method_exists($providerClass, 'chargeStoredMethod')) {
+                return [
+                    'success' => false,
+                    'message' => 'unsupported: card-on-file self-charge not implemented for ' . $provider
+                        . ' (provider-managed subscriptions renew via webhook — see G-002 spec §14 / B-075)',
+                ];
+            }
+
+            // 🚧 Unreachable today (the method never exists — see above) but
+            // kept so a deliberately-implemented chargeStoredMethod() (B-075)
+            // is dispatched to correctly without another edit here.
+            return $providerClass::chargeStoredMethod(
+                $providerMethodID,
+                $amount,
+                $currency,
+                $invoiceNumber
+            );
+
+        } catch (\Throwable $e) {
             ActivityLogger::log(
                 null,
                 'provider_charge_exception',
