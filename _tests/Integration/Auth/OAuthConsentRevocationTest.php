@@ -253,12 +253,16 @@ class OAuthConsentRevocationTest extends DatabaseTestCase
 
         $this->insertLiveConsent($userID, $reg['clientID']);
 
-        $pair = \TokenService::issueForClient($userID, $reg['clientID'], $reg['clientIdentifier'], ['openid']);
+        // 🔧 G-001 Stage A5: offline_access is required to get a refresh token.
+        $pair = \TokenService::issueForClient($userID, $reg['clientID'], $reg['clientIdentifier'], ['openid', 'offline_access']);
 
         \OAuthAuthorizeService::revokeConsent($userID, $reg['clientID']);
 
+        // 🔒 B-058: pass the OWNING client's id so this exercises the
+        //    "family revoked by consent-revoke" path specifically, not a
+        //    client-binding mismatch.
         $this->expectException(JwtException::class);
-        \TokenService::refresh($pair['refresh_token']);
+        \TokenService::refresh($pair['refresh_token'], $reg['clientID']);
     }
 
     /**
@@ -276,21 +280,22 @@ class OAuthConsentRevocationTest extends DatabaseTestCase
         $this->insertLiveConsent($userID, $regA['clientID']);
         $this->insertLiveConsent($userID, $regB['clientID']);
 
-        $pairA = \TokenService::issueForClient($userID, $regA['clientID'], $regA['clientIdentifier'], ['openid']);
-        $pairB = \TokenService::issueForClient($userID, $regB['clientID'], $regB['clientIdentifier'], ['openid']);
+        // 🔧 G-001 Stage A5: offline_access is required to get a refresh token.
+        $pairA = \TokenService::issueForClient($userID, $regA['clientID'], $regA['clientIdentifier'], ['openid', 'offline_access']);
+        $pairB = \TokenService::issueForClient($userID, $regB['clientID'], $regB['clientIdentifier'], ['openid', 'offline_access']);
 
         \OAuthAuthorizeService::revokeConsent($userID, $regA['clientID']);
 
-        // Client A's family is dead…
+        // Client A's family is dead… (pass A's own id — B-058 client binding)
         try {
-            \TokenService::refresh($pairA['refresh_token']);
+            \TokenService::refresh($pairA['refresh_token'], $regA['clientID']);
             $this->fail('Client A refresh token must be revoked');
         } catch (JwtException $e) {
             // expected
         }
 
         // …but Client B's family is UNTOUCHED.
-        $rotatedB = \TokenService::refresh($pairB['refresh_token']);
+        $rotatedB = \TokenService::refresh($pairB['refresh_token'], $regB['clientID']);
         $this->assertIsString($rotatedB['access_token']);
 
         // And Client B's consent is still live.
@@ -313,22 +318,23 @@ class OAuthConsentRevocationTest extends DatabaseTestCase
         $userB     = $this->createUser();
         $reg       = $this->registerClient($partnerID);
 
-        $pairUserA = \TokenService::issueForClient($userA, $reg['clientID'], $reg['clientIdentifier'], ['openid']);
-        $pairUserB = \TokenService::issueForClient($userB, $reg['clientID'], $reg['clientIdentifier'], ['openid']);
+        // 🔧 G-001 Stage A5: offline_access is required to get a refresh token.
+        $pairUserA = \TokenService::issueForClient($userA, $reg['clientID'], $reg['clientIdentifier'], ['openid', 'offline_access']);
+        $pairUserB = \TokenService::issueForClient($userB, $reg['clientID'], $reg['clientIdentifier'], ['openid', 'offline_access']);
 
         $revokedCount = \TokenService::revokeClientForUser($userA, $reg['clientID']);
         $this->assertSame(1, $revokedCount, 'exactly one row (user A + this client) must be revoked');
 
-        // User A's family for this client is dead…
+        // User A's family for this client is dead… (pass this client's own id)
         try {
-            \TokenService::refresh($pairUserA['refresh_token']);
+            \TokenService::refresh($pairUserA['refresh_token'], $reg['clientID']);
             $this->fail('User A refresh token for this client must be revoked');
         } catch (JwtException $e) {
             // expected
         }
 
         // …but User B's family for the SAME client is untouched.
-        $rotatedB = \TokenService::refresh($pairUserB['refresh_token']);
+        $rotatedB = \TokenService::refresh($pairUserB['refresh_token'], $reg['clientID']);
         $this->assertIsString($rotatedB['access_token']);
     }
 }

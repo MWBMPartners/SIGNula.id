@@ -18,12 +18,13 @@ declare(strict_types=1);
  *   OAuthUserInfoService/userinfo.php, OAuthRevocationService/revoke.php).
  *
  * 🔒 What is DELIBERATELY advertised vs withheld:
- *   • `grant_types_supported` = ["authorization_code"] ONLY. A `refresh_token`
- *     grant is NOT wired at `/oauth/token` yet (see OAuthTokenService's own
- *     comment on why — the presented-refresh-token↔authenticated-client
- *     binding check does not exist yet; tracked separately). Advertising it
- *     here before it works would mislead RP OIDC libraries that auto-detect
- *     supported grants from this document.
+ *   • `grant_types_supported` = ["authorization_code", "refresh_token"]. The
+ *     `refresh_token` grant was wired at `/oauth/token` in G-001 Stage A5
+ *     once TokenService::refresh() gained its presented-refresh-token↔
+ *     authenticated-client binding check (B-058) — see
+ *     OAuthTokenService::exchangeRefreshToken(). Advertising it here now
+ *     correctly informs RP OIDC libraries that auto-detect supported grants
+ *     from this document.
  *   • `token_endpoint_auth_methods_supported` includes "none" — PUBLIC
  *     clients (SPA/native/mobile) authenticate via PKCE, not a client secret
  *     (see OAuthClientManager/OAuthTokenService::authenticateClient()).
@@ -84,8 +85,8 @@ class OidcDiscoveryService
             'jwks_uri'                                 => $issuer . '/.well-known/jwks.json',
             'revocation_endpoint'                     => $issuer . '/oauth/revoke',
             'response_types_supported'                => ['code'],
-            // 🚧 refresh_token deliberately NOT advertised yet — see class doc.
-            'grant_types_supported'                   => ['authorization_code'],
+            // ✅ refresh_token wired at /oauth/token (G-001 Stage A5) — see class doc.
+            'grant_types_supported'                   => ['authorization_code', 'refresh_token'],
             'subject_types_supported'                 => ['pairwise', 'public'],
             'id_token_signing_alg_values_supported'    => ['RS256'],
             'scopes_supported'                         => ['openid', 'email', 'profile', 'offline_access'],

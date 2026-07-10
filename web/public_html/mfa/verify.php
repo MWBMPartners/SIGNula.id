@@ -96,7 +96,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         }
 
                         // ✅ Redirect to intended destination
-                        $redirect = $_SESSION['redirect_after_login'] ?? '/dashboard';
+                        // 🔒 B-057: re-sanitize AT CONSUME TIME too, defensively — Auth::login()
+                        //    already sanitizes when it FIRST stores this value (see
+                        //    Auth.php's own comment), but re-validating here means this
+                        //    page never trusts a session value blindly even if something
+                        //    else ever wrote to it. sanitizeRedirectUrl() only accepts a
+                        //    single leading '/' relative path; anything else (including a
+                        //    non-scalar value, guarded below) falls back to '/dashboard'.
+                        $storedRedirect = $_SESSION['redirect_after_login'] ?? '/dashboard';
+                        $redirect = sanitizeRedirectUrl(is_scalar($storedRedirect) ? (string) $storedRedirect : '/dashboard');
                         unset($_SESSION['redirect_after_login']);
 
                         redirect($redirect);

@@ -395,7 +395,10 @@ class OAuthTokenServiceTest extends DatabaseTestCase
         $reg       = $this->registerConfidentialClient($partnerID);
         $client    = $reg['client'];
 
-        $issued = $this->issueRealCode($client, $userID, 'openid profile');
+        // 🔧 G-001 Stage A5: refresh-token minting is now gated behind
+        //    `offline_access` — include it so this fixture still gets a
+        //    refresh token to exercise below (this test predates that gate).
+        $issued = $this->issueRealCode($client, $userID, 'openid profile offline_access');
         $first  = $this->exchange($client, $issued['code'], $issued['redirectUri'], $issued['codeVerifier'], $reg['secret']);
         $this->assertSame(200, $first['status']);
 
@@ -429,8 +432,10 @@ class OAuthTokenServiceTest extends DatabaseTestCase
         $this->assertSame($alertsBefore + 1, $this->countRecords('tblSecurityAlerts'), 'replay must raise exactly one security alert');
 
         // The first exchange's refresh token is now dead too (family revoked).
+        // Pass the OWNING client's id so this exercises the "family revoked"
+        // reuse path specifically (not merely a B-058 client-binding mismatch).
         $this->expectException(JwtException::class);
-        \TokenService::refresh($first['body']['refresh_token']);
+        \TokenService::refresh($first['body']['refresh_token'], (int) $client['clientID']);
     }
 
     // ========================================================================
@@ -627,5 +632,159 @@ class OAuthTokenServiceTest extends DatabaseTestCase
 
         $this->assertSame(400, $result['status']);
         $this->assertSame('invalid_request', $result['body']['error']);
+    }
+
+    // ========================================================================
+    // 🔄 refresh_token GRANT (G-001 Stage A5 / B-058 follow-up)
+    // ========================================================================
+
+    /**
+     * Exchange a code (WITH offline_access) for a pair, then use the
+     * refresh_token grant end-to-end via handleTokenRequest() — the happy
+     * path rotates for the OWNING client and returns a fresh pair.
+     */
+    public function testRefreshTokenGrantHappyPathRotatesForOwningClient(): void
+    {
+        $partnerID = $this->createPartner();
+        $userID    = $this->createUser();
+        $reg       = $this->registerConfidentialClient($partnerID);
+        $client    = $reg['client'];
+
+        $issued = $this->issueRealCode($client, $userID, 'openid profile offline_access');
+        $first  = $this->exchange($client, $issued['code'], $issued['redirectUri'], $issued['codeVerifier'], $reg['secret']);
+        $this->assertSame(200, $first['status']);
+        $this->assertIsString($first['body']['refresh_token']);
+
+        $result = \OAuthTokenService::handleTokenRequest(
+            ['grant_type' => 'refresh_token', 'refresh_token' => $first['body']['refresh_token']],
+            ['method' => 'body', 'client_id' => $client['clientIdentifier'], 'client_secret' => $reg['secret']]
+        );
+
+        $this->assertSame(200, $result['status']);
+        $this->assertSame('Bearer', $result['body']['token_type']);
+        $this->assertIsString($result['body']['access_token']);
+        $this->assertIsString($result['body']['refresh_token']);
+        $this->assertNotSame($first['body']['refresh_token'], $result['body']['refresh_token']);
+        $this->assertSame('openid profile offline_access', $result['body']['scope']);
+
+        // The rotated access token still verifies against this client's audience.
+        $claims = \Jwt::verify($result['body']['access_token'], ['aud' => $client['clientIdentifier']]);
+        $this->assertSame((string) $userID, $claims['sub']);
+    }
+
+    /**
+     * Presenting an ALREADY-ROTATED (spent) refresh token via the
+     * refresh_token grant still triggers reuse-detection — the whole family
+     * is revoked, denying even the rotated successor.
+     */
+    public function testRefreshTokenGrantReuseDetectionRevokesFamily(): void
+    {
+        $partnerID = $this->createPartner();
+        $userID    = $this->createUser();
+        $reg       = $this->registerConfidentialClient($partnerID);
+        $client    = $reg['client'];
+
+        $issued = $this->issueRealCode($client, $userID, 'openid offline_access');
+        $first  = $this->exchange($client, $issued['code'], $issued['redirectUri'], $issued['codeVerifier'], $reg['secret']);
+
+        $auth = ['method' => 'body', 'client_id' => $client['clientIdentifier'], 'client_secret' => $reg['secret']];
+
+        // Legitimate rotation: spend the first refresh token.
+        $second = \OAuthTokenService::handleTokenRequest(
+            ['grant_type' => 'refresh_token', 'refresh_token' => $first['body']['refresh_token']],
+            $auth
+        );
+        $this->assertSame(200, $second['status']);
+
+        $alertsBefore = $this->countRecords('tblSecurityAlerts');
+
+        // 🦹 REPLAY the now-spent first refresh token via the SAME grant.
+        $replay = \OAuthTokenService::handleTokenRequest(
+            ['grant_type' => 'refresh_token', 'refresh_token' => $first['body']['refresh_token']],
+            $auth
+        );
+        $this->assertSame(400, $replay['status']);
+        $this->assertSame('invalid_grant', $replay['body']['error']);
+        $this->assertGreaterThan($alertsBefore, $this->countRecords('tblSecurityAlerts'), 'reuse via the grant must still raise a security alert');
+
+        // The whole family is dead — even the legitimately-rotated successor
+        // (from the SAME owning client) is now denied too.
+        $thirdAttempt = \OAuthTokenService::handleTokenRequest(
+            ['grant_type' => 'refresh_token', 'refresh_token' => $second['body']['refresh_token']],
+            $auth
+        );
+        $this->assertSame(400, $thirdAttempt['status']);
+        $this->assertSame('invalid_grant', $thirdAttempt['body']['error']);
+    }
+
+    /**
+     * A DIFFERENT (validly-authenticated) client cannot use Client A's
+     * refresh token via the refresh_token grant — invalid_grant, and the
+     * token is left untouched (Client A can still use it afterwards).
+     */
+    public function testRefreshTokenGrantCrossClientDenied(): void
+    {
+        $partnerID = $this->createPartner();
+        $userID    = $this->createUser();
+        $regA      = $this->registerConfidentialClient($partnerID, 'https://a.example.com/callback');
+        $regB      = $this->registerConfidentialClient($partnerID, 'https://b.example.com/callback');
+
+        $issued = $this->issueRealCode($regA['client'], $userID, 'openid offline_access');
+        $first  = $this->exchange($regA['client'], $issued['code'], $issued['redirectUri'], $issued['codeVerifier'], $regA['secret']);
+        $this->assertSame(200, $first['status']);
+
+        // 🦹 Client B (validly authenticating as ITSELF) tries to rotate A's token.
+        $crossAttempt = \OAuthTokenService::handleTokenRequest(
+            ['grant_type' => 'refresh_token', 'refresh_token' => $first['body']['refresh_token']],
+            ['method' => 'body', 'client_id' => $regB['client']['clientIdentifier'], 'client_secret' => $regB['secret']]
+        );
+        $this->assertSame(400, $crossAttempt['status']);
+        $this->assertSame('invalid_grant', $crossAttempt['body']['error']);
+
+        // ✅ Client A (the real owner) can still redeem it normally.
+        $ownAttempt = \OAuthTokenService::handleTokenRequest(
+            ['grant_type' => 'refresh_token', 'refresh_token' => $first['body']['refresh_token']],
+            ['method' => 'body', 'client_id' => $regA['client']['clientIdentifier'], 'client_secret' => $regA['secret']]
+        );
+        $this->assertSame(200, $ownAttempt['status']);
+        $this->assertIsString($ownAttempt['body']['access_token']);
+    }
+
+    /**
+     * A missing `refresh_token` param for the refresh_token grant is
+     * invalid_request.
+     */
+    public function testRefreshTokenGrantMissingRefreshTokenIsInvalidRequest(): void
+    {
+        $partnerID = $this->createPartner();
+        $reg       = $this->registerConfidentialClient($partnerID);
+
+        $result = \OAuthTokenService::handleTokenRequest(
+            ['grant_type' => 'refresh_token'],
+            ['method' => 'body', 'client_id' => $reg['client']['clientIdentifier'], 'client_secret' => $reg['secret']]
+        );
+
+        $this->assertSame(400, $result['status']);
+        $this->assertSame('invalid_request', $result['body']['error']);
+    }
+
+    /**
+     * A client exchanging a code WITHOUT offline_access gets no refresh_token
+     * at all — so there is nothing to rotate via the refresh_token grant
+     * (the RP must re-run the authorization_code flow instead).
+     */
+    public function testAuthorizationCodeExchangeWithoutOfflineAccessHasNoRefreshToken(): void
+    {
+        $partnerID = $this->createPartner();
+        $userID    = $this->createUser();
+        $reg       = $this->registerConfidentialClient($partnerID);
+        $client    = $reg['client'];
+
+        $issued = $this->issueRealCode($client, $userID, 'openid profile'); // no offline_access
+        $result = $this->exchange($client, $issued['code'], $issued['redirectUri'], $issued['codeVerifier'], $reg['secret']);
+
+        $this->assertSame(200, $result['status']);
+        $this->assertIsString($result['body']['access_token']);
+        $this->assertArrayNotHasKey('refresh_token', $result['body'], 'no offline_access => no refresh_token in the response at all');
     }
 }

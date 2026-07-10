@@ -21,16 +21,27 @@
  * Method: POST only (RFC 6749 §3.2 "The client MUST use the HTTP POST
  *         method"). Any other method → 405.
  *
- * Request (application/x-www-form-urlencoded body, RFC 6749 §4.1.3):
- *   - grant_type    (required) Only "authorization_code" is currently wired.
- *   - code          (required) The Stage A2 single-use authorization code.
- *   - redirect_uri  (required) Must byte-exact match the code's bound value.
- *   - code_verifier (required*) PKCE verifier — *required whenever the code
- *                                carries a code_challenge.
+ * Request (application/x-www-form-urlencoded body, RFC 6749 §4.1.3 / §6):
+ *   - grant_type    (required) "authorization_code" or "refresh_token".
+ *   - code          (required for authorization_code) The Stage A2 single-use
+ *                                authorization code.
+ *   - redirect_uri  (required for authorization_code) Must byte-exact match
+ *                                the code's bound value.
+ *   - code_verifier (required* for authorization_code) PKCE verifier —
+ *                                *required whenever the code carries a
+ *                                code_challenge.
+ *   - refresh_token (required for refresh_token) The opaque refresh token to
+ *                                rotate (RFC 6749 §6) — G-001 Stage A5.
  *   - client_id / client_secret — via HTTP Basic (`Authorization: Basic
  *                                  base64(client_id:client_secret)`) OR these
  *                                  two body fields (RFC 6749 §2.3.1). Basic is
  *                                  tried first; body fields are the fallback.
+ *
+ * 🚦 Rate limiting (B-059): per-IP AND (when a client_id was presented)
+ *    per-client, BEFORE any DB-bound client/grant work — see "RATE LIMITING"
+ *    below. Reuses the existing `jwt.rate_limit.*` settings (G-003) under
+ *    DISTINCT bucket names so this endpoint's counters never mix with
+ *    `/api/v1/auth/token`'s.
  *
  * All request validation + code redemption + token/id_token minting logic
  * lives in OAuthTokenService (web/private_html/auth/OAuthTokenService.php) —
@@ -139,8 +150,9 @@ function resolveClientAuth(): array
 
 /**
  * ❌ Emit a JSON error body with the given status + optional extra headers,
- * and exit. Used for the ONE local (non-OAuthTokenService) failure this
- * controller itself detects: an unsupported HTTP method.
+ * and exit. Used for the LOCAL (non-OAuthTokenService) failures this
+ * controller itself detects: an unsupported HTTP method, and (B-059) a
+ * rate-limit breach.
  *
  * @param int    $status  HTTP status code.
  * @param string $error   OAuth error code.
@@ -168,11 +180,37 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 
 $clientAuth = resolveClientAuth();
 
+// ============================================================================
+// 🚦 RATE LIMITING (B-059) — BEFORE any DB-bound client/grant work
+// ============================================================================
+// Mirrors JwtAuthController::enforceIssueRateLimit()'s approach (per-IP AND,
+// when a client_id was presented, per-client) using the SAME
+// SecurityUtils::checkRateLimit() limiter — which fails OPEN (returns true)
+// if the limiter store itself is unavailable, exactly like the JWT endpoints.
+// Reuses the EXISTING jwt.rate_limit.* settings (G-003) rather than adding a
+// new migration/settings namespace — the token_per_ip / token_per_identifier
+// / window_seconds semantics apply equally well here; DISTINCT bucket names
+// ('oauth_token_ip' / 'oauth_token_client') keep this endpoint's counters
+// separate from /api/v1/auth/token's own ('jwt_token').
+$rlWindowSecs = (int) getSetting('jwt.rate_limit.window_seconds', 900);
+$rlMaxPerIp   = (int) getSetting('jwt.rate_limit.token_per_ip', 30);
+$rlMaxPerId   = (int) getSetting('jwt.rate_limit.token_per_identifier', 10);
+
+if (!SecurityUtils::checkRateLimit(getClientIP(), 'oauth_token_ip', $rlMaxPerIp, $rlWindowSecs)) {
+    emitTokenError(429, 'rate_limited', 'Too many requests. Please try again later.', ['Retry-After' => (string) $rlWindowSecs]);
+}
+if ($clientAuth['client_id'] !== ''
+    && !SecurityUtils::checkRateLimit('client:' . strtolower($clientAuth['client_id']), 'oauth_token_client', $rlMaxPerId, $rlWindowSecs)
+) {
+    emitTokenError(429, 'rate_limited', 'Too many requests. Please try again later.', ['Retry-After' => (string) $rlWindowSecs]);
+}
+
 $params = [
     'grant_type'    => tokenParam('grant_type'),
     'code'          => tokenParam('code'),
     'redirect_uri'  => tokenParam('redirect_uri'),
     'code_verifier' => tokenParam('code_verifier'),
+    'refresh_token' => tokenParam('refresh_token'), // G-001 Stage A5 — refresh_token grant
 ];
 
 // 🎯 All validation, redemption, and minting logic lives in the service — this

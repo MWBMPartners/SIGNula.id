@@ -208,7 +208,10 @@ class OAuthRevocationServiceTest extends DatabaseTestCase
      */
     private function mintPair(int $userID, int $clientID, string $clientIdentifier): array
     {
-        return \TokenService::issueForClient($userID, $clientID, $clientIdentifier, ['openid']);
+        // 🔧 G-001 Stage A5: refresh-token minting is gated behind
+        //    `offline_access` — every test in this suite needs a refresh
+        //    token to revoke/rotate, so it is always included here.
+        return \TokenService::issueForClient($userID, $clientID, $clientIdentifier, ['openid', 'offline_access']);
     }
 
     // ========================================================================
@@ -235,8 +238,10 @@ class OAuthRevocationServiceTest extends DatabaseTestCase
         $this->assertSame(200, $result['status']);
         $this->assertSame([], $result['body']);
 
+        // 🔒 B-058: pass the owning client's id — this must fail due to the
+        //    revoked family, not a client-binding mismatch.
         $this->expectException(JwtException::class);
-        \TokenService::refresh($pair['refresh_token']);
+        \TokenService::refresh($pair['refresh_token'], $reg['clientID']);
     }
 
     /**
@@ -312,8 +317,9 @@ class OAuthRevocationServiceTest extends DatabaseTestCase
         // Still 200 (RFC 7009 — no validity oracle)…
         $this->assertSame(200, $result['status']);
 
-        // …but the token is UNTOUCHED — refresh() still succeeds (does not throw).
-        $rotated = \TokenService::refresh($pairA['refresh_token']);
+        // …but the token is UNTOUCHED — refresh() still succeeds (does not
+        // throw) for the ACTUAL owning client (regA — B-058 client binding).
+        $rotated = \TokenService::refresh($pairA['refresh_token'], $regA['clientID']);
         $this->assertIsString($rotated['access_token']);
     }
 
@@ -383,8 +389,9 @@ class OAuthRevocationServiceTest extends DatabaseTestCase
 
         $this->assertSame(200, $result['status']);
 
+        // 🔒 B-058: pass the owning (public) client's id.
         $this->expectException(JwtException::class);
-        \TokenService::refresh($pair['refresh_token']);
+        \TokenService::refresh($pair['refresh_token'], $reg['clientID']);
     }
 
     // ========================================================================

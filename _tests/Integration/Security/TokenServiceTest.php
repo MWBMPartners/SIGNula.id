@@ -587,7 +587,10 @@ class TokenServiceTest extends DatabaseTestCase
         $userID = $this->createUser();
         $client = $this->createClient();
 
-        $pair = \TokenService::issueForClient($userID, $client['clientID'], $client['clientIdentifier'], ['openid', 'profile']);
+        // 🔧 G-001 Stage A5: refresh-token MINTING is now gated behind the
+        //    `offline_access` scope — include it so this fixture still gets a
+        //    refresh row to assert on (this test predates that gating).
+        $pair = \TokenService::issueForClient($userID, $client['clientID'], $client['clientIdentifier'], ['openid', 'profile', 'offline_access']);
 
         // ✅ The access token verifies ONLY against the CLIENT's audience —
         //    not the default first-party jwt.audience.
@@ -621,9 +624,15 @@ class TokenServiceTest extends DatabaseTestCase
         $userID = $this->createUser();
         $client = $this->createClient();
 
-        $first = \TokenService::issueForClient($userID, $client['clientID'], $client['clientIdentifier'], ['openid']);
+        // 🔧 G-001 Stage A5: offline_access is required to get a refresh token
+        //    at all now (mintPair()'s $withRefresh gate).
+        $first = \TokenService::issueForClient($userID, $client['clientID'], $client['clientIdentifier'], ['openid', 'offline_access']);
 
-        $second = \TokenService::refresh($first['refresh_token']);
+        // 🔒 B-058: refresh() now enforces client-binding — pass the OWNING
+        //    client's id as $authenticatedClientID (exactly what
+        //    OAuthTokenService::exchangeRefreshToken() does in production)
+        //    so this rotation is the legitimate, correctly-authenticated case.
+        $second = \TokenService::refresh($first['refresh_token'], $client['clientID']);
 
         // ✅ The ROTATED access token still verifies against the SAME client
         //    audience — the clientID → clientIdentifier resolution survived
@@ -669,6 +678,185 @@ class TokenServiceTest extends DatabaseTestCase
         // Still verifies against the DEFAULT (first-party) audience.
         $claims = \Jwt::verify($rotated['access_token']);
         $this->assertSame((string) $userID, $claims['sub']);
+    }
+
+    // ========================================================================
+    // 🔒 G-001 STAGE A5 (B-058) — CLIENT-BINDING ENFORCEMENT ON refresh()
+    // ========================================================================
+
+    /**
+     * An RP-bound refresh token presented with NO authenticated client
+     * (exactly what /api/v1/auth/refresh — the first-party endpoint — would
+     * do) is REJECTED, and the token is NOT rotated/spent (it can still be
+     * redeemed by the CORRECT client afterwards).
+     */
+    public function testRpBoundRefreshTokenRejectedWithNoAuthenticatedClient(): void
+    {
+        $userID = $this->createUser();
+        $client = $this->createClient();
+
+        $pair = \TokenService::issueForClient($userID, $client['clientID'], $client['clientIdentifier'], ['openid', 'offline_access']);
+
+        $threw = false;
+        try {
+            \TokenService::refresh($pair['refresh_token']); // no $authenticatedClientID
+        } catch (JwtException $e) {
+            $threw = true;
+        }
+        $this->assertTrue($threw, 'An RP-bound refresh token presented with no client auth must be rejected');
+
+        // 🟢 NOT spent — the family is still fully live (no rotation happened).
+        $this->assertSame(1, $this->activeFamilyCount($pair['family_id']));
+
+        // ✅ The CORRECT client can still redeem it afterwards.
+        $rotated = \TokenService::refresh($pair['refresh_token'], $client['clientID']);
+        $this->assertIsString($rotated['access_token']);
+    }
+
+    /**
+     * An RP-bound refresh token presented by the WRONG (but validly resolved)
+     * client is REJECTED, and — critically — does NOT revoke the family (a
+     * binding mismatch is an authz failure, not proof of theft); the owning
+     * client can still redeem the SAME still-live token afterwards.
+     */
+    public function testRpBoundRefreshTokenRejectedForWrongClient(): void
+    {
+        $userID  = $this->createUser();
+        $clientA = $this->createClient();
+        $clientB = $this->createClient();
+
+        $pair = \TokenService::issueForClient($userID, $clientA['clientID'], $clientA['clientIdentifier'], ['openid', 'offline_access']);
+
+        $alertsBefore = $this->countRecords('tblSecurityAlerts');
+
+        $threw = false;
+        try {
+            \TokenService::refresh($pair['refresh_token'], $clientB['clientID']); // wrong client
+        } catch (JwtException $e) {
+            $threw = true;
+        }
+        $this->assertTrue($threw, 'A refresh token presented by the WRONG client must be rejected');
+
+        // 🟢 A mismatch alert MAY be raised, but the family must NOT be revoked
+        //    (unlike genuine reuse) — the legitimate client A can still use it.
+        $this->assertSame(1, $this->activeFamilyCount($pair['family_id']), 'a client mismatch must NOT revoke the family');
+        $this->assertGreaterThanOrEqual($alertsBefore, $this->countRecords('tblSecurityAlerts'));
+
+        // ✅ Client A (the ACTUAL owner) can still redeem the SAME token.
+        $rotated = \TokenService::refresh($pair['refresh_token'], $clientA['clientID']);
+        $this->assertIsString($rotated['access_token']);
+    }
+
+    /**
+     * An RP-bound refresh token presented WITH the CORRECT client id rotates
+     * normally, and the newly-minted successor token is STILL bound to the
+     * SAME client (the binding survives rotation, exactly like clientID/aud
+     * preservation already does).
+     */
+    public function testRpBoundRefreshTokenRotatesForCorrectClientAndStaysBound(): void
+    {
+        $userID = $this->createUser();
+        $client = $this->createClient();
+
+        $first = \TokenService::issueForClient($userID, $client['clientID'], $client['clientIdentifier'], ['openid', 'offline_access']);
+
+        $second = \TokenService::refresh($first['refresh_token'], $client['clientID']);
+        $this->assertIsString($second['access_token']);
+
+        $row = \Database::fetchOne(
+            "SELECT clientID FROM tblRefreshTokens WHERE tokenHash = ?",
+            [hash('sha256', $second['refresh_token'])],
+            's'
+        );
+        $this->assertSame($client['clientID'], (int) $row['clientID'], 'the ROTATED token must still be bound to the same client');
+
+        // ✅ The chain continues: client can rotate again.
+        $third = \TokenService::refresh($second['refresh_token'], $client['clientID']);
+        $this->assertIsString($third['access_token']);
+    }
+
+    /**
+     * A first-party refresh token (issueTokens(), no client) still rotates
+     * via refresh($tok) with NO $authenticatedClientID — completely unchanged
+     * by the B-058 binding check (null === null is a match).
+     */
+    public function testFirstPartyRefreshTokenStillRotatesUnchanged(): void
+    {
+        $userID = $this->createUser();
+        $pair    = \TokenService::issueTokens($userID, ['user:read']);
+
+        $rotated = \TokenService::refresh($pair['refresh_token']);
+        $this->assertIsString($rotated['access_token']);
+        $this->assertNotSame($pair['refresh_token'], $rotated['refresh_token']);
+    }
+
+    /**
+     * A first-party refresh token presented with a (bogus) authenticated
+     * client id is rejected — a first-party token has no business being
+     * redeemed with client credentials attached at all.
+     */
+    public function testFirstPartyRefreshTokenRejectedWhenAnAuthenticatedClientIsPresented(): void
+    {
+        $userID = $this->createUser();
+        $pair   = \TokenService::issueTokens($userID, ['user:read']);
+
+        $this->expectException(JwtException::class);
+        \TokenService::refresh($pair['refresh_token'], 999999);
+    }
+
+    // ========================================================================
+    // 🔐 G-001 STAGE A5 — offline_access GATING OF REFRESH-TOKEN MINTING
+    // ========================================================================
+
+    /**
+     * issueForClient() WITHOUT `offline_access` in the granted scope mints
+     * NO refresh token at all (null, not merely withheld from a response) —
+     * still returns a perfectly usable access token.
+     */
+    public function testIssueForClientWithoutOfflineAccessMintsNoRefreshToken(): void
+    {
+        $userID = $this->createUser();
+        $client = $this->createClient();
+
+        $pair = \TokenService::issueForClient($userID, $client['clientID'], $client['clientIdentifier'], ['openid', 'profile']);
+
+        $this->assertIsString($pair['access_token']);
+        $this->assertNull($pair['refresh_token'], 'no offline_access scope => no refresh token minted');
+
+        // 💾 No row was persisted for this family at all.
+        $this->assertSame(0, $this->familyCount($pair['family_id']));
+    }
+
+    /**
+     * issueForClient() WITH `offline_access` in the granted scope DOES mint
+     * a refresh token (the existing, already-covered happy path — reasserted
+     * here explicitly alongside its "without" sibling for contrast).
+     */
+    public function testIssueForClientWithOfflineAccessMintsRefreshToken(): void
+    {
+        $userID = $this->createUser();
+        $client = $this->createClient();
+
+        $pair = \TokenService::issueForClient($userID, $client['clientID'], $client['clientIdentifier'], ['openid', 'offline_access']);
+
+        $this->assertIsString($pair['access_token']);
+        $this->assertIsString($pair['refresh_token']);
+        $this->assertSame(64, strlen($pair['refresh_token']));
+        $this->assertSame(1, $this->familyCount($pair['family_id']));
+    }
+
+    /**
+     * issueTokens() (first-party) is COMPLETELY UNAFFECTED by the
+     * offline_access gate — it always mints a refresh token, scope or not.
+     */
+    public function testIssueTokensFirstPartyAlwaysMintsRefreshTokenRegardlessOfScope(): void
+    {
+        $userID = $this->createUser();
+
+        $pair = \TokenService::issueTokens($userID, ['user:read']); // no offline_access
+
+        $this->assertIsString($pair['refresh_token']);
+        $this->assertSame(64, strlen($pair['refresh_token']));
     }
 
     // ========================================================================

@@ -8,9 +8,9 @@
  * bootstrap to read $GLOBALS['test_settings']) — no Database access. Proves
  * the document is valid JSON-encodable, advertises issuer = oidc.issuer, the
  * 4 required endpoints under that issuer, subject_types_supported includes
- * 'pairwise', RS256 signing, S256 PKCE, and — deliberately — that
- * grant_types_supported does NOT contain 'refresh_token' (not wired at
- * `/oauth/token` yet, per OidcDiscoveryService's own class doc).
+ * 'pairwise', RS256 signing, S256 PKCE, and that grant_types_supported
+ * contains BOTH 'authorization_code' AND 'refresh_token' — the latter wired
+ * at `/oauth/token` in G-001 Stage A5 (B-058 follow-up).
  *
  * @package    SIGNula\Tests\Unit\Auth
  * @version    2.9.0-beta
@@ -99,16 +99,18 @@ class OidcDiscoveryServiceTest extends TestCase
     }
 
     /**
-     * 🔒 grant_types_supported MUST NOT contain 'refresh_token' — that grant
-     * is not wired at /oauth/token yet (OAuthTokenService's own comment);
-     * advertising it here would mislead RP OIDC libraries.
+     * 🔒 grant_types_supported MUST contain BOTH 'authorization_code' and
+     * 'refresh_token' — the refresh_token grant is now wired at
+     * /oauth/token (G-001 Stage A5, once TokenService::refresh() gained its
+     * client-binding check, B-058) so advertising it here correctly informs
+     * RP OIDC libraries that auto-detect supported grants.
      */
-    public function testGrantTypesDoesNotAdvertiseRefreshToken(): void
+    public function testGrantTypesAdvertisesAuthorizationCodeAndRefreshToken(): void
     {
         $document = OidcDiscoveryService::buildDocument();
 
-        $this->assertSame(['authorization_code'], $document['grant_types_supported']);
-        $this->assertNotContains('refresh_token', $document['grant_types_supported']);
+        $this->assertSame(['authorization_code', 'refresh_token'], $document['grant_types_supported']);
+        $this->assertContains('refresh_token', $document['grant_types_supported']);
     }
 
     /**

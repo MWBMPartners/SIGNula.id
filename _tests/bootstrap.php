@@ -235,6 +235,53 @@ if (!function_exists('redirect')) {
 }
 
 /**
+ * 🔒 Sanitize Redirect URL (Stub)
+ *
+ * B-057: Auth::login() (web/private_html/auth/Auth.php) now calls the REAL
+ * sanitizeRedirectUrl() when storing the post-MFA redirect target, so any
+ * Integration test that exercises Auth::login() in-process (without loading
+ * the full web/_config/config.php) needs this global function defined too —
+ * mirrors getSetting()/redirect()/etc. above. Logic copied verbatim from the
+ * production implementation (web/_config/config.php) rather than a loose
+ * approximation, so tests exercise the SAME accept/reject behaviour.
+ *
+ * @param string $url      Candidate redirect URL.
+ * @param string $fallback Safe fallback when $url is not an acceptable
+ *                         same-site relative path.
+ * @return string
+ *
+ * @see web/_config/config.php for production implementation
+ */
+if (!function_exists('sanitizeRedirectUrl')) {
+    function sanitizeRedirectUrl(string $url, string $fallback = '/dashboard'): string
+    {
+        $url = trim($url);
+
+        // ❌ Reject empty URLs
+        if ($url === '') {
+            return $fallback;
+        }
+
+        // ❌ Reject protocol-relative URLs (//evil.com) and absolute URLs
+        if (preg_match('#^(https?://|//|[a-z]+:)#i', $url)) {
+            return $fallback;
+        }
+
+        // ✅ Must start with a single forward slash (relative path)
+        if ($url[0] !== '/') {
+            return $fallback;
+        }
+
+        // ❌ Reject double slashes after the first character (//evil.com disguised)
+        if (isset($url[1]) && $url[1] === '/') {
+            return $fallback;
+        }
+
+        return $url;
+    }
+}
+
+/**
  * 📤 JSON Response (Stub)
  *
  * In tests, stores the response data in $GLOBALS for later assertion

@@ -156,15 +156,18 @@ class TokenService
      *                                 (already validated ⊆ requested ⊆ allowed
      *                                 by the /oauth/authorize-idp + /oauth/token
      *                                 flow — this method does not re-check).
+     *                                 🔐 G-001 Stage A5: a refresh token is
+     *                                 only actually MINTED when `$scope`
+     *                                 contains `offline_access` — see below.
      * @return array{
      *     access_token:string,
-     *     refresh_token:string,
+     *     refresh_token:?string,
      *     token_type:string,
      *     expires_in:int,
      *     scope:string,
      *     family_id:string,
      *     jti:string
-     * }
+     * } `refresh_token` is null when the granted scope lacked `offline_access`.
      * @throws JwtException On signing failure (propagated from Jwt::sign()).
      */
     public static function issueForClient(int $userID, int $clientID, string $clientIdentifier, array $scope = []): array
@@ -174,7 +177,20 @@ class TokenService
         //    initial code exchange (only refresh() continues one).
         $familyID = self::newFamilyId();
 
-        return self::mintPair($userID, $familyID, $scope, $clientIdentifier, $clientID);
+        // 🔐 G-001 Stage A5 (B-058 follow-up) — GATE refresh-token MINTING
+        //    behind the `offline_access` scope (the standard OIDC convention:
+        //    without it, an RP only gets a short-lived access token and must
+        //    re-run the full authorization flow when it expires; WITH it, the
+        //    RP is granted a long-lived refresh token too). A client that
+        //    never requested/was granted offline_access has no business
+        //    holding a refresh token at all — minting one anyway would be an
+        //    unused, needlessly long-lived credential sitting in the DB.
+        //    First-party issueTokens() is DELIBERATELY UNCHANGED (always
+        //    mints a refresh token) — it has no OIDC scope-consent model, and
+        //    changing that first-party contract is out of scope here.
+        $withRefresh = in_array('offline_access', $scope, true);
+
+        return self::mintPair($userID, $familyID, $scope, $clientIdentifier, $clientID, $withRefresh);
     }
 
     // ========================================================================
@@ -201,7 +217,43 @@ class TokenService
      *      winner issues a NEW access+refresh pair in the SAME family and links
      *      replacedByID to the new row.
      *
-     * @param string $refreshToken The opaque refresh-token plaintext from the client.
+     * 🔒 G-001 Stage A5 (B-058 fix) — CLIENT-BINDING enforcement:
+     *   A refresh token minted via {@see self::issueForClient()} records the
+     *   RP's internal clientID on the row. Before this fix, refresh() would
+     *   rotate ANY structurally-valid, unexpired token regardless of WHO
+     *   presented it — so a refresh token minted for Client A could be
+     *   redeemed at the first-party `/api/v1/auth/refresh` endpoint (no
+     *   client auth at all), or by Client B presenting ITS OWN valid
+     *   credentials, as long as it got hold of Client A's token value. Now:
+     *     • $authenticatedClientID MUST equal the row's clientID EXACTLY
+     *       (both null, i.e. first-party token via the first-party endpoint,
+     *       counts as a match). Any mismatch — wrong client, no client at
+     *       all for an RP token, or an unexpected client for a first-party
+     *       token — is REJECTED *before* the token is ever inspected for
+     *       reuse or spent (see below for why that ordering matters).
+     *   A mismatch is an AUTHORIZATION failure, not a theft signal — the
+     *   token itself may still be perfectly live and legitimately held by
+     *   its real owning client. So (deliberately, see handleClientBindingMismatch())
+     *   a mismatch does NOT revoke the family (unlike genuine reuse below);
+     *   it only refuses to let up THIS caller rotate it. Checking binding
+     *   BEFORE the reuse-detection/expiry/atomic-spend steps guarantees a
+     *   mismatched request can never rotate, spend, or (more importantly)
+     *   trigger a false-positive family-wide revoke for tokens it has no
+     *   claim to — an unauthenticated caller (or a rival client) could
+     *   otherwise force a family revoke (a real user's DoS) merely by
+     *   replaying an intercepted-but-still-live token with the wrong client
+     *   credentials attached.
+     *
+     * @param string   $refreshToken         The opaque refresh-token plaintext from the client.
+     * @param int|null $authenticatedClientID The CALLER's own authenticated client
+     *                                        identity (tblOAuthClients.clientID),
+     *                                        or null for the first-party
+     *                                        `/api/v1/auth/refresh` endpoint
+     *                                        (which performs no client auth at
+     *                                        all). Defaults to null so every
+     *                                        EXISTING first-party call site
+     *                                        keeps compiling/behaving exactly
+     *                                        as before.
      * @return array{
      *     access_token:string,
      *     refresh_token:string,
@@ -211,9 +263,9 @@ class TokenService
      *     family_id:string,
      *     jti:string
      * }
-     * @throws JwtException On any invalid / reused / expired refresh token.
+     * @throws JwtException On any invalid / reused / expired / client-mismatched refresh token.
      */
-    public static function refresh(string $refreshToken): array
+    public static function refresh(string $refreshToken, ?int $authenticatedClientID = null): array
     {
         // 🔑 1. Hash the presented plaintext and look it up. We NEVER compare the
         //    plaintext directly — only the SHA-256 hex, exactly as stored.
@@ -241,6 +293,20 @@ class TokenService
         //    for one minted via issueForClient(). Threaded through the rotate
         //    below so an RP's tokens STAY attributable to it across rotation.
         $clientID = $row['clientID'] !== null ? (int) $row['clientID'] : null;
+
+        // 🔒 1.5 CLIENT-BINDING ENFORCEMENT (B-058) — see the method doc for
+        //    the full rationale. This MUST run before reuse-detection/expiry/
+        //    spend so a mismatched caller can never rotate the token NOR
+        //    trigger the reuse machinery's family-wide revoke on a token it
+        //    has no claim to (that revoke is reserved for PROVEN replay).
+        //    A simple strict inequality covers all four cases the spec
+        //    calls out: null===null (first-party @ first-party endpoint) is
+        //    a match; anything else (wrong client, missing client for an
+        //    RP token, or an unexpected client on a first-party token) is not.
+        if ($authenticatedClientID !== $clientID) {
+            self::handleClientBindingMismatch($clientID, $authenticatedClientID, $userID, $tokenID);
+            throw new JwtException('Refresh token client binding failed');
+        }
 
         // 🚨 2. REUSE DETECTION — a spent (rotatedAt set) or revoked token was
         //    presented again. This is the theft signal. Kill the whole family.
@@ -613,11 +679,33 @@ class TokenService
      *                                     UNCHANGED behaviour for the existing
      *                                     issueTokens()/refresh() call sites
      *                                     that don't pass it).
+     * @param bool               $withRefresh Whether to actually MINT + persist
+     *                                     a refresh token at all. Defaults to
+     *                                     true — issueTokens() (first-party)
+     *                                     and refresh() (rotation ALWAYS
+     *                                     re-mints, since possessing a live
+     *                                     refresh token to rotate already
+     *                                     proves offline_access was granted at
+     *                                     issuance) both rely on this default
+     *                                     and never pass it explicitly.
+     *                                     issueForClient() passes false when
+     *                                     the granted scope lacks
+     *                                     `offline_access` (G-001 Stage A5 —
+     *                                     see its own doc comment) — when
+     *                                     false, NO row is inserted and the
+     *                                     returned 'refresh_token'/
+     *                                     '_new_token_id' are both null.
      * @return array<string,mixed> access_token/refresh_token/… + _new_token_id.
      * @throws JwtException On signing failure.
      */
-    private static function mintPair(int $userID, string $familyID, array $scope, ?string $aud, ?int $clientID = null): array
-    {
+    private static function mintPair(
+        int $userID,
+        string $familyID,
+        array $scope,
+        ?string $aud,
+        ?int $clientID = null,
+        bool $withRefresh = true
+    ): array {
         // 📏 Normalise the scope to a single space-delimited string (same
         //    vocabulary as tblAPIKeys.permissions — §5 coexistence).
         $scopeStr = self::normaliseScope($scope);
@@ -641,43 +729,57 @@ class TokenService
         //    token is cheap and avoids duplicating jti generation.
         $jti = self::extractJti($accessToken);
 
-        // 🔐 Mint the OPAQUE refresh token: 32 random bytes → 64 hex chars
-        //    (256 bits). PLAINTEXT is returned to the caller ONCE; only the
-        //    SHA-256 hash is stored (spec §5 / MEMORY C5).
-        $refreshPlain = bin2hex(random_bytes(32));
-        $refreshHash  = self::hashRefreshToken($refreshPlain);
+        // 🔐 G-001 Stage A5 — refresh-token MINTING is gated by $withRefresh.
+        //    When false (RP issuance WITHOUT offline_access), skip the mint +
+        //    persistence entirely: no plaintext generated, no row inserted, no
+        //    orphaned/unusable refresh token left in the DB. The access token
+        //    is still returned normally — a caller without offline_access
+        //    still gets a working (short-lived) access token, just no way to
+        //    silently refresh it later.
+        $refreshPlain = null;
+        $newTokenId   = null;
 
-        // 📅 Refresh-token expiry = now + jwt.refresh_ttl (default 30 days).
-        $refreshTtl   = (int) getSetting('jwt.refresh_ttl', 2592000);
-        $expiresAtSql = date('Y-m-d H:i:s', time() + $refreshTtl);
+        if ($withRefresh) {
+            // 🔐 Mint the OPAQUE refresh token: 32 random bytes → 64 hex chars
+            //    (256 bits). PLAINTEXT is returned to the caller ONCE; only the
+            //    SHA-256 hash is stored (spec §5 / MEMORY C5).
+            $refreshPlain = bin2hex(random_bytes(32));
+            $refreshHash  = self::hashRefreshToken($refreshPlain);
 
-        // 🌐 Capture request context for audit (never the token itself).
-        $ip = self::clientIp();
-        $ua = self::userAgent();
+            // 📅 Refresh-token expiry = now + jwt.refresh_ttl (default 30 days).
+            $refreshTtl   = (int) getSetting('jwt.refresh_ttl', 2592000);
+            $expiresAtSql = date('Y-m-d H:i:s', time() + $refreshTtl);
 
-        // 💾 Persist the refresh row (hash only). The UNIQUE index on tokenHash
-        //    guarantees no duplicate; a collision is astronomically improbable
-        //    (256-bit token) and would surface as a query exception, not silent.
-        //    clientID (G-001) is NULL for a first-party token — the column has
-        //    existed since migration 030 ("Reserved for G-001 RP clients") and
-        //    is populated here now that issueForClient()/refresh() supply it.
-        $newTokenId = Database::insert(
-            "INSERT INTO tblRefreshTokens
-                (userID, familyID, tokenHash, clientID, scope, issuedAt, expiresAt, ipAddress, userAgent, createdAt)
-             VALUES (?, ?, ?, ?, ?, NOW(), ?, ?, ?, NOW())",
-            [$userID, $familyID, $refreshHash, $clientID, $scopeStr, $expiresAtSql, $ip, $ua],
-            'ississss'
-        );
+            // 🌐 Capture request context for audit (never the token itself).
+            $ip = self::clientIp();
+            $ua = self::userAgent();
+
+            // 💾 Persist the refresh row (hash only). The UNIQUE index on
+            //    tokenHash guarantees no duplicate; a collision is
+            //    astronomically improbable (256-bit token) and would surface
+            //    as a query exception, not silent. clientID (G-001) is NULL
+            //    for a first-party token — the column has existed since
+            //    migration 030 ("Reserved for G-001 RP clients") and is
+            //    populated here now that issueForClient()/refresh() supply it.
+            $newTokenId = Database::insert(
+                "INSERT INTO tblRefreshTokens
+                    (userID, familyID, tokenHash, clientID, scope, issuedAt, expiresAt, ipAddress, userAgent, createdAt)
+                 VALUES (?, ?, ?, ?, ?, NOW(), ?, ?, ?, NOW())",
+                [$userID, $familyID, $refreshHash, $clientID, $scopeStr, $expiresAtSql, $ip, $ua],
+                'ississss'
+            );
+        }
 
         return [
             'access_token'  => $accessToken,
-            'refresh_token' => $refreshPlain,   // ← returned ONCE, never stored
+            'refresh_token' => $refreshPlain,   // ← returned ONCE, never stored; null when $withRefresh===false
             'token_type'    => 'Bearer',
             'expires_in'    => $accessTtl,
             'scope'         => $scopeStr,
             'family_id'     => $familyID,
             'jti'           => $jti,
-            '_new_token_id' => $newTokenId,     // internal — stripped by refresh()
+            'user_id'       => $userID,        // internal — convenience for callers that need it post-mint (e.g. audit logging)
+            '_new_token_id' => $newTokenId,     // internal — stripped by refresh(); null when $withRefresh===false
         ];
     }
 
@@ -747,6 +849,86 @@ class TokenService
                 );
             } catch (\Throwable $e) {
                 error_log('TokenService::handleReuse activity log failed: ' . $e->getMessage());
+            }
+        }
+    }
+
+    /**
+     * 🔒 Handle a refresh-token CLIENT-BINDING MISMATCH (B-058): the caller's
+     * authenticated client identity does not match the token's owning client
+     * (or a first-party token was presented alongside an unexpected client).
+     *
+     * Unlike {@see self::handleReuse()}, this does NOT revoke the family. A
+     * binding mismatch means THIS caller has no right to rotate THIS token —
+     * it says nothing about whether the token itself has been compromised.
+     * The token's real owner (the correct client, or the first-party
+     * endpoint with no client) can still redeem it normally afterwards.
+     * Revoking on mismatch would hand an unauthenticated (or wrong-client)
+     * caller a trivial DoS: replay any observed/guessed-at live token with
+     * the "wrong" client attached, repeatedly, to force-revoke a stranger's
+     * session — that must NOT be possible. We do raise a (lower-severity)
+     * security alert, since a mismatch is still a signal worth an operator's
+     * attention (a legitimate integration bug, or a genuine cross-client
+     * probing attempt), best-effort so alerting can never block the deny.
+     *
+     * @param int|null $tokenClientID          The row's OWNING clientID (null = first-party).
+     * @param int|null $authenticatedClientID  The CALLER's authenticated clientID (null = none/first-party).
+     * @param int      $userID                 The token's owning user (for the alert).
+     * @param int      $tokenID                The specific token row (for the alert metadata).
+     * @return void
+     */
+    private static function handleClientBindingMismatch(
+        ?int $tokenClientID,
+        ?int $authenticatedClientID,
+        int $userID,
+        int $tokenID
+    ): void {
+        // 🚨 Best-effort security alert — SEVERITY_MEDIUM (below reuse's HIGH):
+        //    an authz mismatch is not yet proven theft.
+        if (class_exists('SecurityAlertManager')) {
+            try {
+                SecurityAlertManager::create(
+                    // No dedicated TYPE_* exists for this (mirrors handleReuse()'s
+                    // own note) — TYPE_SESSION_HIJACK is the closest semantic
+                    // (an unauthorized party attempting to use a credential that
+                    // is not theirs).
+                    SecurityAlertManager::TYPE_SESSION_HIJACK,
+                    SecurityAlertManager::SEVERITY_MEDIUM,
+                    'Refresh-token client-binding mismatch for user ID ' . $userID
+                        . ' — presented client did not match the token owner (token NOT rotated).',
+                    [
+                        'event'                    => 'refresh_token_client_mismatch',
+                        'token_id'                 => $tokenID,
+                        'user_id'                  => $userID,
+                        'token_client_id'          => $tokenClientID,
+                        'authenticated_client_id'  => $authenticatedClientID,
+                        'action_taken'             => 'rejected_no_rotation_no_revoke',
+                    ],
+                    $userID,
+                    self::clientIp()
+                );
+            } catch (\Throwable $e) {
+                error_log('TokenService::handleClientBindingMismatch alert failed: ' . $e->getMessage());
+            }
+        }
+
+        // 📝 Best-effort activity log (audit trail).
+        if (class_exists('ActivityLogger')) {
+            try {
+                ActivityLogger::log(
+                    $userID,
+                    'refresh_token_client_mismatch',
+                    'security',
+                    'warning',
+                    'Refresh-token client-binding mismatch — request denied, token left untouched.',
+                    [
+                        'token_id'                => $tokenID,
+                        'token_client_id'         => $tokenClientID,
+                        'authenticated_client_id' => $authenticatedClientID,
+                    ]
+                );
+            } catch (\Throwable $e) {
+                error_log('TokenService::handleClientBindingMismatch activity log failed: ' . $e->getMessage());
             }
         }
     }

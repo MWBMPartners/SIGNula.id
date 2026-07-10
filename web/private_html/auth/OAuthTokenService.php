@@ -3,19 +3,22 @@ declare(strict_types=1);
 
 /**
  * ============================================================================
- * 🪪 SIGNula - OAuth2/OIDC Provider: Token Endpoint Service (G-001 Stage A3)
+ * 🪪 SIGNula - OAuth2/OIDC Provider: Token Endpoint Service (G-001 Stage A3 + A5)
  * ============================================================================
  *
  * Purpose:
  *   The pure/DB-bound business logic behind `/oauth/token` (SIGNula acting as
- *   the OAuth2/OIDC PROVIDER, exchanging an A2 authorization code for an
- *   access token + OIDC id_token, optionally + a refresh token). This class is
- *   the "engine"; the public_html page (`web/public_html/oauth/token.php`) is
- *   a THIN controller that parses the HTTP request, calls into here, and
- *   emits the RFC 6749 JSON response — kept that way specifically so the
- *   client-authentication and code-redemption logic can be exercised directly
- *   by Integration tests without ever spinning up a real HTTP request. This
- *   mirrors the OAuthAuthorizeService/authorize-idp.php split from Stage A2.
+ *   the OAuth2/OIDC PROVIDER): the `authorization_code` grant (Stage A3,
+ *   exchanging an A2 authorization code for an access token + OIDC id_token,
+ *   optionally + a refresh token) AND the `refresh_token` grant (Stage A5 —
+ *   wired once TokenService::refresh() gained its client-binding check,
+ *   B-058). This class is the "engine"; the public_html page
+ *   (`web/public_html/oauth/token.php`) is a THIN controller that parses the
+ *   HTTP request, calls into here, and emits the RFC 6749 JSON response —
+ *   kept that way specifically so the client-authentication and
+ *   code-redemption logic can be exercised directly by Integration tests
+ *   without ever spinning up a real HTTP request. This mirrors the
+ *   OAuthAuthorizeService/authorize-idp.php split from Stage A2.
  *
  * Split of responsibilities:
  *   • handleTokenRequest() — the single entry point the controller calls.
@@ -31,6 +34,11 @@ declare(strict_types=1);
  *     (RFC 6749 §4.1.3): atomic single-use code consumption, replay-revoke,
  *     client/redirect_uri/expiry binding checks, PKCE verification, and
  *     token + id_token minting.
+ *   • exchangeRefreshToken() — DB-bound (via TokenService::refresh()). The
+ *     refresh_token grant (RFC 6749 §6): rotates a refresh token BOUND to the
+ *     authenticated client — TokenService rejects (before ever
+ *     rotating/spending) a token that belongs to a different client, or to
+ *     no client at all (a first-party token presented here).
  *
  * Security properties (see .dev-team/specs/G-001.md §5 — all mandatory):
  *   • The code is consumed via a SINGLE atomic, guarded UPDATE
@@ -136,34 +144,36 @@ class OAuthTokenService
         }
         $client = $auth['client'];
 
-        // 2️⃣ grant_type — required, and only authorization_code is currently wired.
+        // 2️⃣ grant_type — required. authorization_code (Stage A3) and
+        //    refresh_token (Stage A5 — G-001/B-058 follow-up, now that
+        //    TokenService::refresh() enforces client-binding) are wired.
         $grantType = self::stringParam($params, 'grant_type');
         if ($grantType === '') {
             return self::errorResult(400, 'invalid_request', 'grant_type is required.');
         }
 
-        if ($grantType !== 'authorization_code') {
-            // 🔜 refresh_token would slot in here as a SIBLING branch
-            //    (`case 'refresh_token': return self::handleRefreshTokenGrant(...)`).
-            //    Deliberately NOT implemented yet: TokenService::refresh() does
-            //    not currently verify that the presented refresh token's
-            //    clientID matches THIS authenticated $client — a refresh token
-            //    minted for Client A must never be redeemable by Client B
-            //    presenting valid credentials of its own. Wiring the grant in
-            //    without that binding check would be an unsafe half-measure,
-            //    so it is left for a dedicated follow-up rather than shipped
-            //    incomplete here. authorization_code (this stage's required
-            //    deliverable) is unaffected by this gap.
-            return self::errorResult(400, 'unsupported_grant_type', "Unsupported grant_type '{$grantType}'.");
+        if ($grantType === 'authorization_code') {
+            // 3️⃣ code — required for the authorization_code grant.
+            $code = self::stringParam($params, 'code');
+            if ($code === '') {
+                return self::errorResult(400, 'invalid_request', 'code is required.');
+            }
+
+            return self::exchangeAuthorizationCode($client, $params);
         }
 
-        // 3️⃣ code — required for the authorization_code grant.
-        $code = self::stringParam($params, 'code');
-        if ($code === '') {
-            return self::errorResult(400, 'invalid_request', 'code is required.');
+        if ($grantType === 'refresh_token') {
+            // 3️⃣ refresh_token — required for the refresh_token grant.
+            $refreshToken = self::stringParam($params, 'refresh_token');
+            if ($refreshToken === '') {
+                return self::errorResult(400, 'invalid_request', 'refresh_token is required.');
+            }
+
+            return self::exchangeRefreshToken($client, $refreshToken);
         }
 
-        return self::exchangeAuthorizationCode($client, $params);
+        // ❌ Any other grant_type is unsupported (RFC 6749 §5.2).
+        return self::errorResult(400, 'unsupported_grant_type', "Unsupported grant_type '{$grantType}'.");
     }
 
     // ========================================================================
@@ -407,18 +417,100 @@ class OAuthTokenService
             'scope'        => $pair['scope'],
             'id_token'     => $idToken,
         ];
-        // 🔁 TokenService::mintPair() ALWAYS mints a refresh token (mirrors
-        //    issueTokens()'s existing first-party behaviour — there is no
-        //    "scope-conditional mint" lever in TokenService today), so it is
-        //    always present here and always returned; withholding it from the
-        //    response while still persisting the row would leave an unusable,
-        //    orphaned refresh token in the DB for no benefit. Gating actual
-        //    ISSUANCE behind the `offline_access` scope (the common OIDC
-        //    convention) would need a TokenService change to skip the mint
-        //    entirely — flagged as a follow-up, not required for this stage.
+        // 🔁 G-001 Stage A5: TokenService::issueForClient() now GATES the
+        //    refresh-token mint behind the `offline_access` scope (see its own
+        //    doc comment) — `$pair['refresh_token']` is null when it was not
+        //    granted, so this conditional naturally omits the field from the
+        //    response in that case (rather than the previous "always present"
+        //    behaviour, back when TokenService had no such lever).
         if (!empty($pair['refresh_token'])) {
             $body['refresh_token'] = $pair['refresh_token'];
         }
+
+        return ['status' => 200, 'body' => $body, 'headers' => []];
+    }
+
+    // ========================================================================
+    // 🔄 REFRESH_TOKEN GRANT (RFC 6749 §6 — G-001 Stage A5 / B-058 follow-up)
+    // ========================================================================
+
+    /**
+     * 🔄 Rotate a refresh token for the ALREADY-AUTHENTICATED `$client` (RFC
+     * 6749 §6 "Refreshing an Access Token").
+     *
+     * Delegates the actual rotation to {@see TokenService::refresh()}, passing
+     * the AUTHENTICATED client's internal clientID so TokenService's B-058
+     * client-binding check can enforce that this token actually BELONGS to
+     * this client — a refresh token minted for Client A can never be rotated
+     * by Client B, even with B's own perfectly valid credentials (see
+     * TokenService::refresh()'s own doc comment for the full rationale).
+     *
+     * @param array<string,mixed> $client       Hydrated, authenticated client row.
+     * @param string              $refreshToken The opaque refresh-token plaintext presented by the caller.
+     * @return array{status:int, body:array<string,mixed>, headers:array<string,string>}
+     */
+    public static function exchangeRefreshToken(array $client, string $refreshToken): array
+    {
+        $clientID = (int) $client['clientID'];
+
+        try {
+            // 🔒 B-058: TokenService rejects (BEFORE rotating/spending) any
+            //    token whose owning clientID does not equal $clientID —
+            //    including a first-party token (owning clientID NULL) or a
+            //    token minted for a DIFFERENT client. Reuse (a spent/revoked
+            //    token replayed) is still detected and still revokes the
+            //    family exactly as the authorization_code grant's replay
+            //    handling does.
+            $pair = \TokenService::refresh($refreshToken, $clientID);
+        } catch (\JwtException $e) {
+            // 🔇 Unknown / expired / reused / client-mismatched — ALL
+            //    indistinguishable to the caller (never leak WHY; detail is
+            //    logged inside TokenService). RFC 6749 §5.2: invalid_grant.
+            return self::errorResult(
+                400,
+                'invalid_grant',
+                'The refresh token is invalid, expired, or does not belong to this client.'
+            );
+        }
+
+        // 📝 Best-effort audit (no token material logged). $pair['user_id'] is
+        //    TokenService's own internal convenience field (see mintPair()) —
+        //    avoids an extra DB round trip just to attribute this log entry.
+        if (class_exists('ActivityLogger')) {
+            try {
+                ActivityLogger::log(
+                    isset($pair['user_id']) ? (int) $pair['user_id'] : null,
+                    'oauth_token_refreshed',
+                    'auth',
+                    'info',
+                    "OAuth refresh-token rotated for client \"{$client['clientName']}\"",
+                    ['clientID' => $clientID, 'scope' => $pair['scope'], 'familyID' => $pair['family_id']]
+                );
+            } catch (\Throwable $e) {
+                error_log('OAuthTokenService: activity log failed: ' . $e->getMessage());
+            }
+        }
+
+        $body = [
+            'access_token' => $pair['access_token'],
+            'token_type'   => 'Bearer',
+            'expires_in'   => $pair['expires_in'],
+            'scope'        => $pair['scope'],
+        ];
+        // 🔁 A rotated token ALWAYS re-mints a refresh token (TokenService's
+        //    refresh() defaults $withRefresh=true unconditionally — possessing
+        //    a live refresh token to rotate already proves offline_access was
+        //    granted at the original issuance), so this is always present.
+        if (!empty($pair['refresh_token'])) {
+            $body['refresh_token'] = $pair['refresh_token'];
+        }
+        // 🪪 id_token: OIDC Core §12.2 permits (does not require) a fresh
+        //    id_token on refresh. Deliberately OMITTED here — re-minting it
+        //    would need to re-resolve the pairwise `sub` + re-fetch profile/
+        //    email claims for a userID/scope pair that would cost an extra
+        //    query this grant does not otherwise need; RFC 6749/OIDC do not
+        //    require it, so this is a valid, conformant, minimal response.
+        //    Flagged as a possible follow-up, not a gap in THIS stage.
 
         return ['status' => 200, 'body' => $body, 'headers' => []];
     }

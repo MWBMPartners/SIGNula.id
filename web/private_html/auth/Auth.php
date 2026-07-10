@@ -374,7 +374,22 @@ class Auth
                     $_SESSION['mfa_user_id'] = $user['userID'];
                     $_SESSION['mfa_required'] = true;
                     $_SESSION['mfa_remember_me'] = $rememberMe;
-                    $_SESSION['redirect_after_login'] = $_GET['redirect'] ?? 'dashboard.php';
+                    // 🔒 B-057: sanitize the caller-supplied ?redirect= BEFORE it is
+                    //    ever stored in the session — an unvalidated value here would
+                    //    let an attacker craft a login link that open-redirects the
+                    //    victim to an external site once MFA verification completes
+                    //    (see mfa/verify.php's consume-time defensive re-sanitize too).
+                    //    sanitizeRedirectUrl() (web/_config/config.php) only accepts a
+                    //    single leading '/' relative path; anything else (absolute,
+                    //    protocol-relative, non-HTTP scheme) is replaced by the fallback.
+                    //    🛡️ Guard against a crafted non-scalar `redirect[]=` query param —
+                    //    sanitizeRedirectUrl()'s `string $url` parameter would otherwise
+                    //    TypeError on an array (this file has no strict_types coercion
+                    //    fallback to lean on), turning a crafted URL into a 500.
+                    $requestedRedirect = isset($_GET['redirect']) && is_scalar($_GET['redirect'])
+                        ? (string) $_GET['redirect']
+                        : '/dashboard';
+                    $_SESSION['redirect_after_login'] = sanitizeRedirectUrl($requestedRedirect);
 
                     // 📝 Log MFA challenge
                     ActivityLogger::log($user['userID'], 'mfa_challenge_issued', 'auth', 'info',

@@ -26,6 +26,11 @@
  *                                  EXACTLY as `/oauth/token` accepts them
  *                                  (RFC 6749 §2.3.1).
  *
+ * 🚦 Rate limiting (B-059): per-IP AND (when a client_id was presented)
+ *    per-client, BEFORE any DB-bound client/token work — see "RATE LIMITING"
+ *    below. Reuses the existing `jwt.rate_limit.*` settings (G-003) under
+ *    DISTINCT bucket names, mirroring `/oauth/token`'s own wiring.
+ *
  * All client-authentication + ownership-checked revocation logic lives in
  * OAuthRevocationService (web/private_html/auth/OAuthRevocationService.php)
  * — this file is a THIN controller: parse request -> call the service -> emit
@@ -114,19 +119,61 @@ function resolveRevokeClientAuth(): array
     ];
 }
 
+/**
+ * ❌ Emit a JSON error body with the given status + optional extra headers,
+ * and exit. Used for the LOCAL (non-OAuthRevocationService) failures this
+ * controller itself detects: an unsupported HTTP method, and (B-059) a
+ * rate-limit breach. Mirrors emitTokenError() in oauth/token.php.
+ *
+ * @param int    $status  HTTP status code.
+ * @param string $error   OAuth error code.
+ * @param string $description Human-readable description.
+ * @param array<string,string> $headers Extra headers to send.
+ */
+function emitRevokeError(int $status, string $error, string $description, array $headers = []): never
+{
+    http_response_code($status);
+    foreach ($headers as $name => $value) {
+        header($name . ': ' . $value);
+    }
+    echo json_encode(['error' => $error, 'error_description' => $description], JSON_UNESCAPED_SLASHES);
+    exit;
+}
+
 // ============================================================================
 // 🚦 MAIN FLOW
 // ============================================================================
 
 // 🔒 RFC 7009 §2: the revocation endpoint is POST-only.
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    http_response_code(405);
-    header('Allow: POST');
-    echo json_encode(['error' => 'invalid_request', 'error_description' => 'Only POST is supported.'], JSON_UNESCAPED_SLASHES);
-    exit;
+    emitRevokeError(405, 'invalid_request', 'Only POST is supported.', ['Allow' => 'POST']);
 }
 
 $clientAuth = resolveRevokeClientAuth();
+
+// ============================================================================
+// 🚦 RATE LIMITING (B-059) — BEFORE any DB-bound client/token work
+// ============================================================================
+// Same limiter (SecurityUtils::checkRateLimit(), fail-OPEN if the limiter
+// store is unavailable) and the same reused jwt.rate_limit.* settings
+// /oauth/token uses, under their OWN distinct bucket names so revoke traffic
+// never shares a counter with the token endpoint.
+$rlWindowSecs = (int) getSetting('jwt.rate_limit.window_seconds', 900);
+// 🔧 refresh_per_ip (60) is reused here as the per-IP ceiling for revoke too —
+//    a revoke call is a lighter-weight operation than a token mint, so the
+//    existing "refresh" limit's higher allowance is the better-fitting reuse
+//    (see this file's own class doc + the task report for the naming note).
+$rlMaxPerIp = (int) getSetting('jwt.rate_limit.refresh_per_ip', 60);
+$rlMaxPerId = (int) getSetting('jwt.rate_limit.token_per_identifier', 10);
+
+if (!SecurityUtils::checkRateLimit(getClientIP(), 'oauth_revoke_ip', $rlMaxPerIp, $rlWindowSecs)) {
+    emitRevokeError(429, 'rate_limited', 'Too many requests. Please try again later.', ['Retry-After' => (string) $rlWindowSecs]);
+}
+if ($clientAuth['client_id'] !== ''
+    && !SecurityUtils::checkRateLimit('client:' . strtolower($clientAuth['client_id']), 'oauth_revoke_client', $rlMaxPerId, $rlWindowSecs)
+) {
+    emitRevokeError(429, 'rate_limited', 'Too many requests. Please try again later.', ['Retry-After' => (string) $rlWindowSecs]);
+}
 
 $params = [
     'token'           => revokeParam('token'),
