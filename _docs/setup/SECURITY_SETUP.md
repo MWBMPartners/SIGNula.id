@@ -1638,3 +1638,63 @@ a provider webhook (`PAYMENT.SALE.COMPLETED` for PayPal,
 which resolves the local subscription via
 `tblSubscriptions.paymentProviderSubscriptionID` and moves it back to
 `active` — independently of, and often before, the next dunning tick fires.
+
+---
+
+## 🛡️ Data-Protection / Compliance (G-004) — in progress
+
+Multi-jurisdiction compliance tooling is being built in layers. **Layer 1a
+(consent foundation)** is shipped; the DSAR fulfilment engine, admin queue,
+data-driven regime model, and breach/RoPA/retention machinery follow in later
+layers. This section documents the security-relevant parts as they land.
+
+### The one hard rule (design invariant)
+
+Every jurisdiction-specific value — a right, an SLA in days, an age threshold,
+a breach-notification window — lives in **DB configuration**, never in PHP.
+Adding a new regime is a data change, not a code change. As of L1a there is
+**zero hardcoded regime or legal value** anywhere in `web/private_html`
+(grep-enforced each cycle). PHP knows only the *shape* of a regime, never the
+*values* for a named country. **All legal/policy text ships empty or as an
+explicitly-labelled draft — it is never fabricated by the build; the operator
+and counsel supply the wording.**
+
+### Consent audit trail (`tblConsentRecords` / `ConsentManager`)
+
+- **Append-only.** A consent decision is *never* updated to flip it — every
+  grant/withdraw is a new immutable row, so the table is its own full audit
+  history. "Current state" is just "the newest row per consent type." A
+  regulator asking "prove this user consented, and when" gets a complete trail.
+- **PII minimisation.** The captured IP is stored **packed** as `VARBINARY(16)`
+  via `inet_pton()` (no plaintext address, no derived geo); the user agent is
+  truncated. A malformed IP degrades to `NULL` rather than failing the capture.
+- **Tamper-evidence.** When `consent.proof_hash.enabled` is on (default), each
+  row carries a SHA-256 `proofHash` over
+  `consentType | granted | policyVersion | timestamp | packedIP | userAgent`,
+  re-derivable by an auditor to detect a modified row.
+- **Auditing.** Every decision is also written to `tblActivityLog` under the
+  new `privacy` category (migration 040 widened the category ENUM to include it).
+- **User surface.** `settings/privacy.php` exposes a server-persisted consent
+  toggle + read-only "My Consent History". The action is CSRF-verified, validates
+  the consent type against a **server-authoritative allowlist** (a form can never
+  write an arbitrary consent type into the trail), scopes all rows to the
+  session `userID` (no IDOR), escapes all output, and works with JavaScript off.
+
+### Erasure-safety contract (lands with the DSAR layer, L1b)
+
+Neither `tblConsentRecords` nor `tblDataSubjectRequests` uses
+`ON DELETE CASCADE` to `tblUsers`. On permanent account erasure the PII in
+these rows is **anonymised** (`userID`/IP/UA nulled/redacted), **not deleted** —
+the *fact* of consent and the *fact* of a fulfilled request survive as an
+anonymised compliance record even after the account is gone, while the personal
+data does not. (The additive `permanentlyDeleteAccount()` step that enforces
+this is part of the next layer, not L1a.)
+
+### Settings added (all `privacy` category, non-sensitive)
+
+`dsar.default_sla_days` (30), `dsar.identity_verification.required` (true),
+`dsar.identity_token.ttl_minutes` (30), `dsar.admin.notify_on_new` (true),
+`dsar.due_soon.warn_days` (7), `consent.proof_hash.enabled` (true). Per-regime
+overrides of the SLA/age/breach values arrive with the regime model (a later
+layer) and always fall back to the most-protective default — the resolver never
+fails open.

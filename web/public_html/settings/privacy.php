@@ -53,6 +53,24 @@ $PRIVACY_PREFERENCE_KEYS = [
     'showOnlineStatus'      => ['prefKey' => 'privacy.showOnlineStatus',      'default' => 0],
 ];
 
+// ============================================================================
+// 🍪 CONSENT TYPE ALLOWLIST (G-004 Layer 1 — FG-002a)
+// ============================================================================
+// 🔒 The ONLY consentType values this page is permitted to record via the
+// 'record_consent' POST action below. Server-authoritative closed set —
+// mirrors the free-but-conventional keys documented on
+// tblConsentRecords.consentType (migration 040). Also doubles as the
+// display map for the "My Consent History" read-only section further down.
+//
+// @see web/private_html/compliance/ConsentManager.php
+// @see _database/migrations/040_consent_and_dsar.sql
+$CONSENT_TYPE_LABELS = [
+    'cookies.analytics'  => 'Analytics Cookies',
+    'cookies.marketing'  => 'Marketing Cookies',
+    'cookies.functional' => 'Functional Cookies',
+    'marketing.email'    => 'Marketing Emails',
+];
+
 /**
  * 📥 Load the current user's privacy preferences from the tblUserPreferences
  * EAV store, filling in defaults for any key that has never been saved.
@@ -318,6 +336,52 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // 🔄 Refresh user data after cancellation
             $user = getCurrentUser();
         }
+
+    // ====================================================================
+    // 🍪 RECORD CONSENT DECISION (G-004 Layer 1 — FG-002a)
+    // ====================================================================
+    // Server-persisted grant/withdraw for a cookie/marketing consent type.
+    // This is the authenticated "preference center" surface — the
+    // localStorage-only footer banner (public-footer.php) is replaced with
+    // a properly server-persisted, granular flow in a later G-004 cycle
+    // (Layer 2); this action gives logged-in users a working, auditable
+    // toggle today.
+    } elseif ($action === 'record_consent') {
+        if (!SecurityUtils::verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+            $message = 'Invalid security token. Please try again.';
+            $messageType = 'danger';
+        } else {
+            // 🧼 Sanitise, then validate against the server-authoritative
+            // allowlist ($CONSENT_TYPE_LABELS above) — this form must never
+            // be able to write an arbitrary consentType into the audit trail.
+            $consentType = SecurityUtils::sanitizeString($_POST['consent_type'] ?? '');
+            $granted = ($_POST['granted'] ?? '') === '1';
+
+            if (!array_key_exists($consentType, $CONSENT_TYPE_LABELS)) {
+                $message = 'Unrecognised consent type.';
+                $messageType = 'danger';
+            } else {
+                if (!class_exists('ConsentManager')) {
+                    require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'private_html'
+                        . DIRECTORY_SEPARATOR . 'compliance' . DIRECTORY_SEPARATOR . 'ConsentManager.php';
+                }
+
+                // 📝 visitorID is null here — this action only fires for an
+                // authenticated user (requireLogin() above), so the decision
+                // is recorded straight against userID. Pre-login/anonymous
+                // consent capture (visitorID cookie) is a Layer 2 concern.
+                ConsentManager::record(
+                    $userID,
+                    null,
+                    $consentType,
+                    $granted,
+                    ['mechanism' => 'preference_center']
+                );
+
+                $message = 'Your consent preference has been saved.';
+                $messageType = 'success';
+            }
+        }
     }
 }
 
@@ -338,6 +402,19 @@ $thirdPartyApps = Database::fetchAll(
     [$userID],
     'i'
 ) ?? [];
+
+// 🔍 Get the user's current effective consent decisions (latest per type) —
+// used by the "My Consent History" read-only section below (G-004 Layer 1).
+// ConsentManager lives under private_html/compliance/, which is NOT one of
+// the directories web/_config/config.php's spl_autoload_register() scans
+// (auth/security/utils/api/email/database only), so it must be required
+// explicitly — same class_exists()-guarded lazy-require idiom used for
+// AccountManager above.
+if (!class_exists('ConsentManager')) {
+    require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'private_html'
+        . DIRECTORY_SEPARATOR . 'compliance' . DIRECTORY_SEPARATOR . 'ConsentManager.php';
+}
+$consentDecisions = ConsentManager::getEffectiveConsents($userID, null);
 
 // 🎨 Include header
 include SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'layout' . DIRECTORY_SEPARATOR . 'header.php';
@@ -502,6 +579,54 @@ include SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATO
                             </button>
                         </div>
                     </form>
+                </div>
+            </div>
+
+            <!-- ============================================================ -->
+            <!-- 🍪 CONSENT PREFERENCES + HISTORY (G-004 Layer 1 — FG-002a)   -->
+            <!-- ============================================================ -->
+            <div class="card shadow mt-4">
+                <div class="card-body p-4">
+                    <h5 class="mb-3"><i class="fas fa-clipboard-check text-primary"></i> My Consent History</h5>
+                    <p class="text-muted small mb-3">
+                        A record of your consent decisions for cookies and marketing communications.
+                        Every change is written as a new, timestamped entry — nothing is ever silently
+                        overwritten, so this is also your audit trail.
+                    </p>
+
+                    <div class="list-group">
+                        <?php foreach ($CONSENT_TYPE_LABELS as $consentTypeKey => $consentTypeLabel): ?>
+                            <?php
+                            // 🔍 Latest decision for this type — absent from the map means
+                            // "no decision recorded yet", which we treat as not-granted.
+                            $isConsentGranted = $consentDecisions[$consentTypeKey] ?? false;
+                            ?>
+                            <div class="list-group-item d-flex justify-content-between align-items-center">
+                                <div>
+                                    <strong><?php echo htmlspecialchars($consentTypeLabel, ENT_QUOTES, 'UTF-8'); ?></strong>
+                                    <div class="mt-1">
+                                        <span class="badge bg-<?php echo $isConsentGranted ? 'success' : 'secondary'; ?>">
+                                            <?php echo $isConsentGranted ? 'Granted' : 'Not granted'; ?>
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <form method="POST" action="" class="d-inline">
+                                    <input type="hidden" name="action" value="record_consent">
+                                    <input type="hidden" name="consent_type"
+                                           value="<?php echo htmlspecialchars($consentTypeKey, ENT_QUOTES, 'UTF-8'); ?>">
+                                    <input type="hidden" name="granted"
+                                           value="<?php echo $isConsentGranted ? '0' : '1'; ?>">
+                                    <input type="hidden" name="csrf_token"
+                                           value="<?php echo htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8'); ?>">
+                                    <button type="submit"
+                                            class="btn btn-sm btn-outline-<?php echo $isConsentGranted ? 'danger' : 'success'; ?>">
+                                        <?php echo $isConsentGranted ? 'Withdraw' : 'Grant'; ?>
+                                    </button>
+                                </form>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
                 </div>
             </div>
 

@@ -46,7 +46,7 @@
 
 ### Still pending (honest)
 
-- **Feature campaign not yet started**: G-001 (SIGNula as IdP — SAML/OIDC), G-002 (recurring billing), G-003 (JWT API auth), G-004 (compliance tooling) — all user-approved, build begins next.
+- **Feature campaign — 3 of 4 approved epics built** (as of cycle 46): G-003 (JWT API auth) **built**; G-001 (SIGNula as IdP — OAuth2/OIDC provider + iHymns integration) **built** (SAML deferred to a later phase); G-002 (recurring billing / dunning) **built — TEST-MODE only** (go-live is the owner's #70 step); G-004 (multi-jurisdiction compliance) **in progress** — Layer 1a (consent audit trail + `ConsentManager` + privacy-page consent surface, migration 040) shipped this cycle; DSAR engine, admin queue, the data-driven regime model, and breach/RoPA/retention machinery follow in later layers.
 - **Residual backlog**: B-035/B-036/B-038/B-042 (migration hygiene), B-044 (install wizard `DELIMITER` — CLI/phpMyAdmin path works; wizard `multi_query` cannot parse stored-proc blocks), B-045 (per-file test isolation).
 - **Operational items**: #83-#85 (prod credentials/cron setup), #70/#71 (live payment activation / staging deploy) — require human action.
 - **WCAG a11y** (#76) and **API completeness** (#86) — deferred to post-feature-campaign.

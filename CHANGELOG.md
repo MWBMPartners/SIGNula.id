@@ -9,14 +9,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Multi-jurisdiction compliance — Layer 1a: consent foundation (G-004, in progress).**
+  - New migration `040_consent_and_dsar.sql` creates the append-only consent
+    audit trail (`tblConsentRecords`), the data-subject-request tracker
+    (`tblDataSubjectRequests`), and its status-change timeline
+    (`tblDataSubjectRequestEvents`), plus six `privacy`-category settings
+    (DSAR SLA / identity-token / notify defaults, consent proof-hash toggle).
+    Also widens `tblActivityLog.activityCategory` to accept the `privacy` category.
+  - New `ConsentManager` (`web/private_html/compliance/`) — records every
+    grant/withdraw as an immutable new row (never an update), with packed-IP
+    minimisation (`VARBINARY(16)` via `inet_pton`), a tamper-evidence SHA-256
+    proof hash, and full activity-log auditing; resolves the latest decision
+    per consent type and reconciles anonymous-visitor consent to a user on login.
+  - `settings/privacy.php` gains a server-persisted consent toggle and a
+    read-only "My Consent History" section (CSRF-protected, server-authoritative
+    allowlist, works without JavaScript).
+  - Data-driven by design: no jurisdiction value is hardcoded — the regime
+    model, DSAR fulfilment engine, and admin queue land in later G-004 cycles.
+
 ### Planned
 
 - Mobile apps (iOS, Android)
 - Advanced analytics and reporting dashboard
-- SIGNula as IdP — SAML 2.0 / OIDC provider (G-001, approved, not yet built)
-- Recurring billing engine with dunning (G-002, approved, not yet built)
+- SIGNula as IdP — SAML 2.0 / OIDC provider (G-001, **provider + iHymns integration shipped**; SAML later)
+- Recurring billing engine with dunning (G-002, **built — TEST-MODE only**; go-live is the owner's #70 step)
 - JWT bearer-auth for API (G-003, **shipped in v2.8.0-beta** — see below)
-- GDPR/compliance tooling — data export, right-to-erasure, consent log (G-004, approved, not yet built)
+- Multi-jurisdiction compliance tooling — consent log, DSAR engine, regime model, breach/RoPA/retention (G-004, **L1a consent foundation shipped**; DSAR engine + admin queue + regime model + L2–L4 to follow)
 
 ---
 
