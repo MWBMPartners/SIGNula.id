@@ -1517,13 +1517,24 @@ class PayPalProvider
      * - PAYMENT.CAPTURE.COMPLETED  — Payment captured successfully
      * - PAYMENT.CAPTURE.DENIED     — Payment capture denied
      * - PAYMENT.CAPTURE.REFUNDED   — Payment was refunded
+     * - PAYMENT.SALE.COMPLETED     — Recurring subscription charge succeeded (renewal — G-002 S3)
      * - BILLING.SUBSCRIPTION.ACTIVATED  — Subscription activated
      * - BILLING.SUBSCRIPTION.CANCELLED  — Subscription cancelled
-     * - BILLING.SUBSCRIPTION.SUSPENDED  — Subscription suspended
-     * - BILLING.SUBSCRIPTION.PAYMENT.FAILED — Subscription payment failed
+     * - BILLING.SUBSCRIPTION.SUSPENDED  — Subscription suspended (-> 'grace' — G-002 S3)
+     * - BILLING.SUBSCRIPTION.EXPIRED    — Subscription expired (G-002 S3)
+     * - BILLING.SUBSCRIPTION.PAYMENT.FAILED — Subscription payment failed (-> 'past_due')
+     *
+     * G-002 Stage S3: every BILLING.SUBSCRIPTION.* case below is routed
+     * through PaymentManager::applyWebhookTransition()/
+     * ::recordSubscriptionRenewal(), which validate the move against
+     * SubscriptionStateMachine::VALID_TRANSITIONS before persisting — an
+     * illegal/stray event (e.g. for an already-'expired' subscription) is
+     * logged and safely ignored rather than blindly applied.
      *
      * @param array $event Decoded webhook event payload (from json_decode)
-     * @return array Processing result with 'handled' (bool) and 'message' (string)
+     * @return array Processing result with 'handled' (bool), 'success' (bool) and 'message' (string).
+     *               'success' is what web/public_html/webhooks/paypal.php's outer plumbing checks
+     *               to mark tblInboundWebhooks 'processed' vs 'failed' — every case returns it.
      *
      * @see https://developer.paypal.com/docs/api-basics/notifications/webhooks/event-names/
      *
@@ -1601,6 +1612,7 @@ class PayPalProvider
 
                 return [
                     'handled' => true,
+                    'success' => true,
                     'message' => 'Payment capture completed processed',
                 ];
 
@@ -1641,6 +1653,7 @@ class PayPalProvider
 
                 return [
                     'handled' => true,
+                    'success' => true,
                     'message' => 'Payment capture denied processed',
                 ];
 
@@ -1703,6 +1716,7 @@ class PayPalProvider
 
                 return [
                     'handled' => true,
+                    'success' => true,
                     'message' => 'Payment refund processed',
                 ];
 
@@ -1710,163 +1724,143 @@ class PayPalProvider
             // ✅ BILLING.SUBSCRIPTION.ACTIVATED — Subscription activated
             // ═══════════════════════════════════════════════════════════
             case 'BILLING.SUBSCRIPTION.ACTIVATED':
-                $paypalSubID = $resource['id'] ?? null;
-                $planID = $resource['plan_id'] ?? null;
-                $customID = $resource['custom_id'] ?? null;
-
-                // 🔍 Find the local subscription by PayPal subscription ID or custom_id
-                // and activate it
-                if ($paypalSubID) {
-                    $localSub = Database::fetchOne(
-                        "SELECT subscriptionID, userID FROM tblSubscriptions WHERE externalSubscriptionID = ? AND subscriptionStatus IN ('pending', 'trial') ORDER BY createdAt DESC LIMIT 1",
-                        [$paypalSubID],
-                        's'
-                    );
-
-                    if ($localSub) {
-                        Database::query(
-                            "UPDATE tblSubscriptions SET subscriptionStatus = 'active' WHERE subscriptionID = ?",
-                            [(int)$localSub['subscriptionID']],
-                            'i'
-                        );
-
-                        ActivityLogger::log(
-                            (int)$localSub['userID'],
-                            'subscription_activated',
-                            'payment',
-                            'info',
-                            'Subscription activated via PayPal webhook | PayPal Sub ID: ' . $paypalSubID,
-                            [
-                                'subscriptionID'       => $localSub['subscriptionID'],
-                                'paypalSubscriptionID' => $paypalSubID,
-                                'planID'               => $planID,
-                            ]
-                        );
-                    }
-                }
-
-                return [
-                    'handled' => true,
-                    'message' => 'Subscription activation processed',
-                ];
-
-            // ═══════════════════════════════════════════════════════════
-            // ❌ BILLING.SUBSCRIPTION.CANCELLED — Subscription cancelled
-            // ═══════════════════════════════════════════════════════════
-            case 'BILLING.SUBSCRIPTION.CANCELLED':
-                $paypalSubID = $resource['id'] ?? null;
-
-                if ($paypalSubID) {
-                    $localSub = Database::fetchOne(
-                        "SELECT subscriptionID, userID FROM tblSubscriptions WHERE externalSubscriptionID = ? AND subscriptionStatus IN ('active', 'past_due') ORDER BY createdAt DESC LIMIT 1",
-                        [$paypalSubID],
-                        's'
-                    );
-
-                    if ($localSub) {
-                        Database::query(
-                            "UPDATE tblSubscriptions SET subscriptionStatus = 'cancelled', cancelledAt = NOW(), cancellationReason = 'Cancelled via PayPal' WHERE subscriptionID = ?",
-                            [(int)$localSub['subscriptionID']],
-                            'i'
-                        );
-
-                        ActivityLogger::log(
-                            (int)$localSub['userID'],
-                            'subscription_cancelled',
-                            'payment',
-                            'info',
-                            'Subscription cancelled via PayPal webhook | PayPal Sub ID: ' . $paypalSubID,
-                            [
-                                'subscriptionID'       => $localSub['subscriptionID'],
-                                'paypalSubscriptionID' => $paypalSubID,
-                            ]
-                        );
-                    }
-                }
-
-                return [
-                    'handled' => true,
-                    'message' => 'Subscription cancellation processed',
-                ];
-
-            // ═══════════════════════════════════════════════════════════
-            // ⏸️ BILLING.SUBSCRIPTION.SUSPENDED — Subscription suspended
-            // ═══════════════════════════════════════════════════════════
-            case 'BILLING.SUBSCRIPTION.SUSPENDED':
-                $paypalSubID = $resource['id'] ?? null;
-
-                if ($paypalSubID) {
-                    $localSub = Database::fetchOne(
-                        "SELECT subscriptionID, userID FROM tblSubscriptions WHERE externalSubscriptionID = ? AND subscriptionStatus = 'active' ORDER BY createdAt DESC LIMIT 1",
-                        [$paypalSubID],
-                        's'
-                    );
-
-                    if ($localSub) {
-                        Database::query(
-                            "UPDATE tblSubscriptions SET subscriptionStatus = 'paused', pausedAt = NOW() WHERE subscriptionID = ?",
-                            [(int)$localSub['subscriptionID']],
-                            'i'
-                        );
-
-                        ActivityLogger::log(
-                            (int)$localSub['userID'],
-                            'subscription_suspended',
-                            'payment',
-                            'warning',
-                            'Subscription suspended via PayPal webhook | PayPal Sub ID: ' . $paypalSubID,
-                            [
-                                'subscriptionID'       => $localSub['subscriptionID'],
-                                'paypalSubscriptionID' => $paypalSubID,
-                            ]
-                        );
-                    }
-                }
-
-                return [
-                    'handled' => true,
-                    'message' => 'Subscription suspension processed',
-                ];
+                return self::handleSubscriptionLifecycleWebhook(
+                    $resource,
+                    $eventID,
+                    'active',
+                    'webhook_activated',
+                    $eventType,
+                    'Subscription activation'
+                );
 
             // ═══════════════════════════════════════════════════════════
             // ⚠️ BILLING.SUBSCRIPTION.PAYMENT.FAILED — Payment failed
             // ═══════════════════════════════════════════════════════════
             case 'BILLING.SUBSCRIPTION.PAYMENT.FAILED':
-                $paypalSubID = $resource['id'] ?? null;
+                return self::handleSubscriptionLifecycleWebhook(
+                    $resource,
+                    $eventID,
+                    'past_due',
+                    'webhook_past_due',
+                    $eventType,
+                    'Subscription payment failure (dunning start)'
+                );
 
-                if ($paypalSubID) {
-                    $localSub = Database::fetchOne(
-                        "SELECT subscriptionID, userID FROM tblSubscriptions WHERE externalSubscriptionID = ? AND subscriptionStatus IN ('active', 'past_due') ORDER BY createdAt DESC LIMIT 1",
-                        [$paypalSubID],
-                        's'
+            // ═══════════════════════════════════════════════════════════
+            // ⏸️ BILLING.SUBSCRIPTION.SUSPENDED — Subscription suspended
+            // 🩹 G-002 S3: this previously set 'paused' (a USER-initiated
+            // status) — the correct target per spec §3.1/§7 is 'grace' (the
+            // dunning/pre-suspension window). Only legal from 'past_due'
+            // (SubscriptionStateMachine::VALID_TRANSITIONS deliberately does
+            // NOT allow 'active' -> 'grace' directly — see
+            // SubscriptionStateMachineTest::testCanTransitionRejectsIllegalEdges);
+            // a SUSPENDED event that skips past_due is safely logged +
+            // ignored rather than forced.
+            // ═══════════════════════════════════════════════════════════
+            case 'BILLING.SUBSCRIPTION.SUSPENDED':
+                return self::handleSubscriptionLifecycleWebhook(
+                    $resource,
+                    $eventID,
+                    'grace',
+                    'webhook_grace',
+                    $eventType,
+                    'Subscription suspended (entering grace window)'
+                );
+
+            // ═══════════════════════════════════════════════════════════
+            // ❌ BILLING.SUBSCRIPTION.CANCELLED — Subscription cancelled
+            // ═══════════════════════════════════════════════════════════
+            case 'BILLING.SUBSCRIPTION.CANCELLED':
+                return self::handleSubscriptionLifecycleWebhook(
+                    $resource,
+                    $eventID,
+                    'cancelled',
+                    'webhook_cancelled',
+                    $eventType,
+                    'Cancelled via PayPal'
+                );
+
+            // ═══════════════════════════════════════════════════════════
+            // 🏁 BILLING.SUBSCRIPTION.EXPIRED — Subscription expired
+            // (G-002 S3 — this case did not previously exist at all)
+            // ═══════════════════════════════════════════════════════════
+            case 'BILLING.SUBSCRIPTION.EXPIRED':
+                return self::handleSubscriptionLifecycleWebhook(
+                    $resource,
+                    $eventID,
+                    'expired',
+                    'webhook_expired',
+                    $eventType,
+                    'Expired via PayPal'
+                );
+
+            // ═══════════════════════════════════════════════════════════
+            // 💰 PAYMENT.SALE.COMPLETED — Recurring subscription charge
+            // succeeded (the RENEWAL path — G-002 spec §3.1/§5.1/§7).
+            // (G-002 S3 — this case did not previously exist at all, which
+            // is WHY a successful PayPal renewal never advanced the local
+            // period or issued a renewal invoice before this stage.)
+            // @see https://developer.paypal.com/docs/api-basics/notifications/webhooks/event-names/
+            // ═══════════════════════════════════════════════════════════
+            case 'PAYMENT.SALE.COMPLETED':
+                // 🔗 A recurring sale tied to a PayPal Billing Subscription
+                // carries `billing_agreement_id` — a ONE-OFF order capture
+                // (already handled above via PAYMENT.CAPTURE.COMPLETED) has
+                // no such field, so this is the correct discriminator.
+                $paypalSubID = $resource['billing_agreement_id'] ?? null;
+
+                if ($paypalSubID === null) {
+                    return [
+                        'handled' => true,
+                        'success' => true,
+                        'message' => 'Sale not linked to a subscription — ignored',
+                    ];
+                }
+
+                $saleID = $resource['id'] ?? null;
+                // 📌 The legacy Payments API v1 `sale` resource uses
+                // {amount:{total,currency}} — NOT v2 Orders/Captures'
+                // {amount:{value,currency_code}}. Accept either shape.
+                $amount = (float)($resource['amount']['total'] ?? $resource['amount']['value'] ?? 0);
+                $currency = strtoupper((string)($resource['amount']['currency'] ?? $resource['amount']['currency_code'] ?? 'GBP'));
+
+                $localSub = Database::fetchOne(
+                    "SELECT subscriptionID, userID FROM tblSubscriptions WHERE paymentProviderSubscriptionID = ? ORDER BY createdAt DESC LIMIT 1",
+                    [$paypalSubID],
+                    's'
+                );
+
+                if (!$localSub) {
+                    ActivityLogger::log(
+                        null,
+                        'paypal_webhook_subscription_not_found',
+                        'payment',
+                        'warning',
+                        'PayPal recurring sale event for an unknown subscription — ignored | PayPal Sub ID: ' . $paypalSubID,
+                        ['eventID' => $eventID, 'paypalSubscriptionID' => $paypalSubID, 'saleID' => $saleID]
                     );
 
-                    if ($localSub) {
-                        // 📅 Mark as past_due — the subscription is still technically active
-                        // but the latest payment attempt failed. PayPal will retry.
-                        Database::query(
-                            "UPDATE tblSubscriptions SET subscriptionStatus = 'past_due' WHERE subscriptionID = ?",
-                            [(int)$localSub['subscriptionID']],
-                            'i'
-                        );
-
-                        ActivityLogger::log(
-                            (int)$localSub['userID'],
-                            'subscription_payment_failed',
-                            'payment',
-                            'warning',
-                            'Subscription payment failed via PayPal webhook | PayPal Sub ID: ' . $paypalSubID,
-                            [
-                                'subscriptionID'       => $localSub['subscriptionID'],
-                                'paypalSubscriptionID' => $paypalSubID,
-                            ]
-                        );
-                    }
+                    return [
+                        'handled' => true,
+                        'success' => true,
+                        'message' => 'No matching local subscription — ignored',
+                    ];
                 }
+
+                $renewalResult = PaymentManager::recordSubscriptionRenewal(
+                    (int)$localSub['subscriptionID'],
+                    'paypal',
+                    $amount,
+                    $currency,
+                    $saleID,
+                    'paypal:' . $eventID,
+                    'PayPal PAYMENT.SALE.COMPLETED (recurring)'
+                );
 
                 return [
                     'handled' => true,
-                    'message' => 'Subscription payment failure processed',
+                    'success' => $renewalResult['success'] ?? false,
+                    'message' => $renewalResult['message'] ?? 'Subscription renewal processed',
                 ];
 
             // ═══════════════════════════════════════════════════════════
@@ -1887,9 +1881,94 @@ class PayPalProvider
 
                 return [
                     'handled' => false,
+                    'success' => true,
                     'message' => 'Unhandled event type: ' . $eventType,
                 ];
         }
+    }
+
+    /**
+     * 🔀 Handle a BILLING.SUBSCRIPTION.* Lifecycle Webhook (shared, G-002 S3)
+     *
+     * Resolves the local subscription by `paymentProviderSubscriptionID`
+     * (B-072 fix — this column, NOT the phantom `externalSubscriptionID`,
+     * is the real tblSubscriptions column) and routes the requested status
+     * change through PaymentManager::applyWebhookTransition(), which itself
+     * validates the move against SubscriptionStateMachine before persisting.
+     *
+     * An event for an unknown/foreign PayPal subscription id (no local row)
+     * is logged and safely ignored — `handled: true, success: true` — never
+     * an error. Deliberately NOT status-filtered in the SQL lookup (the
+     * pre-S3 code filtered `WHERE subscriptionStatus IN (...)` per case,
+     * which just made a stale/out-of-order event silently invisible instead
+     * of auditable) — legality is entirely PaymentManager::
+     * applyWebhookTransition()'s job now, and it audits a 'skipped' row for
+     * an illegal transition rather than a silent no-op.
+     *
+     * @param array  $resource   The webhook event's `resource` object
+     * @param string $eventID    The PayPal event id (for the idempotency key + logging)
+     * @param string $targetStatus SubscriptionStateMachine target status
+     * @param string $action     tblBillingAttempts.action label
+     * @param string $eventType  The raw PayPal event_type string (for logging)
+     * @param string $reason     Human-readable reason (logged on the transition)
+     *
+     * @return array ['handled' => true, 'success' => bool, 'message' => string]
+     */
+    private static function handleSubscriptionLifecycleWebhook(
+        array $resource,
+        string $eventID,
+        string $targetStatus,
+        string $action,
+        string $eventType,
+        string $reason
+    ): array {
+        $paypalSubID = $resource['id'] ?? null;
+
+        if (!$paypalSubID) {
+            return [
+                'handled' => true,
+                'success' => true,
+                'message' => $eventType . ' event missing a subscription id — ignored',
+            ];
+        }
+
+        $localSub = Database::fetchOne(
+            "SELECT subscriptionID, userID FROM tblSubscriptions WHERE paymentProviderSubscriptionID = ? ORDER BY createdAt DESC LIMIT 1",
+            [$paypalSubID],
+            's'
+        );
+
+        if (!$localSub) {
+            ActivityLogger::log(
+                null,
+                'paypal_webhook_subscription_not_found',
+                'payment',
+                'warning',
+                'PayPal ' . $eventType . ' for an unknown subscription — ignored | PayPal Sub ID: ' . $paypalSubID,
+                ['eventID' => $eventID, 'eventType' => $eventType, 'paypalSubscriptionID' => $paypalSubID]
+            );
+
+            return [
+                'handled' => true,
+                'success' => true,
+                'message' => 'No matching local subscription — ignored',
+            ];
+        }
+
+        $result = PaymentManager::applyWebhookTransition(
+            (int)$localSub['subscriptionID'],
+            $targetStatus,
+            'paypal',
+            $action,
+            $reason . ' (PayPal ' . $eventType . ')',
+            'paypal:' . $eventID
+        );
+
+        return [
+            'handled' => true,
+            'success' => true,
+            'message' => $reason . ' processed' . (($result['skipped'] ?? false) ? ' (transition skipped — not a legal move from the current status)' : ''),
+        ];
     }
 
     /**

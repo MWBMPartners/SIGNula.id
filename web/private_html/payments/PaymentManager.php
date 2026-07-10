@@ -1260,6 +1260,538 @@ class PaymentManager
     }
 
     // ========================================================================
+    // 🔄 WEBHOOK LIFECYCLE — RENEWAL + LIFECYCLE TRANSITIONS (G-002 Stage S3)
+    // ========================================================================
+    //
+    // These two methods are the shared engine behind
+    // PayPalProvider::handleWebhookEvent() / StripeProvider::handleWebhookEvent()
+    // (G-002 §7 — "a shared helper to keep logic in one place"). They do NOT
+    // touch signature verification or the tblInboundWebhooks dedup — that
+    // plumbing is untouched, upstream of these calls (web/public_html/
+    // webhooks/{paypal,stripe}.php). Both methods are individually idempotent
+    // (belt-and-braces alongside the upstream dedup — G-002 §4.3) via a
+    // `provider:eventID` idempotency key checked against tblBillingAttempts
+    // BEFORE any mutation.
+    // ========================================================================
+
+    /**
+     * 🔄 Record a Provider-Confirmed Subscription Renewal (webhook-driven)
+     *
+     * The RENEWAL path (G-002 spec §5.1/§7): a recurring charge succeeded at
+     * the provider (PayPal `PAYMENT.SALE.COMPLETED` tied to a billing
+     * agreement, or Stripe `invoice.paid`/`invoice.payment_succeeded`).
+     * This method:
+     *   1. Short-circuits on an idempotency-key replay (no second invoice/charge).
+     *   2. Confirms the subscription can legally reach 'active' from its
+     *      CURRENT status (SubscriptionStateMachine::canTransition()) — a
+     *      renewal event for a terminal ('expired'/immediate-'cancelled')
+     *      subscription is refused rather than silently re-animating it.
+     *   3. Records + completes the payment (reuses recordPayment() +
+     *      completePayment(), which itself creates the renewal invoice via
+     *      InvoiceManager::createInvoice(), sends the receipt email,
+     *      dispatches `payment.completed`, and — via
+     *      BillingScheduler::handlePaymentSuccess() — cancels any pending
+     *      suspend/charge tasks and provisionally advances the period).
+     *   4. OVERWRITES the period fields with the spec-precise advance:
+     *      currentPeriodStart = the OLD currentPeriodEnd, currentPeriodEnd =
+     *      old end + one billing cycle — NOT "today" — so the period never
+     *      drifts even if the webhook itself arrives early/late. This is
+     *      authoritative and runs AFTER step 3 (which uses a coarser
+     *      "today + 1 cycle" approximation for its own, older, non-webhook
+     *      callers — see BillingScheduler::handlePaymentSuccess()).
+     *   5. Applies a pending G-002 S2 end-of-period tier change, if any
+     *      (`tblSubscriptions.metadata.pendingTierChange`), via
+     *      applyPendingTierChange() — the S2 -> S3 hand-off.
+     *   6. Ensures the final status is 'active' via
+     *      SubscriptionStateMachine::transition() (idempotent — this is what
+     *      correctly resolves 'grace' -> 'active', which step 3's legacy
+     *      raw UPDATE, scoped to `IN ('pending','past_due')`, does not cover).
+     *
+     * @param int         $subscriptionID The local tblSubscriptions row (already resolved by the caller
+     *                                     via `paymentProviderSubscriptionID`)
+     * @param string      $provider       'paypal' | 'stripe'
+     * @param float       $amount         The renewal amount actually charged by the provider (major unit)
+     * @param string      $currency       ISO 4217 currency code
+     * @param string|null $providerTxnID  The provider's transaction/invoice/sale id (for tblPayments.transactionID)
+     * @param string      $idempotencyKey Stable business key, `{provider}:{eventID}` (G-002 §4.3)
+     * @param string      $reason         Human-readable reason, logged on the state transition
+     *
+     * @return array ['success' => bool, 'message' => string, 'idempotentReplay'? => bool,
+     *                'subscriptionID'? => int, 'paymentID'? => int|null,
+     *                'currentPeriodStart'? => string, 'currentPeriodEnd'? => string,
+     *                'tierChangeApplied'? => bool]
+     */
+    public static function recordSubscriptionRenewal(
+        int $subscriptionID,
+        string $provider,
+        float $amount,
+        string $currency,
+        ?string $providerTxnID,
+        string $idempotencyKey,
+        string $reason = 'Subscription renewal'
+    ): array {
+        try {
+            // 1️⃣ Idempotency short-circuit (§4.3) — a replayed event (even
+            // bypassing the upstream tblInboundWebhooks dedup, e.g. a direct
+            // caller/test) must never issue a second invoice or advance the
+            // period twice.
+            $prior = Database::fetchOne(
+                "SELECT attemptID FROM tblBillingAttempts WHERE idempotencyKey = ? AND action = 'webhook_renewal' AND status = 'succeeded' LIMIT 1",
+                [$idempotencyKey],
+                's'
+            );
+            if ($prior) {
+                return ['success' => true, 'idempotentReplay' => true, 'message' => 'Renewal already processed for this event'];
+            }
+
+            $sub = Database::fetchOne("SELECT * FROM tblSubscriptions WHERE subscriptionID = ?", [$subscriptionID], 'i');
+            if (!$sub) {
+                return ['success' => false, 'message' => 'Subscription not found'];
+            }
+
+            $userID = (int)$sub['userID'];
+            $fromStatus = (string)$sub['subscriptionStatus'];
+            $providerKey = strtolower(trim($provider));
+
+            // 2️⃣ Legality (mirrors SubscriptionStateMachine::transition()'s own
+            // rules, checked here FIRST so a terminal-state renewal is refused
+            // with ZERO side effects — no payment recorded, no invoice, no
+            // period mutation).
+            $stateMachinePath = __DIR__ . DIRECTORY_SEPARATOR . 'SubscriptionStateMachine.php';
+            if (!file_exists($stateMachinePath)) {
+                throw new RuntimeException('SubscriptionStateMachine.php is required but was not found');
+            }
+            require_once $stateMachinePath;
+
+            $modeForLog = self::resolveProviderModeForLog($providerKey);
+
+            if ($fromStatus !== 'active' && !SubscriptionStateMachine::canTransition($fromStatus, 'active')) {
+                self::recordWebhookAuditRow($subscriptionID, $userID, $providerKey, 'webhook_renewal', $modeForLog, $idempotencyKey, 'failed', [
+                    'reason' => "Cannot renew from status '{$fromStatus}'",
+                ]);
+
+                ActivityLogger::log($userID, 'subscription_renewal_ignored', 'payment', 'warning', 'Ignored a renewal event for subscription #' . $subscriptionID . " — '{$fromStatus}' cannot reach 'active'", ['subscriptionID' => $subscriptionID, 'fromStatus' => $fromStatus, 'provider' => $providerKey]);
+
+                return ['success' => false, 'message' => "Subscription is in a non-renewable status ('{$fromStatus}') — renewal ignored"];
+            }
+
+            // 3️⃣ Record + complete the payment (invoice + receipt + auto-resume
+            // side effects — see the method doc-comment). Free/zero-amount
+            // renewals (e.g. a $0 coupon-covered cycle) skip straight to the
+            // period advance below.
+            $paymentID = null;
+            if ($amount > 0) {
+                $paymentResult = self::recordPayment($userID, $amount, $providerKey, $providerKey, [
+                    'subscriptionID' => $subscriptionID,
+                    'transactionID'  => $providerTxnID,
+                    'currency'       => $currency,
+                    'description'    => 'Subscription renewal via ' . ucfirst($providerKey),
+                    'metadata'       => ['idempotencyKey' => $idempotencyKey],
+                ]);
+
+                if (!($paymentResult['success'] ?? false)) {
+                    self::recordWebhookAuditRow($subscriptionID, $userID, $providerKey, 'webhook_renewal', $modeForLog, $idempotencyKey, 'failed', ['reason' => 'recordPayment failed']);
+                    return ['success' => false, 'message' => 'Failed to record the renewal payment'];
+                }
+
+                $paymentID = (int)$paymentResult['paymentID'];
+                self::completePayment($paymentID, $providerTxnID, null);
+            }
+
+            // 4️⃣ Precise, spec-authoritative period advance — overwrites
+            // whatever step 3️⃣'s completePayment()/handlePaymentSuccess() may
+            // have already provisionally set.
+            $oldPeriodEnd = (string)$sub['currentPeriodEnd'];
+            $billingCycle = (string)($sub['billingCycle'] ?? 'monthly');
+            $newPeriodStart = $oldPeriodEnd;
+            $newPeriodEnd = self::advancePeriodDate($oldPeriodEnd, $billingCycle);
+
+            Database::query(
+                "UPDATE tblSubscriptions
+                    SET currentPeriodStart = ?, currentPeriodEnd = ?, nextBillingDate = ?, updatedAt = NOW()
+                  WHERE subscriptionID = ?",
+                [$newPeriodStart, $newPeriodEnd, $newPeriodEnd, $subscriptionID],
+                'sssi'
+            );
+
+            // 5️⃣ S2 -> S3 hand-off: apply a deferred end-of-period tier change,
+            // if one is waiting in metadata.pendingTierChange.
+            $tierChangeResult = self::applyPendingTierChange($subscriptionID);
+
+            // 6️⃣ Ensure the final status is 'active' — idempotent no-op if
+            // already active; correctly resolves 'grace'/'past_due' -> 'active'.
+            SubscriptionStateMachine::transition($subscriptionID, 'active', $reason, $idempotencyKey);
+
+            // 7️⃣ Audit + activity + outbound webhook.
+            self::recordWebhookAuditRow($subscriptionID, $userID, $providerKey, 'webhook_renewal', $modeForLog, $idempotencyKey, 'succeeded', [
+                'paymentID'      => $paymentID,
+                'fromStatus'     => $fromStatus,
+                'newPeriodStart' => $newPeriodStart,
+                'newPeriodEnd'   => $newPeriodEnd,
+                'tierChanged'    => $tierChangeResult['applied'] ?? false,
+            ]);
+
+            ActivityLogger::log(
+                $userID,
+                'subscription_renewed',
+                'payment',
+                'info',
+                'Subscription #' . $subscriptionID . ' renewed via ' . $providerKey . ' — period now ' . $newPeriodStart . ' to ' . $newPeriodEnd,
+                [
+                    'subscriptionID' => $subscriptionID,
+                    'provider'       => $providerKey,
+                    'amount'         => $amount,
+                    'currency'       => $currency,
+                    'paymentID'      => $paymentID,
+                ]
+            );
+
+            if (class_exists('WebhookManager')) {
+                WebhookManager::dispatch('subscription.renewed', [
+                    'subscriptionID'     => $subscriptionID,
+                    'userID'             => $userID,
+                    'provider'           => $providerKey,
+                    'amount'             => $amount,
+                    'currency'           => $currency,
+                    'currentPeriodStart' => $newPeriodStart,
+                    'currentPeriodEnd'   => $newPeriodEnd,
+                ]);
+            }
+
+            return [
+                'success'            => true,
+                'subscriptionID'     => $subscriptionID,
+                'paymentID'          => $paymentID,
+                'currentPeriodStart' => $newPeriodStart,
+                'currentPeriodEnd'   => $newPeriodEnd,
+                'tierChangeApplied'  => $tierChangeResult['applied'] ?? false,
+                'message'            => 'Subscription renewed',
+            ];
+        } catch (\Throwable $e) {
+            ActivityLogger::log(
+                null,
+                'subscription_renewal_error',
+                'payment',
+                'error',
+                'Failed to process subscription renewal for #' . $subscriptionID . ': ' . $e->getMessage(),
+                ['subscriptionID' => $subscriptionID, 'provider' => $provider]
+            );
+
+            return ['success' => false, 'message' => 'Failed to process subscription renewal'];
+        }
+    }
+
+    /**
+     * 🔁 Apply a Pending (end_of_period) Tier Change — G-002 S2 -> S3 hand-off
+     *
+     * changeTier() with timing='end_of_period' does not touch tierID/amount
+     * immediately — it stashes the intended change in
+     * `tblSubscriptions.metadata.pendingTierChange` (see changeTier()'s
+     * "1️⃣1️⃣ Apply" step) for a LATER stage to apply once the period actually
+     * rolls over. This is that later stage, called from the webhook renewal
+     * path (recordSubscriptionRenewal(), step 5️⃣) once the period has
+     * genuinely advanced, so the deferred plan swap lands exactly when the
+     * customer was told it would (at `pendingTierChange.effectiveAt`, which
+     * is always the OLD currentPeriodEnd — i.e. exactly the renewal boundary).
+     *
+     * Idempotent by construction: once applied, `pendingTierChange` is
+     * REMOVED from metadata, so a second call (e.g. a renewal idempotent-
+     * replay, or simply no pending change existing) is a clean no-op.
+     *
+     * @param int $subscriptionID
+     *
+     * @return array ['applied' => bool, 'newTierID'? => int, 'newBillingCycle'? => string, 'newAmount'? => string]
+     */
+    public static function applyPendingTierChange(int $subscriptionID): array
+    {
+        try {
+            $sub = Database::fetchOne(
+                "SELECT subscriptionID, userID, metadata FROM tblSubscriptions WHERE subscriptionID = ?",
+                [$subscriptionID],
+                'i'
+            );
+
+            if (!$sub || empty($sub['metadata'])) {
+                return ['applied' => false];
+            }
+
+            $metadata = json_decode((string)$sub['metadata'], true);
+            if (!is_array($metadata) || empty($metadata['pendingTierChange']) || !is_array($metadata['pendingTierChange'])) {
+                return ['applied' => false];
+            }
+
+            $pending = $metadata['pendingTierChange'];
+            $newTierID = (int)($pending['newTierID'] ?? 0);
+            $newBillingCycle = (string)($pending['newBillingCycle'] ?? 'monthly');
+            $newAmount = (string)($pending['newAmount'] ?? '0.00');
+
+            if ($newTierID <= 0) {
+                return ['applied' => false];
+            }
+
+            // 🧹 Remove the marker BEFORE persisting — this is what makes a
+            // second call (idempotent replay) a clean no-op.
+            unset($metadata['pendingTierChange']);
+
+            Database::query(
+                "UPDATE tblSubscriptions
+                    SET tierID = ?, billingCycle = ?, amount = ?, metadata = ?, updatedAt = NOW()
+                  WHERE subscriptionID = ?",
+                [
+                    $newTierID,
+                    $newBillingCycle,
+                    (float)$newAmount,
+                    json_encode($metadata, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                    $subscriptionID,
+                ],
+                'isdsi'
+            );
+
+            $userID = (int)($sub['userID'] ?? 0);
+
+            ActivityLogger::log(
+                $userID,
+                'subscription_pending_tier_change_applied',
+                'payment',
+                'info',
+                'Deferred plan change applied at renewal for subscription #' . $subscriptionID . ' -> tier #' . $newTierID,
+                [
+                    'subscriptionID'  => $subscriptionID,
+                    'newTierID'       => $newTierID,
+                    'newBillingCycle' => $newBillingCycle,
+                    'newAmount'       => $newAmount,
+                ]
+            );
+
+            if (class_exists('WebhookManager')) {
+                WebhookManager::dispatch('subscription.plan_changed', [
+                    'subscriptionID'  => $subscriptionID,
+                    'userID'          => $userID,
+                    'newTierID'       => $newTierID,
+                    'newBillingCycle' => $newBillingCycle,
+                    'timing'          => 'end_of_period_applied',
+                ]);
+            }
+
+            return ['applied' => true, 'newTierID' => $newTierID, 'newBillingCycle' => $newBillingCycle, 'newAmount' => $newAmount];
+        } catch (\Throwable $e) {
+            error_log('🚨 [PaymentManager::applyPendingTierChange] Failed: ' . $e->getMessage());
+            return ['applied' => false];
+        }
+    }
+
+    /**
+     * 🔀 Apply a Provider Webhook's Requested Lifecycle Transition
+     *
+     * Thin, reusable wrapper around SubscriptionStateMachine::transition(),
+     * shared by PayPalProvider::handleWebhookEvent() and
+     * StripeProvider::handleWebhookEvent() for every NON-renewal lifecycle
+     * event (activation, dunning start, suspend/grace, cancel, expire, Stripe
+     * status mirroring). Renewal has its own richer method
+     * (recordSubscriptionRenewal()) because it also moves money/invoices —
+     * this one is PURE STATE.
+     *
+     * Illegal/terminal transitions (e.g. a stray SUSPENDED event for a
+     * subscription that is currently 'active', not 'past_due' — 'active' ->
+     * 'grace' is NOT a legal edge by design; or any event for an already-
+     * 'expired' subscription) are NOT thrown back to the caller — they are
+     * logged + audited as 'skipped' and the webhook is still reported
+     * `handled` (G-002 §7 — never error/crash on an unresolvable event).
+     *
+     * @param int    $subscriptionID
+     * @param string $targetStatus   One of SubscriptionStateMachine::VALID_STATES
+     * @param string $provider       'paypal' | 'stripe'
+     * @param string $action         tblBillingAttempts.action label, e.g. 'webhook_activated'
+     * @param string $reason         Human-readable reason (logged on the transition)
+     * @param string $idempotencyKey Stable business key, `{provider}:{eventID}` (G-002 §4.3)
+     *
+     * @return array ['transitioned' => bool, 'from' => string, 'to' => string,
+     *                'skipped'? => bool, 'idempotentReplay'? => bool]
+     */
+    public static function applyWebhookTransition(
+        int $subscriptionID,
+        string $targetStatus,
+        string $provider,
+        string $action,
+        string $reason,
+        string $idempotencyKey
+    ): array {
+        $stateMachinePath = __DIR__ . DIRECTORY_SEPARATOR . 'SubscriptionStateMachine.php';
+        if (!file_exists($stateMachinePath)) {
+            throw new RuntimeException('SubscriptionStateMachine.php is required but was not found');
+        }
+        require_once $stateMachinePath;
+
+        $providerKey = strtolower(trim($provider));
+        $modeForLog = self::resolveProviderModeForLog($providerKey);
+
+        $sub = Database::fetchOne(
+            "SELECT subscriptionID, userID, subscriptionStatus FROM tblSubscriptions WHERE subscriptionID = ?",
+            [$subscriptionID],
+            'i'
+        );
+
+        if (!$sub) {
+            return ['transitioned' => false, 'skipped' => true, 'reason' => 'subscription_not_found'];
+        }
+
+        $userID = (int)$sub['userID'];
+        $fromStatus = (string)$sub['subscriptionStatus'];
+
+        // 🛡️ Idempotency belt-and-braces (§4.3) — even though the upstream
+        // webhook plumbing already dedupes by (provider, eventID) BEFORE
+        // handleWebhookEvent() is ever called, a caller that invokes this
+        // directly (tests, or a future retry path) must not double-log.
+        $prior = Database::fetchOne(
+            "SELECT attemptID FROM tblBillingAttempts WHERE idempotencyKey = ? AND action = ? AND status = 'succeeded' LIMIT 1",
+            [$idempotencyKey, $action],
+            'ss'
+        );
+        if ($prior) {
+            return ['transitioned' => true, 'idempotentReplay' => true, 'from' => $fromStatus, 'to' => $targetStatus];
+        }
+
+        if ($fromStatus !== $targetStatus && !SubscriptionStateMachine::canTransition($fromStatus, $targetStatus)) {
+            self::recordWebhookAuditRow($subscriptionID, $userID, $providerKey, $action, $modeForLog, $idempotencyKey, 'skipped', [
+                'reason' => "Illegal transition '{$fromStatus}' -> '{$targetStatus}' ignored",
+            ]);
+
+            ActivityLogger::log(
+                $userID,
+                'webhook_transition_ignored',
+                'payment',
+                'info',
+                'Ignored a ' . $providerKey . ' webhook transition request for subscription #' . $subscriptionID . ": '{$fromStatus}' -> '{$targetStatus}' is not a legal transition",
+                ['subscriptionID' => $subscriptionID, 'from' => $fromStatus, 'to' => $targetStatus, 'provider' => $providerKey]
+            );
+
+            return ['transitioned' => false, 'skipped' => true, 'from' => $fromStatus, 'to' => $targetStatus];
+        }
+
+        SubscriptionStateMachine::transition($subscriptionID, $targetStatus, $reason, $idempotencyKey);
+
+        self::recordWebhookAuditRow($subscriptionID, $userID, $providerKey, $action, $modeForLog, $idempotencyKey, 'succeeded', [
+            'from' => $fromStatus, 'to' => $targetStatus, 'reason' => $reason,
+        ]);
+
+        return ['transitioned' => true, 'from' => $fromStatus, 'to' => $targetStatus];
+    }
+
+    // ========================================================================
+    // 🔒 WEBHOOK LIFECYCLE — PRIVATE HELPERS
+    // ========================================================================
+
+    /**
+     * 🔍 Resolve a Provider's Mode for an Audit-Row Label (best-effort)
+     *
+     * Mirrors changeTier()'s own inline `$modeForLog` resolution — a small
+     * dedicated copy here (rather than a refactor of changeTier() itself)
+     * to avoid touching already-shipped/tested G-002 S2 code.
+     *
+     * @param string $providerKey Lower-cased provider key
+     *
+     * @return string The resolved mode ('sandbox'/'test'/'live'), or 'n/a'
+     */
+    private static function resolveProviderModeForLog(string $providerKey): string
+    {
+        if (!in_array($providerKey, ['paypal', 'stripe', 'coinbase'], true)) {
+            return 'n/a';
+        }
+
+        $billingModePath = __DIR__ . DIRECTORY_SEPARATOR . 'BillingMode.php';
+        if (file_exists($billingModePath)) {
+            require_once $billingModePath;
+            if (class_exists('BillingMode')) {
+                return BillingMode::providerMode($providerKey);
+            }
+        }
+
+        return 'n/a';
+    }
+
+    /**
+     * 📝 Record a tblBillingAttempts Audit Row for a Webhook-Driven Action
+     *
+     * Shared by recordSubscriptionRenewal() and applyWebhookTransition().
+     * Best-effort — mirrors recordTierChangeAttempt()'s "never let audit-
+     * logging failure mask the real outcome" contract.
+     *
+     * @param int    $subscriptionID
+     * @param int    $userID
+     * @param string $provider       Lower-cased provider key
+     * @param string $action         tblBillingAttempts.action label
+     * @param string $mode           Resolved provider mode, or 'n/a'
+     * @param string $idempotencyKey
+     * @param string $status         'succeeded' | 'failed' | 'skipped'
+     * @param array  $detail         JSON-encoded into the `detail` column
+     *
+     * @return void
+     */
+    private static function recordWebhookAuditRow(
+        int $subscriptionID,
+        int $userID,
+        string $provider,
+        string $action,
+        string $mode,
+        string $idempotencyKey,
+        string $status,
+        array $detail
+    ): void {
+        try {
+            Database::query(
+                "INSERT INTO tblBillingAttempts
+                    (provider, action, mode, subscriptionID, userID, idempotencyKey, status, detail, ipAddress, createdAt)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())",
+                [
+                    $provider !== '' ? $provider : 'none',
+                    $action,
+                    $mode,
+                    $subscriptionID,
+                    $userID,
+                    $idempotencyKey,
+                    $status,
+                    json_encode($detail, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                    $_SERVER['REMOTE_ADDR'] ?? null,
+                ],
+                'sssiissss'
+            );
+        } catch (\Throwable $e) {
+            error_log('🚨 [PaymentManager::recordWebhookAuditRow] Failed to write tblBillingAttempts audit row: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * 📅 Advance a Billing Period Date by One Cycle
+     *
+     * Pure date math, relative to the supplied `$fromDate` (NOT "today") —
+     * this is what makes recordSubscriptionRenewal()'s period advance land
+     * exactly on the old period boundary regardless of when the webhook
+     * itself happens to arrive. Mirrors the interval vocabulary already used
+     * by BillingScheduler::calculateNextBillingDate() and
+     * PaymentManager::createSubscription(), extended with the `$fromDate`
+     * parameter those callers don't need.
+     *
+     * @param string $fromDate     'Y-m-d' — the period boundary to advance from
+     * @param string $billingCycle 'monthly' | 'quarterly' | 'yearly' | 'lifetime' | 'one_time'
+     *
+     * @return string 'Y-m-d' — the new period end
+     *
+     * @see https://www.php.net/manual/en/function.strtotime.php
+     */
+    private static function advancePeriodDate(string $fromDate, string $billingCycle): string
+    {
+        return match ($billingCycle) {
+            'yearly'                => date('Y-m-d', strtotime($fromDate . ' +1 year')),
+            'quarterly'              => date('Y-m-d', strtotime($fromDate . ' +3 months')),
+            // 🛡️ Lifetime/one-time subscriptions never recur — a renewal
+            // event should not be possible for one, but defensively this is
+            // a no-op rather than corrupting the period.
+            'lifetime', 'one_time'  => $fromDate,
+            default                  => date('Y-m-d', strtotime($fromDate . ' +1 month')),
+        };
+    }
+
+    // ========================================================================
     // 🔒 PLAN CHANGE — PRIVATE HELPERS
     // ========================================================================
 

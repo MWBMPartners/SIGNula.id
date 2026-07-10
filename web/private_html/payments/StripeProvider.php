@@ -980,10 +980,18 @@ class StripeProvider
      * - checkout.session.completed    — Checkout payment successful, activate subscription
      * - payment_intent.succeeded      — Payment Intent confirmed, complete payment record
      * - payment_intent.payment_failed — Payment failed, mark payment as failed
-     * - invoice.paid                  — Recurring invoice paid, renew subscription period
-     * - customer.subscription.updated — Subscription status changed in Stripe
-     * - customer.subscription.deleted — Subscription cancelled/expired in Stripe
+     * - invoice.paid / invoice.payment_succeeded — Recurring invoice paid — the RENEWAL path (G-002 S3)
+     * - invoice.payment_failed        — Recurring invoice payment failed -> 'past_due' (G-002 S3)
+     * - customer.subscription.updated — Subscription status changed in Stripe -> mirrored via the state machine (G-002 S3)
+     * - customer.subscription.deleted — Subscription cancelled/expired in Stripe -> 'cancelled' (G-002 S3)
      * - charge.refunded               — Charge refunded (full or partial)
+     *
+     * G-002 Stage S3: every subscription-lifecycle case below resolves the
+     * local subscription by `paymentProviderSubscriptionID` (B-072 fix — the
+     * real column; `externalSubscriptionID` never existed) and routes the
+     * requested change through PaymentManager::applyWebhookTransition()/
+     * ::recordSubscriptionRenewal(), which validate the move against
+     * SubscriptionStateMachine::VALID_TRANSITIONS before persisting.
      *
      * @param array $event The parsed Stripe event object (JSON decoded)
      *
@@ -1052,6 +1060,26 @@ class StripeProvider
                 // ============================================================
                 case 'invoice.paid':
                     return self::handleInvoicePaid($data, $eventID);
+
+                // ============================================================
+                // 🔄 invoice.payment_succeeded
+                // Legacy/alias renewal-success event Stripe still emits
+                // alongside invoice.paid for a subscription invoice — same
+                // handler (G-002 spec §7 / task S3).
+                // @see https://docs.stripe.com/api/events/types#event_types-invoice.payment_succeeded
+                // ============================================================
+                case 'invoice.payment_succeeded':
+                    return self::handleInvoicePaid($data, $eventID);
+
+                // ============================================================
+                // ❌ invoice.payment_failed
+                // Fired when a subscription's recurring invoice payment fails
+                // -> dunning start ('past_due') — G-002 S3 (this case did not
+                // previously exist at all).
+                // @see https://docs.stripe.com/api/events/types#event_types-invoice.payment_failed
+                // ============================================================
+                case 'invoice.payment_failed':
+                    return self::handleInvoicePaymentFailed($data, $eventID);
 
                 // ============================================================
                 // 🔄 customer.subscription.updated
@@ -1855,9 +1883,19 @@ class StripeProvider
             );
 
             // 📝 Store the Stripe subscription ID in our database for future reference
+            // 🩹 B-072: the real tblSubscriptions column is
+            // `paymentProviderSubscriptionID` — `externalSubscriptionID` has
+            // never existed (grep-confirmed, phantom column). Before this
+            // fix, EVERY Stripe subscription created via Checkout silently
+            // failed to persist its Stripe subscription id here (an "Unknown
+            // column" mysqli_sql_exception, non-fatal to the caller since
+            // this whole checkout-completion flow is otherwise
+            // non-transactional), which in turn meant every subsequent
+            // invoice.paid/customer.subscription.updated/.deleted webhook
+            // lookup for that subscription could never find it either.
             if ($subResult['success'] && !empty($subResult['subscriptionID']) && $subscriptionID) {
                 Database::query(
-                    "UPDATE tblSubscriptions SET externalSubscriptionID = ? WHERE subscriptionID = ?",
+                    "UPDATE tblSubscriptions SET paymentProviderSubscriptionID = ? WHERE subscriptionID = ?",
                     [$subscriptionID, $subResult['subscriptionID']],
                     'si'
                 );
@@ -2024,11 +2062,23 @@ class StripeProvider
     }
 
     /**
-     * 🔄 Handle invoice.paid event
+     * 🔄 Handle invoice.paid / invoice.payment_succeeded event
      *
-     * Called when a subscription invoice is successfully paid. This event fires
-     * for recurring subscription payments. Renews the subscription period in
-     * SIGNula's database.
+     * Called when a subscription invoice is successfully paid. This event
+     * fires for recurring subscription payments — the RENEWAL path (G-002
+     * spec §3.1/§5.1/§7). Delegates the actual record-payment + invoice +
+     * precise period-advance + pending-tier-change + state-transition work
+     * to PaymentManager::recordSubscriptionRenewal() (shared with
+     * PayPalProvider's PAYMENT.SALE.COMPLETED case — G-002 §7's "shared
+     * helper to keep logic in one place").
+     *
+     * 🩹 G-002 S3 fix: this previously looked up the local subscription by
+     * the phantom `externalSubscriptionID` column (B-072) — always an
+     * "Unknown column" SQL error — and, even had that resolved, only ever
+     * called PaymentManager::recordPayment() (never completePayment()), so
+     * the payment stayed 'pending' forever and NO renewal invoice was ever
+     * actually issued. Both are fixed by routing through
+     * recordSubscriptionRenewal() below.
      *
      * @param array  $invoice The Invoice object from the event data
      * @param string $eventID The Stripe event ID for logging
@@ -2040,56 +2090,61 @@ class StripeProvider
     private static function handleInvoicePaid(array $invoice, string $eventID): array
     {
         $invoiceID = $invoice['id'] ?? '';
-        $subscriptionID = $invoice['subscription'] ?? null;
+        $stripeSubID = $invoice['subscription'] ?? null;
         $amountPaid = $invoice['amount_paid'] ?? 0;
         $currency = strtoupper($invoice['currency'] ?? 'GBP');
         $customerEmail = $invoice['customer_email'] ?? '';
-        $periodEnd = $invoice['lines']['data'][0]['period']['end'] ?? null;
 
-        // 🔍 Find the SIGNula subscription linked to this Stripe subscription
-        if ($subscriptionID) {
-            $subscription = Database::fetchOne(
-                "SELECT s.subscriptionID, s.userID, s.billingCycle FROM tblSubscriptions s WHERE s.externalSubscriptionID = ?",
-                [$subscriptionID],
-                's'
+        // 🔍 An invoice not tied to a subscription (a one-off Stripe
+        // invoice) has nothing to renew — PAYMENT.CAPTURE/payment_intent
+        // events cover one-off payments.
+        if (!$stripeSubID) {
+            ActivityLogger::log(
+                null,
+                'stripe_invoice_paid',
+                'payment',
+                'info',
+                'Stripe invoice paid (not subscription-linked) — ' . $currency . ' ' . number_format($amountPaid / 100, 2),
+                ['eventID' => $eventID, 'invoiceID' => $invoiceID]
             );
 
-            if ($subscription) {
-                // 🔄 Renew the subscription period
-                $newPeriodEnd = $periodEnd
-                    ? date('Y-m-d', $periodEnd) // 📌 Stripe timestamps are Unix epoch
-                    : date('Y-m-d', strtotime('+1 ' . ($subscription['billingCycle'] === 'yearly' ? 'year' : 'month')));
-
-                Database::query(
-                    "UPDATE tblSubscriptions SET subscriptionStatus = 'active', currentPeriodStart = CURDATE(), currentPeriodEnd = ?, nextBillingDate = ? WHERE subscriptionID = ?",
-                    [$newPeriodEnd, $newPeriodEnd, (int)$subscription['subscriptionID']],
-                    'ssi'
-                );
-
-                // 💾 Record the renewal payment
-                PaymentManager::recordPayment(
-                    (int)$subscription['userID'],
-                    $amountPaid / 100, // 📌 Convert from smallest unit back to major unit
-                    'stripe',
-                    'stripe',
-                    [
-                        'currency'       => $currency,
-                        'subscriptionID' => (int)$subscription['subscriptionID'],
-                        'transactionID'  => $invoiceID,
-                        'description'    => 'Subscription renewal via Stripe',
-                        'metadata'       => [
-                            'stripe_invoice_id'      => $invoiceID,
-                            'stripe_subscription_id' => $subscriptionID,
-                            'period_end'             => $newPeriodEnd,
-                        ],
-                    ]
-                );
-            }
+            return ['success' => true, 'action' => 'invoice_paid_no_subscription', 'message' => 'Invoice paid — not linked to a subscription'];
         }
+
+        // 🔍 Find the SIGNula subscription linked to this Stripe subscription
+        // (B-072 fix: paymentProviderSubscriptionID, not externalSubscriptionID)
+        $subscription = Database::fetchOne(
+            "SELECT subscriptionID, userID FROM tblSubscriptions WHERE paymentProviderSubscriptionID = ? ORDER BY createdAt DESC LIMIT 1",
+            [$stripeSubID],
+            's'
+        );
+
+        if (!$subscription) {
+            ActivityLogger::log(
+                null,
+                'stripe_subscription_not_found',
+                'payment',
+                'warning',
+                'Stripe invoice paid for an unknown subscription — ignored',
+                ['eventID' => $eventID, 'invoiceID' => $invoiceID, 'stripeSubID' => $stripeSubID]
+            );
+
+            return ['success' => true, 'action' => 'ignored', 'message' => 'No matching local subscription — ignored'];
+        }
+
+        $renewalResult = PaymentManager::recordSubscriptionRenewal(
+            (int)$subscription['subscriptionID'],
+            'stripe',
+            $amountPaid / 100, // 📌 Convert from smallest unit back to major unit
+            $currency,
+            $invoiceID,
+            'stripe:' . $eventID,
+            'Stripe invoice.paid (renewal)'
+        );
 
         // 📝 Log the invoice payment
         ActivityLogger::log(
-            null,
+            (int)$subscription['userID'],
             'stripe_invoice_paid',
             'payment',
             'info',
@@ -2097,7 +2152,7 @@ class StripeProvider
             [
                 'eventID'        => $eventID,
                 'invoiceID'      => $invoiceID,
-                'subscriptionID' => $subscriptionID,
+                'subscriptionID' => $subscription['subscriptionID'],
                 'amountPaid'     => $amountPaid,
                 'currency'       => $currency,
                 'customerEmail'  => $customerEmail,
@@ -2105,10 +2160,73 @@ class StripeProvider
         );
 
         return [
-            'success' => true,
+            'success' => $renewalResult['success'] ?? false,
             'action'  => 'invoice_paid',
-            'message' => 'Invoice paid and subscription renewed',
+            'message' => $renewalResult['message'] ?? 'Invoice paid and subscription renewed',
         ];
+    }
+
+    /**
+     * ❌ Handle invoice.payment_failed event
+     *
+     * Called when a subscription's recurring invoice payment fails —
+     * enters dunning ('past_due') per G-002 spec §7. (G-002 S3 — this case
+     * did not previously exist at all.)
+     *
+     * @param array  $invoice The Invoice object from the event data
+     * @param string $eventID The Stripe event ID for logging
+     *
+     * @return array Processing result
+     *
+     * @see https://docs.stripe.com/api/invoices/object
+     */
+    private static function handleInvoicePaymentFailed(array $invoice, string $eventID): array
+    {
+        $invoiceID = $invoice['id'] ?? '';
+        $stripeSubID = $invoice['subscription'] ?? null;
+
+        if (!$stripeSubID) {
+            return ['success' => true, 'action' => 'ignored', 'message' => 'Invoice payment failure not linked to a subscription'];
+        }
+
+        $subscription = Database::fetchOne(
+            "SELECT subscriptionID, userID FROM tblSubscriptions WHERE paymentProviderSubscriptionID = ? ORDER BY createdAt DESC LIMIT 1",
+            [$stripeSubID],
+            's'
+        );
+
+        if (!$subscription) {
+            ActivityLogger::log(
+                null,
+                'stripe_subscription_not_found',
+                'payment',
+                'warning',
+                'Stripe invoice.payment_failed for an unknown subscription — ignored',
+                ['eventID' => $eventID, 'invoiceID' => $invoiceID, 'stripeSubID' => $stripeSubID]
+            );
+
+            return ['success' => true, 'action' => 'ignored', 'message' => 'No matching local subscription — ignored'];
+        }
+
+        $result = PaymentManager::applyWebhookTransition(
+            (int)$subscription['subscriptionID'],
+            'past_due',
+            'stripe',
+            'webhook_past_due',
+            'Stripe invoice.payment_failed (dunning start)',
+            'stripe:' . $eventID
+        );
+
+        ActivityLogger::log(
+            (int)$subscription['userID'],
+            'stripe_invoice_payment_failed',
+            'payment',
+            'warning',
+            'Stripe subscription invoice payment failed',
+            ['eventID' => $eventID, 'invoiceID' => $invoiceID, 'subscriptionID' => $subscription['subscriptionID'], 'transitioned' => $result['transitioned'] ?? false]
+        );
+
+        return ['success' => true, 'action' => 'payment_failed', 'message' => 'Subscription marked past_due'];
     }
 
     /**
@@ -2144,40 +2262,16 @@ class StripeProvider
 
         $signulaStatus = $statusMap[$stripeStatus] ?? 'active';
 
-        // 🔍 Find and update the SIGNula subscription
+        // 🔍 Find the SIGNula subscription (B-072 fix: paymentProviderSubscriptionID,
+        // not the phantom externalSubscriptionID)
         $localSub = Database::fetchOne(
-            "SELECT subscriptionID, userID, subscriptionStatus FROM tblSubscriptions WHERE externalSubscriptionID = ?",
+            "SELECT subscriptionID, userID, subscriptionStatus FROM tblSubscriptions WHERE paymentProviderSubscriptionID = ? ORDER BY createdAt DESC LIMIT 1",
             [$stripeSubID],
             's'
         );
 
-        if ($localSub) {
-            // 📝 Only update if status actually changed
-            if ($localSub['subscriptionStatus'] !== $signulaStatus) {
-                Database::query(
-                    "UPDATE tblSubscriptions SET subscriptionStatus = ? WHERE subscriptionID = ?",
-                    [$signulaStatus, (int)$localSub['subscriptionID']],
-                    'si'
-                );
-
-                ActivityLogger::log(
-                    (int)$localSub['userID'],
-                    'stripe_subscription_status_changed',
-                    'payment',
-                    'info',
-                    'Subscription status changed: ' . $localSub['subscriptionStatus'] . ' => ' . $signulaStatus,
-                    [
-                        'eventID'          => $eventID,
-                        'stripeSubID'      => $stripeSubID,
-                        'previousStatus'   => $localSub['subscriptionStatus'],
-                        'newStatus'        => $signulaStatus,
-                        'stripeStatus'     => $stripeStatus,
-                        'subscriptionID'   => (int)$localSub['subscriptionID'],
-                    ]
-                );
-            }
-        } else {
-            // ⚠️ No matching local subscription found
+        if (!$localSub) {
+            // ⚠️ No matching local subscription found — safely ignored.
             ActivityLogger::log(
                 null,
                 'stripe_subscription_not_found',
@@ -2186,12 +2280,46 @@ class StripeProvider
                 'Stripe subscription updated but no matching SIGNula subscription found',
                 ['eventID' => $eventID, 'stripeSubID' => $stripeSubID, 'stripeStatus' => $stripeStatus]
             );
+
+            return ['success' => true, 'action' => 'ignored', 'message' => 'No matching local subscription — ignored'];
         }
+
+        // 🔀 G-002 S3: routed through PaymentManager::applyWebhookTransition()
+        // — validated against SubscriptionStateMachine before persisting —
+        // rather than the previous raw, unconditional UPDATE. An illegal
+        // mirror request (e.g. Stripe reporting 'trialing' for a subscription
+        // that is currently 'active' locally) is safely skipped + audited,
+        // not blindly applied.
+        $result = PaymentManager::applyWebhookTransition(
+            (int)$localSub['subscriptionID'],
+            $signulaStatus,
+            'stripe',
+            'webhook_status_sync',
+            'Stripe customer.subscription.updated (' . $stripeStatus . ')',
+            'stripe:' . $eventID
+        );
+
+        ActivityLogger::log(
+            (int)$localSub['userID'],
+            'stripe_subscription_status_changed',
+            'payment',
+            'info',
+            'Subscription status sync: ' . $localSub['subscriptionStatus'] . ' -> ' . $signulaStatus . ' (Stripe status: ' . $stripeStatus . ')',
+            [
+                'eventID'          => $eventID,
+                'stripeSubID'      => $stripeSubID,
+                'previousStatus'   => $localSub['subscriptionStatus'],
+                'requestedStatus'  => $signulaStatus,
+                'stripeStatus'     => $stripeStatus,
+                'subscriptionID'   => (int)$localSub['subscriptionID'],
+                'transitioned'     => $result['transitioned'] ?? false,
+            ]
+        );
 
         return [
             'success' => true,
             'action'  => 'subscription_updated',
-            'message' => 'Subscription status updated to: ' . $signulaStatus,
+            'message' => 'Subscription status synced to: ' . $signulaStatus,
         ];
     }
 
@@ -2212,34 +2340,15 @@ class StripeProvider
     {
         $stripeSubID = $subscription['id'] ?? '';
 
-        // 🔍 Find the SIGNula subscription
+        // 🔍 Find the SIGNula subscription (B-072 fix: paymentProviderSubscriptionID,
+        // not the phantom externalSubscriptionID)
         $localSub = Database::fetchOne(
-            "SELECT subscriptionID, userID FROM tblSubscriptions WHERE externalSubscriptionID = ?",
+            "SELECT subscriptionID, userID FROM tblSubscriptions WHERE paymentProviderSubscriptionID = ? ORDER BY createdAt DESC LIMIT 1",
             [$stripeSubID],
             's'
         );
 
-        if ($localSub) {
-            // ❌ Mark subscription as cancelled
-            Database::query(
-                "UPDATE tblSubscriptions SET subscriptionStatus = 'cancelled', cancelledAt = NOW(), endDate = CURDATE() WHERE subscriptionID = ?",
-                [(int)$localSub['subscriptionID']],
-                'i'
-            );
-
-            ActivityLogger::log(
-                (int)$localSub['userID'],
-                'stripe_subscription_deleted',
-                'payment',
-                'info',
-                'Stripe subscription cancelled/deleted',
-                [
-                    'eventID'        => $eventID,
-                    'stripeSubID'    => $stripeSubID,
-                    'subscriptionID' => (int)$localSub['subscriptionID'],
-                ]
-            );
-        } else {
+        if (!$localSub) {
             ActivityLogger::log(
                 null,
                 'stripe_subscription_delete_not_found',
@@ -2248,7 +2357,34 @@ class StripeProvider
                 'Stripe subscription deleted but no matching SIGNula subscription found',
                 ['eventID' => $eventID, 'stripeSubID' => $stripeSubID]
             );
+
+            return ['success' => true, 'action' => 'ignored', 'message' => 'No matching local subscription — ignored'];
         }
+
+        // ❌ Mark subscription as cancelled — routed through the state
+        // machine (G-002 S3) rather than a raw, unconditional UPDATE.
+        $result = PaymentManager::applyWebhookTransition(
+            (int)$localSub['subscriptionID'],
+            'cancelled',
+            'stripe',
+            'webhook_cancelled',
+            'Stripe customer.subscription.deleted',
+            'stripe:' . $eventID
+        );
+
+        ActivityLogger::log(
+            (int)$localSub['userID'],
+            'stripe_subscription_deleted',
+            'payment',
+            'info',
+            'Stripe subscription cancelled/deleted',
+            [
+                'eventID'        => $eventID,
+                'stripeSubID'    => $stripeSubID,
+                'subscriptionID' => (int)$localSub['subscriptionID'],
+                'transitioned'   => $result['transitioned'] ?? false,
+            ]
+        );
 
         return [
             'success' => true,
