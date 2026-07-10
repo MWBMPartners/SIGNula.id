@@ -1321,6 +1321,199 @@ Advisory Database (GHSA). Update promptly for any JWT-related CVE.
 
 ---
 
+## 🪪 OIDC Provider (G-001)
+
+**Introduced in:** v2.9.0-beta · **Migration:** `031_oauth_provider_clients.sql`
+(`tblOAuthClients`, `tblOAuthClientRedirectUris`, `tblOAuthAuthCodes`,
+`tblOAuthConsents`, `oidc.*` settings) — extended by `032_oauth_token_endpoint.sql`
+(`tblOAuthAuthCodes.issuedFamilyID`, for replay→family-revoke) and
+`033_oauth_subject_store.sql` (`tblOAuthSubjects`, the pairwise-subject↔userID map).
+**Source files:**
+- `web/private_html/auth/OAuthClientManager.php` — client registration, redirect-URI/scope checks, pairwise `sub` computation
+- `web/private_html/auth/OAuthAuthorizeService.php` — `/oauth/authorize-idp` request validation + consent + code issuance
+- `web/private_html/auth/OAuthTokenService.php` — `/oauth/token` client auth + code redemption + refresh rotation + token/id_token minting
+- `web/private_html/auth/OAuthUserInfoService.php` — `/oauth/userinfo` claim gating
+- `web/private_html/auth/OAuthRevocationService.php` — `/oauth/revoke` (RFC 7009)
+- `web/private_html/auth/OidcDiscoveryService.php` — `/.well-known/openid-configuration` document builder + the `oidc.enabled` gate every endpoint calls
+- `web/public_html/oauth/authorize-idp.php`, `token.php`, `userinfo.php`, `revoke.php` — thin HTTP controllers
+- `web/public_html/.well-known/openid-configuration/index.php`
+- `web/public_html/partners/admin/oauth-clients.php` — partner-admin client registration UI
+
+---
+
+### ⚠️ Master Switch — `oidc.enabled` (read this before anything else)
+
+**The OIDC Provider ships OFF.** Migration 031 seeds `oidc.enabled = '0'`, and
+`OidcDiscoveryService::isProviderEnabled()` is the FIRST check every one of
+the 5 provider endpoints (`/oauth/authorize-idp`, `/oauth/token`,
+`/oauth/userinfo`, `/oauth/revoke`, `/.well-known/openid-configuration`)
+makes — before any database-bound client/grant work. While the switch is
+off, **all 5 endpoints refuse with `404`** (a local, non-redirectable error
+page for `/oauth/authorize-idp`; `{"error":"not_found"}` for the other four)
+so a disabled provider does not even confirm the endpoints exist.
+
+**To enable the provider in production**, update `oidc.enabled` in the
+backend database `tblSettings` table (via the admin Settings UI or direct
+SQL — this is an application setting, not a server/CLI config value):
+
+> **Backend DB → tblSettings → key `oidc.enabled` → value `1` → Save.**
+> (Admin UI path: **Global Admin → Settings → `oidc` category →
+> `oidc.enabled` → Save**, the same generic settings editor used for every
+> other `tblSettings`-backed feature in this document.)
+
+```sql
+-- Turn the OIDC Provider ON (run only once you have registered at least one
+-- RP client via /partners/admin/oauth-clients and are ready to accept
+-- "Sign in with SIGNula.id" traffic):
+UPDATE tblSettings SET settingValue = '1' WHERE settingKey = 'oidc.enabled';
+```
+
+Verify:
+
+```sql
+SELECT settingValue FROM tblSettings WHERE settingKey = 'oidc.enabled';
+-- Must show '1'
+```
+
+Then confirm live: `GET /.well-known/openid-configuration` should return the
+discovery document (`200`) instead of `{"error":"not_found"}` (`404`).
+
+**Known gap (verified in this codebase):** the generic settings admin pages
+(`web/public_html/admin/settings/index.php` and `.../admin/settings/oauth.php`)
+`require_once` a `web/_backend/SessionManager.php` file that does not exist
+anywhere in this repository (a pre-existing issue affecting ~74 admin files,
+unrelated to G-001 — see the `NEEDS-LEAD-REVIEW` note in
+`web/public_html/partners/admin/oauth-clients.php`'s header comment). Until
+that gap is fixed, use the **direct SQL** path above rather than the admin
+Settings UI to flip `oidc.enabled`.
+
+---
+
+### 1. Policy Settings (`oidc.*` in `tblSettings`)
+
+All policy settings are seeded by migration 031 (`INSERT IGNORE`,
+`settingCategory = 'oidc'`) and are admin-tunable via the backend settings UI
+without a code change (subject to the "Known gap" note above).
+
+| `settingKey` | Default | Type | Notes |
+|---|---|---|---|
+| `oidc.enabled` | `0` | boolean | **Master switch** — see above. All 5 provider endpoints 404 while off. |
+| `oidc.issuer` | `https://signula.id` | string | `iss` claim on every `id_token` + the discovery document's `issuer`. **MUST equal `jwt.issuer` (G-003)** — never let these drift apart. |
+| `oidc.authcode_ttl` | `60` | integer | Authorization-code lifetime in seconds (short-lived by design — RFC 6749 §4.1.2 recommends ≤10 min; SIGNula defaults far tighter). |
+| `oidc.require_pkce` | `1` | boolean | Require PKCE (S256) for **every** client, not just public ones. Keep ON in production. |
+| `oidc.allow_plain_pkce` | `0` | boolean | Allow the PKCE `plain` method. Keep **OFF** in production — `plain` sends the code_verifier itself as the challenge, which defeats PKCE's protection against a leaked authorization code. |
+| `oidc.subject_type` | `public` | string | **Global *advisory* default only** — see the pairwise-subject note below; does **not** override a client's own `subjectType` column. |
+| `oidc.consent_remember` | `1` | boolean | Remember a user's consent per client+scope so repeat sign-ins auto-skip the consent screen (unless the RP forces `prompt=consent`). |
+| `oidc.access_ttl` | `900` | integer | RP access-token lifetime in seconds (15 min) — mirrors `jwt.access_ttl`'s default. |
+| `oidc.id_token_ttl` | `3600` | integer | `id_token` lifetime in seconds (1 hour). |
+| `oidc.refresh_enabled` | `1` | boolean | Whether the `offline_access` scope may mint a refresh token at all. |
+
+A further setting is **not** seeded by the migration — it is minted at
+runtime, encrypted, on first use (mirrors `KeyManager::generateKey()`'s "never
+hardcode a secret in a migration" pattern):
+
+| `settingKey` | Sensitive | Description |
+|---|---|---|
+| `oauth.pairwise_salt` | **YES** (`isSensitive=1`, `settingType='encrypted'`) | Server-side salt used to compute every pairwise `sub` claim (see below). Auto-generated by `OAuthClientManager::getPairwiseSalt()` the first time a pairwise subject is ever computed; encrypted with the same `SecurityUtils::encrypt()`/`ENCRYPTION_KEY` mechanism the JWT signing key uses. |
+
+```sql
+-- Quick-reference: check current oidc.* policy state
+SELECT settingKey, settingValue, isSensitive
+FROM tblSettings
+WHERE settingKey LIKE 'oidc.%' OR settingKey = 'oauth.pairwise_salt'
+ORDER BY settingKey;
+```
+
+**NEEDS-LEAD-REVIEW (flagged directly in migration 031's own header
+comment, reproduced here for visibility):** `tblOAuthClients.subjectType`
+DEFAULTs to `'pairwise'` at the per-client column level, while the global
+advisory setting `oidc.subject_type` is seeded `'public'`. These are
+**deliberately not forced to match** — confirm which should actually govern
+new-client-registration defaults in the partner-admin UI before relying on
+`oidc.subject_type` for anything beyond documentation/reference. In
+practice, `OAuthClientManager::registerClient()` defaults every new client to
+`subjectType='pairwise'` regardless of the global setting's value (see
+below).
+
+---
+
+### 2. RS256 Signing Key — Shared with G-003 (no separate OIDC key)
+
+The OIDC Provider does **not** mint or manage its own signing key. Both the
+access token (`typ: at+jwt`) and the `id_token` issued by `/oauth/token` are
+signed with the **same active RS256 key** described in [§2 "RS256 Signing
+Keys" of the JWT API Authentication section above](#2-rs256-signing-keys--generation-storage-and-rotation) —
+`Jwt::signIdToken()` calls the identical `KeyManager::getActiveKey()` used
+for first-party access tokens. There is nothing OIDC-specific to generate,
+rotate, or retire: follow the G-003 key-rotation procedure above and both the
+first-party API and every "Sign in with SIGNula.id" RP stay correctly
+verifiable throughout.
+
+The public half is published at the **same** `GET /.well-known/jwks.json`
+(G-003) — the OIDC discovery document's `jwks_uri` simply points RP client
+libraries at that existing endpoint (see §3 below). `jwks.json` is
+**deliberately not gated** by `oidc.enabled` — it stays live for first-party
+API verifiers regardless of whether the OIDC provider surface is on.
+
+---
+
+### 3. Pairwise Subject Model (`sub` claim privacy)
+
+By default, every **newly registered** OAuth client gets
+`subjectType = 'pairwise'` (the `tblOAuthClients.subjectType` column
+default — see the NEEDS-LEAD-REVIEW note above for the one place this can
+diverge from the global setting). A pairwise `sub` is a **per-client,
+salted, one-way, opaque** identifier — never the user's raw internal `userID`
+— computed as:
+
+```
+sub = SHA-256( sectorIdentifier . '|' . userID . '|' . oauth.pairwise_salt )
+```
+
+- **`sectorIdentifier`** defaults to the host of the client's first
+  registered `redirect_uri` (falls back to `client:<clientIdentifier>` if no
+  parseable host exists, e.g. a bare native-app custom scheme) — set at
+  registration time (`OAuthClientManager::registerClient()`), stored on the
+  client row.
+- **`oauth.pairwise_salt`** is the single server-wide secret described in §1
+  above — encrypted at rest, minted once, shared by every pairwise
+  computation. Rotating it would silently change **every** existing pairwise
+  `sub` for **every** client (breaking RP-side user-identity continuity) —
+  there is deliberately no rotation tooling for it; treat it as a
+  long-lived, back-up-worthy secret, not a routinely-rotated key.
+- **Not reversible:** because SHA-256 is one-way, SIGNula itself cannot
+  recompute a `userID` from a `sub` claim alone. The (`subjectHash`,
+  `clientID`) → `userID` mapping needed to resolve an incoming access
+  token's `sub` back to a real user (e.g. inside `/oauth/userinfo`) is
+  persisted separately in `tblOAuthSubjects` (migration 033,
+  `033_oauth_subject_store.sql`) at mint/rotation time — never recomputed by
+  guessing the salt.
+- **`subjectType = 'public'`** (settable per client at registration, or via
+  the partner-admin "Advanced settings" panel) instead returns the raw
+  `(string) userID` as `sub` — only choose this for a fully-trusted
+  first-party-equivalent RP that has an explicit reason to need a stable,
+  shared identifier; it forfeits the cross-RP-correlation protection
+  pairwise subjects exist for.
+
+---
+
+### 4. Security Posture Summary
+
+| Property | Mechanism |
+|---|---|
+| **`redirect_uri` exact match** | `OAuthClientManager::isExactRedirectMatch()` — byte-for-byte (`===`), never a substring or normalised match. Checked BEFORE any error is ever redirected anywhere; an unknown client or a failed match renders a LOCAL, non-redirectable HTML error page (open-redirect defence). |
+| **PKCE mandatory (S256)** | Required for every public client, every client with `pkceRequired=1`, and globally whenever `oidc.require_pkce` is on (default). RFC 7636's implicit "assume `plain` when the method is omitted" downgrade is deliberately NOT honoured — an explicit `code_challenge_method` is always required once a `code_challenge` is present. `plain` itself is only accepted when `oidc.allow_plain_pkce` is explicitly on (default off). |
+| **Single-use authorization codes** | Consumed via one atomic, guarded `UPDATE ... SET consumedAt = NOW() WHERE codeHash = ? AND consumedAt IS NULL AND clientID = ?` — exactly one concurrent redemption attempt can ever win. A REPLAY of an already-consumed code revokes the exact token family that code's first legitimate exchange minted and raises a HIGH `SecurityAlertManager` alert. |
+| **Client-bound codes** | The client-binding check is baked into the atomic consume `UPDATE` itself (not a later comparison) — a code issued to Client A can never be burned or redeemed by Client B, even with B's own valid credentials. |
+| **Client-bound refresh tokens** | `TokenService::refresh()` rejects (before rotating/spending) any refresh token whose owning `clientID` does not match the authenticated caller — including a first-party token or one minted for a different RP. |
+| **Rate-limited endpoints (B-059)** | `/oauth/token` and `/oauth/revoke` are rate-limited per-IP AND per-client (when a `client_id` was presented), reusing the `jwt.rate_limit.*` settings (G-003) under distinct bucket names so counters never mix with `/auth/token`'s own. |
+| **No cross-client revoke** | `/oauth/revoke` only ever revokes a token owned by the client that just authenticated — verified via the refresh token's stored `clientID` or the access token's cryptographically-verified `aud` claim, never merely a peeked/unverified value. |
+| **No validity oracle on revoke** | `/oauth/revoke` always returns `200` with an empty body once the client itself authenticates (RFC 7009 §2.2) — an unknown, already-revoked, or foreign-owned token is indistinguishable from a successful revoke. |
+| **Scope-gated claims** | Both the `id_token` and `/oauth/userinfo` return `email`/`email_verified` only with the `email` scope, and `name`/`given_name`/`family_name`/(`preferred_username`/`picture` on userinfo only) only with the `profile` scope. A token minted with `openid` alone yields `sub` and nothing else. |
+| **`offline_access`-gated refresh tokens** | A refresh token is only minted on the initial code exchange when the client both requested and was granted `offline_access` — no refresh token is issued to a client that never asked for one. |
+
+---
+
 ### NEEDS-LEAD-REVIEW
 
 - The exact SMTP behaviour when `email.smtp.encryption = 'none'` (mail sent without AUTH) should be confirmed against your Dreamhost shared-hosting relay config before deploying to production. Dreamhost typically requires authentication; `none` may cause all outbound mail to fail silently.
