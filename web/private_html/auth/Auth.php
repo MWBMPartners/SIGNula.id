@@ -393,8 +393,31 @@ class Auth
                 }
             }
 
-            // ✅ Complete login (no MFA required)
-            self::completeLogin($user['userID'], $rememberMe);
+            // ✅ Complete login (no MFA required) — completeLogin() creates the
+            // tblUserSessions row + populates $_SESSION. If it fails (e.g. a DB
+            // error), NO session exists, so we must NOT report success back to
+            // the caller (B-055: this used to be ignored, producing a phantom
+            // "success" with no working session).
+            $sessionCreated = self::completeLogin($user['userID'], $rememberMe);
+
+            if ($sessionCreated !== true) {
+                // 📝 Log the failure for security/support auditing, matching the
+                // ActivityLogger convention used by the other failure branches
+                // in this method above.
+                ActivityLogger::log($user['userID'], 'login_failed', 'auth', 'error',
+                    'Login failed: completeLogin() could not establish a session');
+
+                ErrorLogger::logError('Warning',
+                    'completeLogin() returned false after successful credential check for userID ' . $user['userID'],
+                    __FILE__, __LINE__);
+
+                return [
+                    'success' => false,
+                    'userID' => null,
+                    'message' => 'Login failed. Please try again later.',
+                    'requiresMFA' => false
+                ];
+            }
 
             return [
                 'success' => true,
@@ -465,7 +488,15 @@ class Auth
                 $deviceInfo['osVersion'],
                 $deviceInfo['isMobile'],
                 $expiresAt
-            ], 'sissssssssii');
+            ], 'sissssssssis'); // 🐛 B-055: last char must be 's' — $expiresAt is a
+            // "Y-m-d H:i:s" DATETIME *string*, not an integer. The old 'i' caused
+            // mysqli to coerce it via PHP's leading-numeric-substring int cast
+            // (e.g. "2026-07-10 01:23:45" -> 2026), which fails strict-mode MySQL
+            // with "Incorrect datetime value: '2026'" and silently produced NO
+            // session row. Params in order: sessionToken(s), userID(i),
+            // deviceType(s), deviceName(s), ipAddress(s), userAgent(s),
+            // browserName(s), browserVersion(s), osName(s), osVersion(s),
+            // isMobile(i), expiresAt(s) => "s i ssssssss i s" = "sissssssssis" (12 chars).
 
             $sessionID = Database::getLastInsertId();
 

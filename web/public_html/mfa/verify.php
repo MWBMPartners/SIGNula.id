@@ -83,8 +83,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             MFA::trustDevice($userID, $deviceFingerprint);
                         }
 
-                        // 🔐 Complete login — create session in database and PHP
-                        Auth::loginOAuth($userID, $rememberMe);
+                        // 🔐 Complete login — create session in database and PHP.
+                        // B-055: loginOAuth() (a thin wrapper over
+                        // Auth::completeLogin()) can fail to create a session
+                        // (e.g. a DB error); if it does, we must NOT redirect to
+                        // the dashboard as if MFA + login had fully succeeded.
+                        // Throwing here routes through this block's existing
+                        // catch (Exception $e) below, which logs the failure and
+                        // surfaces a generic error to the user instead.
+                        if (!Auth::loginOAuth($userID, $rememberMe)) {
+                            throw new RuntimeException('Failed to complete login session after MFA verification.');
+                        }
 
                         // ✅ Redirect to intended destination
                         $redirect = $_SESSION['redirect_after_login'] ?? '/dashboard';

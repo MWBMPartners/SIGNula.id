@@ -226,8 +226,16 @@ try {
             // 🔄 Update OAuth tokens
             $oauth->linkAccount($existingUserID, $userData, $tokenData);
 
-            // 🔐 Complete login
-            Auth::loginOAuth($existingUserID, false);
+            // 🔐 Complete login — B-055: loginOAuth() can fail to create a
+            // session (e.g. a DB error); if it does, we must NOT proceed to
+            // redirect to /dashboard as if the user were logged in. Throwing
+            // here routes through this file's existing catch (Exception $e)
+            // block below, which logs the failure and redirects to /login
+            // with a generic error — consistent with the other
+            // RuntimeException throws already used in this file.
+            if (!Auth::loginOAuth($existingUserID, false)) {
+                throw new RuntimeException('Failed to complete login session for user account.');
+            }
 
             // 📝 Log activity
             ActivityLogger::log($existingUserID, 'oauth_login', 'auth', 'info',
@@ -257,8 +265,12 @@ try {
                     // 🔗 Link OAuth account
                     $oauth->linkAccount($userID, $userData, $tokenData);
 
-                    // 🔐 Complete login
-                    Auth::loginOAuth($userID, false);
+                    // 🔐 Complete login — B-055: see the matching guard above;
+                    // don't fall through to a "success" redirect without a
+                    // real session.
+                    if (!Auth::loginOAuth($userID, false)) {
+                        throw new RuntimeException('Failed to complete login session for user account.');
+                    }
 
                     // 📝 Log activity
                     ActivityLogger::log($userID, 'oauth_auto_linked', 'auth', 'info',
@@ -339,8 +351,12 @@ try {
                 ActivityLogger::log($userID, 'oauth_registration', 'auth', 'info',
                     "New account created via {$provider}", ['provider' => $provider]);
 
-                // 🔐 Complete login
-                Auth::loginOAuth($userID, false);
+                // 🔐 Complete login — B-055: see the matching guard above; the
+                // account row now exists, but we must not tell the browser it's
+                // logged in unless a real session was actually created.
+                if (!Auth::loginOAuth($userID, false)) {
+                    throw new RuntimeException('Failed to complete login session for user account.');
+                }
 
                 // ✅ Redirect to dashboard with welcome message
                 $_SESSION['success'] = 'Welcome to SIGNula! Your account has been created successfully.';
