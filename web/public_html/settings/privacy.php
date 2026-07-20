@@ -540,7 +540,7 @@ include SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATO
 
                     <?php if ($message): ?>
                         <div class="alert alert-<?php echo $messageType; ?> alert-dismissible fade show" role="alert">
-                            <?php echo $message; ?>
+                            <?php echo htmlspecialchars($message, ENT_QUOTES, 'UTF-8'); ?>
                             <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                         </div>
                     <?php endif; ?>

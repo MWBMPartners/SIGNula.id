@@ -571,7 +571,12 @@ if ($filterOverdue) {
                 mark this request as awaiting the subject, or use the transition control to track progress.
                 <?php if (!in_array($dStatus, ['fulfilled', 'partially_fulfilled', 'rejected', 'expired', 'withdrawn', 'awaiting_user'], true)): ?>
                 <div class="mt-2">
-                    <button type="button" class="btn btn-sm btn-warning" onclick="markAwaitingSubject('<?php echo htmlspecialchars($dType, ENT_QUOTES, 'UTF-8'); ?>')">
+                    <!-- 🛡️ L1: no inline onclick w/ PHP-interpolated JS-string literal —
+                         htmlspecialchars() is an HTML-entity encoder, wrong tool for a
+                         JS-string sink. $dType is carried as a plain HTML attribute
+                         (its correct, native encoding context) and read back via
+                         dataset in the script block below. -->
+                    <button type="button" class="btn btn-sm btn-warning" id="markAwaitingSubjectBtn" data-dsar-type="<?php echo htmlspecialchars($dType, ENT_QUOTES, 'UTF-8'); ?>">
                         <i class="fas fa-user-clock me-1"></i>Mark Awaiting Subject
                     </button>
                 </div>
@@ -718,6 +723,17 @@ if ($filterOverdue) {
         const requestID = getDetailRequestID();
         const actionName = 'fulfil_' + requestType; // fulfil_access | fulfil_portability | fulfil_erasure
         await postAction(actionName, { requestID: requestID }, 'Marked as awaiting the subject.');
+    }
+
+    // 🛡️ L1: bound via data-dsar-type attribute + addEventListener rather than
+    // an inline onclick="markAwaitingSubject('<?php /* PHP value */ ?>')" — see
+    // the button markup above for why. dataset reads back the browser's own
+    // HTML-attribute-decoded string, so no separate JS-string encoding is needed.
+    const markAwaitingSubjectBtn = document.getElementById('markAwaitingSubjectBtn');
+    if (markAwaitingSubjectBtn) {
+        markAwaitingSubjectBtn.addEventListener('click', () => {
+            markAwaitingSubject(markAwaitingSubjectBtn.dataset.dsarType);
+        });
     }
 
     // ============================================================================
