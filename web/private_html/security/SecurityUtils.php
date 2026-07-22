@@ -495,6 +495,33 @@ class SecurityUtils
             $errors[] = "Password is too common. Please choose a more unique password";
         }
 
+        // 🕵️ FG-009 (Issue #96): Check against Have I Been Pwned's breached-
+        // password database. DISABLED by default — PwnedPasswords::isBreached()
+        // is a complete no-op (no network call at all) unless an admin has
+        // explicitly turned on `security.breached_password_check.enabled` via
+        // Settings, and it ALWAYS fails open (never blocks on an API outage).
+        // This single chokepoint covers registration (Auth::register()),
+        // password change (Auth::changePassword()), and password reset
+        // (web/public_html/reset-password.php) — all three call
+        // validatePassword() to enforce password policy.
+        // @see web/private_html/security/PwnedPasswords.php
+        // @see https://haveibeenpwned.com/API/v3#PwnedPasswords
+        if (class_exists('PwnedPasswords')) {
+            $breachCheck = PwnedPasswords::isBreached($password);
+
+            if ($breachCheck['checked'] && $breachCheck['breached']) {
+                // 🚦 The ACTION taken on a confirmed breach hit is decided
+                // here (not inside PwnedPasswords) so future non-blocking
+                // modes (e.g. 'warn') can be added without touching the
+                // breach-checking class itself.
+                $breachMode = getSetting('security.breached_password_check.mode', 'block');
+
+                if ($breachMode === 'block') {
+                    $errors[] = 'This password has appeared in a known data breach — please choose a different one.';
+                }
+            }
+        }
+
         return [
             'valid' => empty($errors),
             'errors' => $errors
