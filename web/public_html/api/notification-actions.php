@@ -56,7 +56,7 @@ header('Content-Type: application/json');
 // notifications.
 if (!isset($_SESSION['userID'])) {
     http_response_code(401);
-    jsonResponse(['success' => false, 'error' => 'Authentication required. Please log in.']);
+    echo json_encode(['success' => false, 'error' => 'Authentication required. Please log in.']);
     exit;
 }
 
@@ -82,7 +82,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         // No CSRF needed — this is a safe, idempotent read operation.
         case 'get_unread_count':
             $count = NotificationService::getUnreadCount($userID);
-            jsonResponse([
+            echo json_encode([
                 'success' => true,
                 'count'   => $count,
             ]);
@@ -91,7 +91,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         default:
             // ❌ Unknown GET action
             http_response_code(400);
-            jsonResponse([
+            echo json_encode([
                 'success' => false,
                 'error'   => 'Unknown action. Supported GET actions: get_unread_count',
             ]);
@@ -112,7 +112,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         $input = json_decode(file_get_contents('php://input'), true);
         if (!is_array($input)) {
             http_response_code(400);
-            jsonResponse(['success' => false, 'error' => 'Invalid JSON in request body.']);
+            echo json_encode(['success' => false, 'error' => 'Invalid JSON in request body.']);
             exit;
         }
     } else {
@@ -128,7 +128,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $csrfToken = $input['csrf_token'] ?? $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
     if (!SecurityUtils::verifyCSRFToken($csrfToken)) {
         http_response_code(403);
-        jsonResponse([
+        echo json_encode([
             'success' => false,
             'error'   => 'Invalid or expired CSRF token. Please refresh the page and try again.',
         ]);
@@ -163,7 +163,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 $type
             );
 
-            jsonResponse([
+            echo json_encode([
                 'success'       => true,
                 'notifications' => $result['notifications'],
                 'total'         => $result['total'],
@@ -183,12 +183,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 
             if ($notificationID <= 0) {
                 http_response_code(400);
-                jsonResponse(['success' => false, 'error' => 'Valid notificationID is required.']);
+                echo json_encode(['success' => false, 'error' => 'Valid notificationID is required.']);
                 exit;
             }
 
             $marked = NotificationService::markAsRead($notificationID, $userID);
-            jsonResponse([
+            echo json_encode([
                 'success' => $marked,
                 'message' => $marked ? 'Notification marked as read.' : 'Failed to mark notification.',
             ]);
@@ -203,7 +203,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         //   { success: true, count: N } — Number of notifications marked
         case 'mark_all_read':
             $count = NotificationService::markAllAsRead($userID);
-            jsonResponse([
+            echo json_encode([
                 'success' => true,
                 'count'   => $count,
                 'message' => $count > 0
@@ -224,12 +224,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 
             if ($notificationID <= 0) {
                 http_response_code(400);
-                jsonResponse(['success' => false, 'error' => 'Valid notificationID is required.']);
+                echo json_encode(['success' => false, 'error' => 'Valid notificationID is required.']);
                 exit;
             }
 
             $archived = NotificationService::archive($notificationID, $userID);
-            jsonResponse([
+            echo json_encode([
                 'success' => $archived,
                 'message' => $archived ? 'Notification archived.' : 'Failed to archive notification.',
             ]);
@@ -247,12 +247,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 
             if ($notificationID <= 0) {
                 http_response_code(400);
-                jsonResponse(['success' => false, 'error' => 'Valid notificationID is required.']);
+                echo json_encode(['success' => false, 'error' => 'Valid notificationID is required.']);
                 exit;
             }
 
             $deleted = NotificationService::delete($notificationID, $userID);
-            jsonResponse([
+            echo json_encode([
                 'success' => $deleted,
                 'message' => $deleted ? 'Notification deleted.' : 'Failed to delete notification.',
             ]);
@@ -263,7 +263,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         // ====================================================================
         default:
             http_response_code(400);
-            jsonResponse([
+            echo json_encode([
                 'success' => false,
                 'error'   => 'Unknown action. Supported POST actions: get_notifications, mark_read, mark_all_read, archive, delete',
             ]);
@@ -278,7 +278,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     // @see https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/405
     http_response_code(405);
     header('Allow: GET, POST');
-    jsonResponse([
+    echo json_encode([
         'success' => false,
         'error'   => 'Method not allowed. Use GET or POST.',
     ]);
