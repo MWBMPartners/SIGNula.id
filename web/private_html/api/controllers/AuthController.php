@@ -57,6 +57,18 @@ class AuthController extends BaseController
             'username' => 'string|min:3|max:50|unique:tblUsers,username',
         ]);
 
+        // 🔒 Enforce the SAME password policy gate the web registration flow
+        // uses (Auth::register() -> SecurityUtils::validatePassword()). The
+        // `validate()` rule above only checks length bounds (min:8|max:100);
+        // without this call the API could be used to set a weaker password
+        // (shorter, no complexity, common/breached) than the browser allows.
+        // @see web/private_html/security/SecurityUtils.php::validatePassword()
+        $passwordCheck = SecurityUtils::validatePassword($data['password']);
+        if (!$passwordCheck['valid']) {
+            Response::validationError('Password does not meet security policy', $passwordCheck['errors']);
+            return;
+        }
+
         try {
             // 🔒 Hash password
             $passwordHash = password_hash($data['password'], PASSWORD_ARGON2ID);
@@ -151,6 +163,15 @@ class AuthController extends BaseController
             'password' => 'required',
             'remember' => 'boolean',
         ]);
+
+        // 🚦 Rate-limit BEFORE any credential work (Finding MED-4). Mirrors
+        // JwtAuthController::enforceIssueRateLimit() — the SAME
+        // SecurityUtils::checkRateLimit() gate, keyed on IP AND on the
+        // supplied email, so this endpoint isn't left relying solely on the
+        // coarse, IP/endpoint-tier global RateLimitMiddleware for brute-force
+        // defence.
+        // @see web/private_html/api/controllers/JwtAuthController.php::enforceIssueRateLimit()
+        $this->enforceLoginRateLimit($data['email']);
 
         try {
             // 🔍 Find user by email
@@ -370,6 +391,13 @@ class AuthController extends BaseController
             'email' => 'required|email',
         ]);
 
+        // 🚦 Rate-limit BEFORE any DB work (Finding MED-4). Same pattern as
+        // login() — keeps this endpoint from being used as an unthrottled
+        // email-enumeration / mail-bombing oracle beyond the coarse global
+        // RateLimitMiddleware.
+        // @see web/private_html/api/controllers/JwtAuthController.php::enforceIssueRateLimit()
+        $this->enforceForgotPasswordRateLimit($data['email']);
+
         try {
             // 🔍 Find user by email
             $query = "SELECT * FROM tblUsers WHERE email = ?";
@@ -441,6 +469,18 @@ class AuthController extends BaseController
             'password' => 'required|min:8|max:100',
         ]);
 
+        // 🔒 Enforce the SAME password policy gate the web reset flow uses
+        // (web/public_html/reset-password.php -> SecurityUtils::validatePassword()).
+        // The `validate()` rule above only checks length bounds (min:8|max:100);
+        // without this call a client could reset an account to a weaker
+        // password than the browser flow allows.
+        // @see web/private_html/security/SecurityUtils.php::validatePassword()
+        $passwordCheck = SecurityUtils::validatePassword($data['password']);
+        if (!$passwordCheck['valid']) {
+            Response::validationError('Password does not meet security policy', $passwordCheck['errors']);
+            return;
+        }
+
         try {
             $tokenHash = hash('sha256', $data['token']);
 
@@ -497,6 +537,91 @@ class AuthController extends BaseController
             ErrorLogger::log($e);
             $this->error('Password reset failed', Response::HTTP_INTERNAL_ERROR);
         }
+    }
+
+    // ========================================================================
+    // 🚦 RATE LIMITING (Finding MED-4)
+    // ========================================================================
+    // /api/v1/auth/login and /api/v1/auth/forgot-password previously relied
+    // solely on the coarse, IP/endpoint-tier RateLimitMiddleware applied
+    // globally in v1/index.php — no per-account lockout escalation, unlike
+    // JwtAuthController (per-IP AND per-identifier) or the web Auth::login()
+    // flow (account lockout). These two helpers close that gap using the
+    // SAME SecurityUtils::checkRateLimit() gate JwtAuthController uses, so
+    // the layers compound rather than conflict.
+    // @see web/private_html/api/controllers/JwtAuthController.php::enforceIssueRateLimit()
+
+    /**
+     * 🚦 Rate-limit /api/v1/auth/login by IP and by the supplied email.
+     *
+     * Keyed on IP AND on 'id:'.strtolower($email) so neither a single IP
+     * spraying many accounts nor many IPs pounding one account slip past
+     * this limiter. Additive — does not replace the global limiter.
+     *
+     * @param string $email Email address supplied in the login request.
+     * @return void (emits 429 + Retry-After and exits on breach)
+     */
+    private function enforceLoginRateLimit(string $email): void
+    {
+        $ip         = getClientIP();
+        $maxPerIp   = (int) getSetting('api.rate_limit.login_per_ip', 20);
+        $maxPerId   = (int) getSetting('api.rate_limit.login_per_identifier', 10);
+        $windowSecs = (int) getSetting('api.rate_limit.window_seconds', 900); // 15 min
+
+        // Per-IP.
+        if (!SecurityUtils::checkRateLimit($ip, 'api_login', $maxPerIp, $windowSecs)) {
+            $this->rateLimited($windowSecs, 'Too many login attempts. Please try again later.');
+            return;
+        }
+
+        // Per-identifier (only when an email was actually supplied).
+        if ($email !== ''
+            && !SecurityUtils::checkRateLimit('id:' . strtolower($email), 'api_login', $maxPerId, $windowSecs)) {
+            $this->rateLimited($windowSecs, 'Too many login attempts. Please try again later.');
+            return;
+        }
+    }
+
+    /**
+     * 🚦 Rate-limit /api/v1/auth/forgot-password by IP and by the supplied email.
+     *
+     * Same pattern as enforceLoginRateLimit() — protects against using this
+     * endpoint as an unthrottled email-enumeration / mail-bombing oracle.
+     *
+     * @param string $email Email address supplied in the forgot-password request.
+     * @return void (emits 429 + Retry-After and exits on breach)
+     */
+    private function enforceForgotPasswordRateLimit(string $email): void
+    {
+        $ip         = getClientIP();
+        $maxPerIp   = (int) getSetting('api.rate_limit.forgot_password_per_ip', 20);
+        $maxPerId   = (int) getSetting('api.rate_limit.forgot_password_per_identifier', 5);
+        $windowSecs = (int) getSetting('api.rate_limit.window_seconds', 900); // 15 min
+
+        // Per-IP.
+        if (!SecurityUtils::checkRateLimit($ip, 'api_forgot_password', $maxPerIp, $windowSecs)) {
+            $this->rateLimited($windowSecs, 'Too many password reset requests. Please try again later.');
+            return;
+        }
+
+        // Per-identifier (only when an email was actually supplied).
+        if ($email !== ''
+            && !SecurityUtils::checkRateLimit('id:' . strtolower($email), 'api_forgot_password', $maxPerId, $windowSecs)) {
+            $this->rateLimited($windowSecs, 'Too many password reset requests. Please try again later.');
+            return;
+        }
+    }
+
+    /**
+     * ⏱️ Emit a 429 with Retry-After and exit.
+     *
+     * @param int $retryAfter Seconds hint.
+     * @param string $message Error message.
+     * @return void (exits via Response)
+     */
+    private function rateLimited(int $retryAfter, string $message = 'Too many requests. Please try again later.'): void
+    {
+        Response::rateLimitExceeded($message, $retryAfter);
     }
 
     /**

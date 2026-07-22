@@ -120,10 +120,6 @@ tags:
     description: |
       Usage tracking, billing summaries, projected costs, and billing mode management.
       Supports fixed, usage-based, and hybrid billing models with tier cap logic.
-  - name: Subscription Tiers
-    description: |
-      Query available subscription tiers (Free, Basic, Premium, Pro, Platinum, Enterprise).
-      Partners can create custom tiers with bespoke pricing and feature sets.
   - name: Data Export
     description: |
       Export usage data, billing history, and reports in CSV, Excel (XLSX), PDF,
@@ -2838,6 +2834,312 @@ paths:
           $ref: "#/components/responses/ValidationError"
 
   # ==========================================================================
+  # AVATAR / PROFILE PICTURE MANAGEMENT
+  # ==========================================================================
+  # 🔧 Finding LOW-10 (CAP-API audit, issue #86): these 5 routes exist and are
+  # registered in web/public_html/api/v1/index.php (UserController@uploadAvatar
+  # / deleteAvatar / setAvatarSource / getAvatarSources / updateFallbackPriority)
+  # but were previously undocumented here.
+
+  /user/avatar:
+    post:
+      tags: [User Management]
+      operationId: uploadAvatar
+      summary: Upload a custom avatar image
+      description: |
+        Uploads a custom avatar/profile picture for the authenticated user.
+        Send a `multipart/form-data` request with a `file` field containing
+        the image. On success, resolved URLs at three sizes are returned.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: The image file to upload (becomes the user's active avatar).
+      responses:
+        "200":
+          description: Avatar uploaded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                    example: "Avatar uploaded successfully"
+                  data:
+                    type: object
+                    properties:
+                      avatar_url:
+                        type: string
+                        format: uri
+                      avatar_urls:
+                        type: object
+                        properties:
+                          small:
+                            type: string
+                            format: uri
+                          medium:
+                            type: string
+                            format: uri
+                          large:
+                            type: string
+                            format: uri
+        "400":
+          description: No file provided, or the upload failed (invalid image, too large, etc.)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    delete:
+      tags: [User Management]
+      operationId: deleteAvatar
+      summary: Remove the current custom avatar
+      description: |
+        Removes the user's uploaded/custom avatar, reverting to the fallback
+        chain (OAuth provider picture, Gravatar, etc.). Idempotent — if there
+        is no custom avatar to remove, still returns `200` with the resolved
+        fallback avatar URL.
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Avatar removed (or no custom avatar was present)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                    example: "Avatar removed successfully. Fallback avatar will be used."
+                  data:
+                    type: object
+                    properties:
+                      avatar_url:
+                        type: string
+                        format: uri
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /user/avatar/source:
+    put:
+      tags: [User Management]
+      operationId: setAvatarSource
+      summary: Set the avatar source to a linked OAuth account's picture
+      description: |
+        Sets the user's avatar to the profile picture of one of their linked
+        OAuth accounts. Currently the only supported `source` is `"oauth"`.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [source]
+              properties:
+                source:
+                  type: string
+                  enum: [oauth]
+                  example: oauth
+                oauth_account_id:
+                  type: integer
+                  description: Required when source is "oauth" — the linked OAuth account to use.
+                  example: 123
+      responses:
+        "200":
+          description: Avatar source updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                    example: "Avatar set from OAuth provider"
+                  data:
+                    type: object
+                    properties:
+                      avatar_url:
+                        type: string
+                        format: uri
+        "400":
+          description: Invalid or unsupported source, or missing/invalid oauth_account_id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /user/avatar/sources:
+    get:
+      tags: [User Management]
+      operationId: getAvatarSources
+      summary: List available avatar sources for the current user
+      description: |
+        Returns the current resolved avatar, any uploaded custom avatar,
+        linked OAuth accounts that have a profile picture, the user's
+        configured fallback-service priority, and the full list of supported
+        fallback services.
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Avatar sources retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                    example: "Avatar sources retrieved successfully"
+                  data:
+                    type: object
+                    properties:
+                      current_avatar_url:
+                        type: string
+                        format: uri
+                      uploaded_avatar:
+                        type: object
+                        nullable: true
+                        properties:
+                          avatar_id:
+                            type: integer
+                          type:
+                            type: string
+                          url:
+                            type: string
+                            format: uri
+                          created_at:
+                            type: string
+                            format: date-time
+                      oauth_accounts:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            oauth_account_id:
+                              type: integer
+                            provider:
+                              type: string
+                            profile_picture:
+                              type: string
+                              format: uri
+                            display_name:
+                              type: string
+                            is_primary:
+                              type: boolean
+                      fallback_priority:
+                        type: array
+                        items:
+                          type: string
+                          enum: [gravatar, libravatar, ui_avatars, dicebear, robohash]
+                      available_fallback_services:
+                        type: array
+                        items:
+                          type: string
+                        example: [gravatar, libravatar, ui_avatars, dicebear, robohash]
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /user/avatar/fallback-priority:
+    put:
+      tags: [User Management]
+      operationId: updateFallbackPriority
+      summary: Reorder the fallback avatar service priority
+      description: |
+        Sets the order in which fallback avatar services (used when no
+        uploaded/OAuth avatar is available) are tried for this user.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [priority]
+              properties:
+                priority:
+                  type: array
+                  description: Ordered list of fallback service names (must all be valid services).
+                  items:
+                    type: string
+                    enum: [gravatar, libravatar, ui_avatars, dicebear, robohash]
+                  example: [gravatar, ui_avatars, robohash]
+      responses:
+        "200":
+          description: Fallback priority updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                    example: "Fallback priority updated successfully"
+                  data:
+                    type: object
+                    properties:
+                      fallback_priority:
+                        type: array
+                        items:
+                          type: string
+        "400":
+          description: priority is missing/not an array, or contains an invalid service name
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ==========================================================================
   # MULTI-FACTOR AUTHENTICATION
   # ==========================================================================
 
@@ -3748,71 +4050,17 @@ paths:
   # ==========================================================================
   # SUBSCRIPTION TIERS
   # ==========================================================================
-
-  /tiers:
-    get:
-      tags: [Subscription Tiers]
-      operationId: listTiers
-      summary: List subscription tiers
-      description: |
-        Returns all active subscription tiers with pricing, features, and limits.
-        Default tiers: Free, Basic, Premium, Pro, Platinum, Enterprise.
-        May also include custom tiers created by partners.
-      parameters:
-        - name: include_custom
-          in: query
-          schema:
-            type: boolean
-            default: false
-          description: Include custom partner-created tiers
-        - name: billing_mode
-          in: query
-          schema:
-            type: string
-            enum: [fixed, usage, hybrid]
-          description: Filter by supported billing mode
-      responses:
-        "200":
-          description: List of tiers
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                  data:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/SubscriptionTier"
-
-  /tiers/{slug}:
-    get:
-      tags: [Subscription Tiers]
-      operationId: getTier
-      summary: Get tier details
-      description: Returns detailed information about a specific subscription tier.
-      parameters:
-        - name: slug
-          in: path
-          required: true
-          schema:
-            type: string
-          example: premium
-      responses:
-        "200":
-          description: Tier details
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                  data:
-                    $ref: "#/components/schemas/SubscriptionTier"
-        "404":
-          description: Tier not found
+  # 🔧 Finding LOW-10 (CAP-API audit, issue #86): `/tiers` and `/tiers/{slug}`
+  # were documented here but were NEVER registered in
+  # web/public_html/api/v1/index.php (verified — no route exists anywhere in
+  # the codebase for either path). Tier management actually lives behind
+  # session/role-gated ADMIN AND PARTNER UI pages, not a public/partner REST
+  # endpoint:
+  #   - web/public_html/admin/payments/tiers.php   (super-admin)
+  #   - web/public_html/partners/admin/tiers.php   (partner-admin)
+  # Removed the phantom paths rather than document a route that doesn't
+  # exist. The SubscriptionTier schema (components.schemas) is left in place
+  # in case a future `/api/v1/tiers` endpoint is added on top of it.
 
   # ==========================================================================
   # DATA EXPORT

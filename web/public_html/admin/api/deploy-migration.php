@@ -32,7 +32,48 @@ $activityLogger = new ActivityLogger($db);
 
 // CORS headers for AJAX
 header('Content-Type: application/json');
-header('Access-Control-Allow-Origin: ' . $_SERVER['HTTP_ORIGIN'] ?? '*');
+
+// 🔒 Finding LOW-8 fix: the previous line —
+//     header('Access-Control-Allow-Origin: ' . $_SERVER['HTTP_ORIGIN'] ?? '*');
+// — always reflected the raw, unvalidated browser Origin. PHP's `.` operator
+// binds TIGHTER than `??`, so this actually parsed as:
+//     header( ('Access-Control-Allow-Origin: ' . $_SERVER['HTTP_ORIGIN']) ?? '*' )
+// A string concatenation is NEVER null, so the `?? '*'` fallback was dead
+// code and ANY Origin header sent by ANY caller was echoed straight back —
+// an over-permissive ACAO regardless of the intended allowlist/wildcard
+// fallback. Mitigated by the INCLUDED_FROM_ADMIN + super-admin gate below,
+// but still worth closing properly.
+//
+// Fix: only reflect the Origin when it is explicitly present in the SAME
+// `api.cors.allowed_origins` setting the REST API framework already uses
+// (see web/private_html/api/Response.php::setCorsHeaders(), B-024). If it
+// is not configured or not allowlisted, omit Access-Control-Allow-Origin
+// entirely — the safe default for this authenticated, same-origin admin
+// tool, which never legitimately needs cross-origin CORS.
+// @see web/private_html/api/Response.php::setCorsHeaders()
+$requestOrigin = $_SERVER['HTTP_ORIGIN'] ?? '';
+$corsAllowlistRaw = getSetting('api.cors.allowed_origins', null);
+
+// 📋 Normalise the allowlist (PHP array, JSON array string, or CSV string)
+// into a flat array of trimmed origin strings — mirrors
+// Response::normaliseAllowedOrigins() so both stay in lock-step.
+$corsAllowedOrigins = [];
+if (is_array($corsAllowlistRaw)) {
+    $corsAllowedOrigins = $corsAllowlistRaw;
+} elseif (is_string($corsAllowlistRaw) && $corsAllowlistRaw !== '') {
+    $decodedAllowlist = json_decode($corsAllowlistRaw, true);
+    $corsAllowedOrigins = is_array($decodedAllowlist) ? $decodedAllowlist : explode(',', $corsAllowlistRaw);
+}
+$corsAllowedOrigins = array_filter(array_map(
+    static fn ($origin): string => trim((string) $origin),
+    $corsAllowedOrigins
+));
+
+if ($requestOrigin !== '' && in_array($requestOrigin, $corsAllowedOrigins, true)) {
+    header('Access-Control-Allow-Origin: ' . $requestOrigin);
+    header('Vary: Origin');
+}
+
 header('Access-Control-Allow-Methods: POST');
 header('Access-Control-Allow-Headers: Content-Type');
 

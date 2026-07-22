@@ -452,6 +452,18 @@ class UserController extends BaseController
             'new_password' => 'required|min:8|max:100',
         ]);
 
+        // 🔒 Enforce the SAME password policy gate the web change-password flow
+        // uses (Auth::changePassword() -> SecurityUtils::validatePassword()).
+        // The `validate()` rule above only checks length bounds (min:8|max:100);
+        // without this call the API could be used to set a weaker new password
+        // than the browser flow allows.
+        // @see web/private_html/security/SecurityUtils.php::validatePassword()
+        $passwordCheck = SecurityUtils::validatePassword($data['new_password']);
+        if (!$passwordCheck['valid']) {
+            Response::validationError('Password does not meet security policy', $passwordCheck['errors']);
+            return;
+        }
+
         try {
             // 🔍 Verify current password
             if (!password_verify($data['current_password'], $user['passwordHash'])) {

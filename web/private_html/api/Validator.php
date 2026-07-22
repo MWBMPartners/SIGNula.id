@@ -244,12 +244,18 @@ class Validator
                 break;
 
             case 'unique':
-                // Requires table:column format
+                // Requires table:column format, optionally followed by an
+                // ignoreId (for update-uniqueness checks) and, optionally,
+                // the primary-key COLUMN NAME that ignoreId refers to
+                // (Finding LOW-9 — SIGNula PKs are named `userID`, `partnerID`
+                // etc., not the generic `id` this used to hard-code).
+                // Rule shape: 'unique:table,column[,ignoreId[,pkColumn]]'
                 if (count($params) >= 2) {
                     [$table, $column] = $params;
                     $ignoreId = $params[2] ?? null;
+                    $ignoreColumn = $params[3] ?? 'id'; // 🔧 default preserves prior (unused) behaviour
 
-                    if ($value && $this->valueExists($table, $column, $value, $ignoreId)) {
+                    if ($value && $this->valueExists($table, $column, $value, $ignoreId, $ignoreColumn)) {
                         $this->addError($field, "$field already exists");
                     }
                 }
@@ -296,17 +302,34 @@ class Validator
      * @param string $column Column name
      * @param mixed $value Value to check
      * @param mixed $ignoreId ID to ignore (for updates)
+     * @param string $ignoreColumn Primary-key COLUMN NAME that $ignoreId refers
+     *                             to (Finding LOW-9). Defaults to 'id' to
+     *                             preserve prior behaviour, but SIGNula tables
+     *                             use PKs like `userID`, `partnerID`, etc. — a
+     *                             literal `id` silently doesn't exist on most
+     *                             of them. This is a caller-supplied identifier
+     *                             from a hard-coded validation RULE STRING
+     *                             written by the developer (e.g.
+     *                             'unique:tblUsers,email,5,userID') — never
+     *                             from request input — so interpolating it
+     *                             (backtick-quoted, matching $table/$column
+     *                             just above) carries no injection surface.
      * @return bool True if value exists
      */
-    private function valueExists(string $table, string $column, mixed $value, mixed $ignoreId = null): bool
-    {
+    private function valueExists(
+        string $table,
+        string $column,
+        mixed $value,
+        mixed $ignoreId = null,
+        string $ignoreColumn = 'id'
+    ): bool {
         try {
             $query = "SELECT COUNT(*) as count FROM `$table` WHERE `$column` = ?";
             $params = [$value];
             $types = 's';
 
             if ($ignoreId !== null) {
-                $query .= " AND id != ?";
+                $query .= " AND `$ignoreColumn` != ?";
                 $params[] = $ignoreId;
                 $types .= 'i';
             }
