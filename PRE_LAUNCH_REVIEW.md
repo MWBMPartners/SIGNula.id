@@ -78,4 +78,15 @@ Enabling is a later, deliberate step (flip `entitlements.enforcement_enabled` af
 
 ---
 
+## 6. 🟢 Features shipped BUILT-BUT-DISABLED (flip on before/at launch)
+
+These are complete and safe (fail-open / dormant) but intentionally OFF so they change no current behavior. Enable each deliberately:
+
+| Feature | How to enable | Notes |
+|---------|---------------|-------|
+| **Flexible pricing/entitlement catalog** (#103, #97) | Seed live catalog rows `isActive=1`, then set `entitlements.enforcement_enabled=true` (after a `entitlements.log_only` shadow period) | Confirm pricing decisions P-1…P-5 first. Billing go-live also needs #70. |
+| **HIBP breached-password check** (#96) | Set `security.breached_password_check.enabled=true` | k-anonymity range API, fail-open. Recommended ON for launch (NIST guidance). Off by default so it breaks no existing tests/flows. |
+
+---
+
 _Append new decisions and open items above their section footer as work proceeds._
