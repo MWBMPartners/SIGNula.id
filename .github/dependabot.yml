@@ -1,0 +1,173 @@
+# =============================================================================
+# 🤖 Dependabot — version updates across the three-tier branch model
+# -----------------------------------------------------------------------------
+# SIGNula.id ships through three long-lived branches: alpha ▸ beta ▸ main.
+# Historically Dependabot only watched the default branch (main), leaving the
+# alpha and beta deployments exposed to dependency drift and known-vulnerable
+# transitive tooling. This config fans version updates out to ALL THREE.
+#
+# ⚠️  IMPORTANT PLATFORM LIMITATION (documented deliberately):
+#   • `target-branch` redirects only *version* updates to a non-default branch.
+#   • Dependabot **security updates** (the auto-PRs raised from GitHub Security
+#     Advisories) run ONLY against the default branch (main) and CANNOT be
+#     redirected with `target-branch`. See:
+#     https://docs.github.com/code-security/dependabot/dependabot-security-updates/configuring-dependabot-security-updates
+#   • Therefore the main entries below intentionally OMIT `target-branch` so
+#     that security updates remain enabled on main, while the alpha/beta
+#     entries carry `target-branch` for scheduled version updates. Version
+#     updates still pull in fixed releases (which is how most advisories are
+#     remediated), so alpha/beta stay current. The residual gap — advisory-
+#     driven PRs not auto-opening on alpha/beta — is covered by the scheduled
+#     `dependency-audit` job in .github/workflows/security.yml, which runs a
+#     `composer audit` on all three branches.
+#
+# NOTE on frontend libraries: Bootstrap / jQuery / FontAwesome are self-hosted
+# (Dreamhost shared hosting, no build step) and are NOT tracked by any manifest
+# Dependabot understands. A follow-up issue tracks adding a manifest so those
+# assets can be watched too.
+#
+# Docs: https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-reference
+# =============================================================================
+version: 2
+
+updates:
+  # ===========================================================================
+  # 🎼 Composer (PHP dev tooling: phpunit, phpstan, php_codesniffer, …)
+  # ===========================================================================
+
+  # --- main (default branch; NO target-branch → security updates stay ON) ---
+  - package-ecosystem: "composer"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/London"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "composer"
+      - "branch:main"
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(deps-dev)"
+      include: "scope"
+    groups:
+      php-dev-tooling:
+        patterns:
+          - "*"
+
+  # --- beta (version updates only) ---
+  - package-ecosystem: "composer"
+    directory: "/"
+    target-branch: "beta"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/London"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "composer"
+      - "branch:beta"
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(deps-dev)"
+      include: "scope"
+    groups:
+      php-dev-tooling:
+        patterns:
+          - "*"
+
+  # --- alpha (version updates only) ---
+  - package-ecosystem: "composer"
+    directory: "/"
+    target-branch: "alpha"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/London"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "composer"
+      - "branch:alpha"
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(deps-dev)"
+      include: "scope"
+    groups:
+      php-dev-tooling:
+        patterns:
+          - "*"
+
+  # ===========================================================================
+  # ⚙️ GitHub Actions (keep workflow action pins current + patched)
+  # ===========================================================================
+
+  # --- main ---
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/London"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "github-actions"
+      - "branch:main"
+    commit-message:
+      prefix: "ci(deps)"
+      include: "scope"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+
+  # --- beta ---
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    target-branch: "beta"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/London"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "github-actions"
+      - "branch:beta"
+    commit-message:
+      prefix: "ci(deps)"
+      include: "scope"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+
+  # --- alpha ---
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    target-branch: "alpha"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/London"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "github-actions"
+      - "branch:alpha"
+    commit-message:
+      prefix: "ci(deps)"
+      include: "scope"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
