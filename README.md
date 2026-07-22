@@ -1,6 +1,6 @@
 # SIGNula.ID - Universal Login System
 
-![Version](https://img.shields.io/badge/version-2.6.0--beta-blue)
+![Version](https://img.shields.io/badge/version-2.8.0--beta-blue)
 ![PHP](https://img.shields.io/badge/PHP-8.3%2B-777BB4?logo=php)
 ![MySQL](https://img.shields.io/badge/MySQL-8.0%2B-4479A1?logo=mysql)
 ![License](https://img.shields.io/badge/license-Proprietary-red)
@@ -10,9 +10,9 @@
 
 **SIGNula** is a comprehensive, universal single sign-on (SSO) authentication system designed to provide seamless user authentication across multiple web and mobile applications. Built with security, scalability, and user experience as top priorities, SIGNula offers a modern authentication solution for today's interconnected digital ecosystem.
 
-**Current Status:** Core Platform Complete ✅ | Security 100% ✅ | Webhooks ✅ | Payments 100% ✅ | Two-Tier Payments ✅ | Ko-fi & Patreon ✅ | Avatar System ✅ | Credential Reset ✅
+**Current Status:** Core Platform Complete ✅ | Security 100% ✅ | Webhooks ✅ | Payments 100% ✅ | Two-Tier Payments ✅ | Ko-fi & Patreon ✅ | Avatar System ✅ | Credential Reset ✅ | OAuth2/OIDC Identity Provider ✅ | JWT Bearer Auth ✅ | Recurring Billing (TEST-MODE) 🟡 | Multi-Jurisdiction Compliance Tooling ✅
 
-**Latest Version:** 2.6.0-beta (February 24, 2026)
+**Latest Version:** 2.8.0-beta (July 22, 2026) — see [PROJECT_STATUS.md](.claude/PROJECT_STATUS.md) and [CHANGELOG.md](CHANGELOG.md) for the post-consolidation (PR #91) status.
 
 **Completed Phases:**
 
@@ -32,6 +32,11 @@
 - ✅ Phase 11: Avatar Management System (100%)
 - ✅ Phase 12: Mass Credential Reset & Email Enhancement (100%)
 - ✅ Phase 13: Security Audit & Issue Tracking (100%)
+- ✅ Foundation Hardening (autopilot/2026-06-30) — silently-broken core flows fixed and red-team verified (100%)
+- ✅ G-001: OAuth2/OIDC Identity Provider + "Sign in with SIGNula.id" partner button (100%, internal red-team PASS; SAML 2.0 deferred)
+- ✅ G-003: JWT Bearer Authentication for the REST API — RS256 `TokenService`, JWKS, rotating refresh tokens with reuse detection (100%, internal red-team PASS)
+- 🟡 G-002: Recurring billing engine with dunning (built, **TEST-MODE only** — live activation is a separate, pending step)
+- ✅ G-004: Multi-jurisdiction compliance tooling — consent + GPC, DSAR engine + admin queue, data-driven regime model, retention, breach log, RoPA, COPPA age-gate (100% built; jurisdiction values still await human/legal review before activation)
 
 **In Progress:**
 
@@ -39,6 +44,8 @@
 - 🟡 Deploy migrations 007-017 to production
 - 🟡 Configure live payment credentials
 - 🟡 DIRECTORY_SEPARATOR compliance across all PHP files
+- 🟡 G-002 recurring billing — activate live mode (currently fail-closed TEST-MODE guard)
+- 🟡 G-004 compliance — human/legal review and sign-off of jurisdiction regime values
 
 ### ✨ Key Features
 
@@ -84,6 +91,21 @@
   - Authentication methods: API Key, Bearer Token, Session
   - Webhook support with 10 event types
 
+- **🆔 OAuth2/OIDC Identity Provider (G-001)** ✅
+  - SIGNula.id acts as its own OAuth2/OpenID Connect Authorization Server
+  - "Sign in with SIGNula.id" partner drop-in button (PKCE)
+  - Authorization + token + userinfo endpoints, OIDC discovery, JWKS, revocation
+  - Client registration/management via partner admin UI, refresh-token client binding
+  - Connected-Apps self-service page for end users
+  - Internal red-team reviewed (SAML 2.0 support deferred to a later phase)
+
+- **🔑 JWT Bearer Authentication for the API (G-003)** ✅
+  - RS256-signed access/refresh tokens via a dedicated `TokenService`
+  - Public JWKS endpoint (`/.well-known/jwks.json`) for relying parties
+  - Rotating refresh tokens with reuse detection (auto-revokes the token family and raises a security alert)
+  - Mass "log out everywhere" revocation lever, self-expiring JTI denylist
+  - Internal red-team reviewed (algorithm-confusion and `kid`-injection defences included)
+
 - **📧 Delegate Email Sending** ✅
   - Send emails from user's Microsoft 365 or Google Workspace mailboxes
   - **FREE shared mailbox support** (saves $600+/year)
@@ -116,6 +138,19 @@
   - Auto-suspension/auto-resume on payment status changes
   - Partner earnings dashboard and payout management
   - 6 super admin pages + 6 partner admin pages for payment management
+
+- **🔁 Recurring Billing & Dunning (G-002)** 🟡 **TEST-MODE only**
+  - Subscription upgrade/downgrade with proration, webhook-driven state mapping
+  - Dunning ladder for failed-payment retries, credit system, invoice generation
+  - Guarded by a **fail-closed TEST-MODE lock** — no live charge can be processed until an operator explicitly activates live mode
+  - Internal red-team reviewed; live-mode go-live is a separate, still-pending step
+
+- **📜 Multi-Jurisdiction Compliance Tooling (G-004)** ✅
+  - Granular consent banner (necessary/functional/analytics/marketing) with server-side persistence and Global Privacy Control (`Sec-GPC`) honoring
+  - Data Subject Request (DSAR) engine + admin queue + public "I can't log in" request form (export/erasure/rectification)
+  - Data-driven jurisdiction **regime model** — 19 jurisdictions pre-seeded as inactive drafts (GDPR, UK GDPR, CCPA/CPRA, VCDPA, CPA, CTDPA, UCPA, HIPAA, COPPA, LGPD, PIPEDA, APPI, PIPA, POPIA, DPDP, PIPL, Australia/NZ Privacy Acts) with a super-admin console to fill in legal values and activate
+  - Retention policies + a token-secured compliance cron, breach-notification log with computed per-regime deadlines, Records of Processing Activities (RoPA) register, COPPA-style signup age gate
+  - Built and functional; **jurisdiction legal values and activation are pending human/legal review** — nothing is presented as legally authoritative out of the box
 
 - **🛡️ Enterprise-Grade Security** ✅ (7-Layer Protection)
   - **Rate Limiting System**
