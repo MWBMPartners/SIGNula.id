@@ -6,7 +6,7 @@
 > `.dev-team/` ledger (internal autopilot backlog: `FEATURES.md`, `PROJECT.md`,
 > `autopilot.json`).
 
-_Last updated: 2026-07-22 · Working branch: `claude/review-merge-branches-main-ckh2sr`_
+_Last updated: 2026-07-22 · Working branch: `claude/post-merge-launch-prep` (off updated `main`)_
 
 ---
 
@@ -40,17 +40,24 @@ prep) autonomously.
 5. **Roadmap analysis** (Fable): full 45-open / 41-closed issue review + gap analysis.
    Full report: `scratchpad/roadmap_analysis.md`.
 6. **Management docs**: `PRE_LAUNCH_REVIEW.md`, this `HANDOFF.md`.
+7. **PR #91 MERGED → `main`** (merge commit `9fe4309`); all CI green (fixed 2 environmental security-job failures → advisory). `main` now current.
+8. **`alpha` + `beta` branches created** off updated `main` and pushed.
+9. Auto-unsubscribed from PR #91 (merged — do not reopen/re-PR).
 
-## 🔄 In progress / next (ordered)
+## 🔄 In progress (parallel agents, this session)
 
-- [ ] **Push branch + open single PR → `main`; subscribe to PR activity; drive CI green; merge.** ← critical path
-- [ ] Create `alpha` + `beta` branches off post-merge `main`.
-- [ ] **Issue reconciliation**: verify + close ~20 done issues (#22–#34, #36–#38, #40, #41, #87, #89, #90); re-scope #88; refresh #69 counts.
-- [ ] File follow-up issues: docs-truth-pass (NEW), HIBP breached-password (NEW/FG-009), Entitlements gating (NEW/FG-011), email-template-designer (NEW/FG-005), generic-OIDC (NEW/FG-008), self-hosted-frontend-lib tracking (NEW), plus merge follow-ups (credit redirect wiring, install regen).
-- [ ] **Pricing**: `Pricing_Strategy.md` + flexible (unlimited) tier/feature schema (built, disabled).
-- [ ] **CAP-API** capstone (#86, absorbs #35/#80).
-- [ ] Docs truth pass (README/PROJECT_STATUS/PROJECT_PROGRESS → 2.8.0).
-- [ ] Cross-project integration issues (iHymns #89 verify, CueRCode #88, iLyricsDB #64–66, intAppsAPI).
+- ⏳ **Fable**: pricing strategy + flexible tier/entitlement schema design → `scratchpad/Pricing_Strategy.md` + `scratchpad/pricing_schema_design.md`.
+- ⏳ **Sonnet**: issue-tracker reconciliation (verify+close ~20 done issues; re-scope #40/#88; refresh #69).
+- ⏳ **Sonnet**: create ~11 detailed roadmap/follow-up issues.
+- ⏳ **Sonnet**: docs truth-pass (README/PROJECT_STATUS/PROJECT_PROGRESS/SECURITY/CHANGELOG → 2.8.0).
+
+## ⏭️ Next (ordered)
+
+- [ ] Commit docs truth-pass; commit Pricing_Strategy.md + dormant pricing/entitlements schema (Sonnet impl from Fable design).
+- [ ] Open a "launch-prep" PR off `claude/post-merge-launch-prep` → `main`; drive CI green; merge.
+- [ ] **CAP-API** capstone (#86, absorbs #35/#80) — Fable design + Sonnet impl.
+- [ ] Entitlements runtime gating (FG-011), HIBP breached-password (FG-009).
+- [ ] Cross-project integration issues (iHymns, CueRCode #88, iLyricsDB #64–66, intAppsAPI) — file in those repos; write code where warranted, documented in-issue.
 - [ ] Improvement-loop items (see `scratchpad/roadmap_analysis.md` §5).
 
 ## 🧭 How to resume
