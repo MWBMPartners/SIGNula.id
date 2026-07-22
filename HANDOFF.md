@@ -68,6 +68,13 @@ prep) autonomously.
 4. For each work item: ensure a GitHub issue exists (reopen if wrongly closed); on
    completion, update the issue, commit, and update this HANDOFF.
 
+## 🗂️ Issue-tracker state (reconciled 2026-07-22, post PR #91)
+
+- **Closed as done (21):** #22–#34 (13 security MEDIUMs, commit `7d07045`), #36, #37, #38 (email flows), #87, #89, #90 (OIDC IdP), #41 (JWT, already closed). Each has an evidence comment.
+- **Re-scoped, kept OPEN:** #40 (credit redirect targets don't exist → wire to real providers), #88 (CueRCode OAuth client provisioning), #69 (run suite in CI; real counts 763 unit / 515 integration).
+- **New issues filed (#94–#104):** #94 regen install v2.8.0 · #95 docs truth-pass · #96 HIBP breached-password (FG-009) · #97 entitlements gating (FG-011) · #98 email template designer (FG-005) · #99 generic OIDC + LastPass (FG-008) · #100 SAML 2.0 IdP · #101 track self-hosted frontend libs · #102 enable Dependency graph (ops) · #103 pricing catalog (built-disabled) · #104 Dependabot on alpha/beta (**closed** — done via PR #91).
+- **This session's launch-prep PR** will address: #95 (docs), #103 + #97 (pricing catalog + entitlements resolver, dormant).
+
 ## 🔑 Key facts
 
 - `main` was **62 commits behind** the integration branch — this PR closes that gap.

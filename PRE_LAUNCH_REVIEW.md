@@ -62,4 +62,20 @@ These come from the merged production-readiness backlog (`.github/proposed-issue
 
 ---
 
+## 5. 🔴 Pricing model — decisions to confirm before enabling monetization
+
+The flexible pricing catalog is being **built dormant** (fail-open, `entitlements.enforcement_enabled=false`) so it changes no current behavior. Full rationale in `Pricing_Strategy.md`. Before enabling, confirm:
+
+| # | Decision | Suggested default (reconfigurable — all catalog data, nothing hard-coded) |
+|---|----------|---------------------------------------------------------------------------|
+| P-1 | **Primary metering axis** | MAU (monthly active users) — the SSO-industry norm — vs. per-connection / per-request. |
+| P-2 | **Tier ladder + price anchors** | Free (£0, 5k MAU) · Starter (£19/mo) · Pro (£49/mo) · Business (£149/mo) · Enterprise (custom, anchor ≥£500/mo). Annual = 10× monthly (~2 months free). |
+| P-3 | **Never paywall security** | Free tier includes ALL MFA methods + passkeys (deliberate anti-Auth0 stance). Confirm. |
+| P-4 | **Enterprise SSO delivery** | As a stackable add-on (~£60/connection) vs. gated behind the Business tier. |
+| P-5 | **Free-tier MAU ceiling** | 5,000 MAU. |
+
+Enabling is a later, deliberate step (flip `entitlements.enforcement_enabled` after a log-only shadow period). Billing go-live itself remains gated on issue #70 (live PSP credentials) and the G-002 test-mode guard.
+
+---
+
 _Append new decisions and open items above their section footer as work proceeds._
