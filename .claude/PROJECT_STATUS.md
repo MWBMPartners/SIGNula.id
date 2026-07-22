@@ -1,8 +1,8 @@
 # 📊 SIGNula - Complete Project Status
 
-**Version:** 2.7.0-beta (branch `autopilot/2026-06-30`)
-**Date:** 2026-07-01
-**Overall Completion:** Foundation hardened and reliable; feature campaign (G-001..G-004) next
+**Version:** 2.8.0-beta (on `main`, post-consolidation PR #91)
+**Date:** 2026-07-01 · **Reality reconciled:** 2026-07-22 (post PR #91)
+**Overall Completion:** Foundation hardened; feature campaign (G-001..G-004) **BUILT + merged** — launch readiness (ops/QA/legal) next
 
 ---
 
@@ -23,12 +23,14 @@ An autonomous hardening run (10 cycles, `autopilot/2026-06-30`) discovered the "
 - Security: WebAuthn auth-bypass (FG-013), CORS allowlist, X-Frame/CSP on API, admin CSRF (2 holes), 13 deferred MEDIUM issues (#22-#34), WebAuthn challenge TOCTOU.
 - Migrations added: 025 (registration fix), 026 (MFA columns), 027 (credential-reset indexes), 028 (multi-org tables), 029 (ENUM widening).
 
-**Next up — feature campaign (approved, not yet built):**
+**Feature campaign (G-001..G-004) — BUILT + merged to `main` via PR #91 (2026-07-22):**
 
-- G-003: JWT bearer-auth for API
-- G-001: SIGNula as IdP (SAML 2.0 / OIDC)
-- G-002: Recurring billing engine with dunning
-- G-004: GDPR/compliance tooling (data export, erasure, consent log)
+- ✅ G-003: JWT bearer-auth for API — RS256 `TokenService`, JWKS, refresh rotation + reuse detection (internal red-team PASS)
+- ✅ G-001: SIGNula as OIDC/OAuth2 IdP + "Sign in with SIGNula.id" partner button (internal red-team PASS; **SAML 2.0 deferred** → issue #100)
+- 🟡 G-002: Recurring billing engine with dunning — **TEST-MODE only**; live activation pending (#70)
+- ✅ G-004: GDPR/compliance tooling — consent+GPC, DSAR engine, data-driven regime model, retention, breach log, RoPA, COPPA age-gate (**jurisdiction values pending human/legal review** → #81)
+
+**Next up — launch readiness:** CAP-API (#86), prod creds/cron (#83/#84/#85), staging + full suite (#71/#69), billing go-live (#70), external pen-test (#73), WCAG audit (#76).
 
 **Residual backlog (deferred):**
 

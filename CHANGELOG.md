@@ -158,6 +158,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.8.0-beta] — 2026-07-22
+
+### Consolidated — Branch unification (PR #91)
+
+- **Merged `autopilot/2026-06-30` (56 commits) + `universal-login` (5 commits) into `main`** via a single PR (avoiding merge race conditions). Landed the full G-001..G-004 campaign — OIDC/OAuth2 IdP, JWT bearer auth, recurring billing (TEST-MODE), and multi-jurisdiction compliance tooling (feature detail under _Unreleased_ above).
+- Resolved the one merge conflict (`api/BaseController.php`) onto the G-003 `TokenService`; dropped stale install SQL (v2.7.0 + archived v2.5.0) and the broken email-templates migration 025, recreating its 5 valid templates as **migration 045** with correct `{{var}}` syntax and idempotent upserts.
+- Aligned email call-sites (`inviterMessage`→`personalMessage`) and fixed a phantom `companyName`→`partnerName` column in partner team-invites.
+- Added **CI** (`php -l` matrix on PHP 8.3/8.4 blocking; PHPStan + PHPCS advisory), **Dependabot** + scheduled `composer audit` security scanning across **main / beta / alpha**, and cut the `alpha` and `beta` branches off `main`.
+- **Flexible pricing/entitlement catalog shipped DORMANT** (migration 046 — feature catalog, unlimited plan/feature/price rows, add-ons, discount lifecycle — plus a fail-open `Entitlements` resolver). No behavior change until explicitly enabled.
+- `VERSION` → `2.8.0-beta`.
+
+---
+
 ## [2.7.0-beta] — 2026-07-01
 
 > **Version note:** The `VERSION` file currently reads `2.6.0-beta`; all feature entries since the credential-reset phase have been logged under `2.7.0-beta`. The current working version is treated as **2.7.0-beta** pending a formal tag.
