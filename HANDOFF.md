@@ -6,7 +6,9 @@
 > `.dev-team/` ledger (internal autopilot backlog: `FEATURES.md`, `PROJECT.md`,
 > `autopilot.json`).
 
-_Last updated: 2026-07-22 · Working branch: `claude/post-merge-launch-prep` (off updated `main`)_
+_Last updated: 2026-07-22 · Working branch: `claude/hibp-breached-password` (off `main` @ c8bfeaf)_
+
+**Session progress:** PR #91 (branch consolidation) and PR #105 (dormant pricing catalog + docs truth-pass) both **MERGED to `main`**. `alpha`/`beta` fast-forwarded to `main` (all three at `c8bfeaf`). Issue #95 closed. Now building #96 (HIBP breached-password, disabled-by-default). Remaining roadmap items are tracked as issues #86, #94, #96–103.
 
 ---
 
