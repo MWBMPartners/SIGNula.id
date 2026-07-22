@@ -6,9 +6,9 @@
 > `.dev-team/` ledger (internal autopilot backlog: `FEATURES.md`, `PROJECT.md`,
 > `autopilot.json`).
 
-_Last updated: 2026-07-22 · Working branch: `claude/hibp-breached-password` (off `main` @ c8bfeaf)_
+_Last updated: 2026-07-22 · `main` @ `14c5581` · all work merged (tree clean)_
 
-**Session progress:** PR #91 (branch consolidation) and PR #105 (dormant pricing catalog + docs truth-pass) both **MERGED to `main`**. `alpha`/`beta` fast-forwarded to `main` (all three at `c8bfeaf`). Issue #95 closed. Now building #96 (HIBP breached-password, disabled-by-default). Remaining roadmap items are tracked as issues #86, #94, #96–103.
+**Session progress — FOUR PRs merged to `main`:** #91 (branch consolidation), #105 (dormant pricing catalog + docs truth-pass), #106 (HIBP breached-password, disabled), #107 (CAP-API security pass — Bucket A). `alpha`/`beta` are fast-forwarded to `main` (all three at `14c5581`). Issues #95 & #96 closed. Remaining roadmap items are tracked as GitHub issues (see below).
 
 ---
 
@@ -46,36 +46,38 @@ prep) autonomously.
 8. **`alpha` + `beta` branches created** off updated `main` and pushed.
 9. Auto-unsubscribed from PR #91 (merged — do not reopen/re-PR).
 
-## 🔄 In progress (parallel agents, this session)
+## ✅ Merged to `main` this session (4 PRs)
 
-- ⏳ **Fable**: pricing strategy + flexible tier/entitlement schema design → `scratchpad/Pricing_Strategy.md` + `scratchpad/pricing_schema_design.md`.
-- ⏳ **Sonnet**: issue-tracker reconciliation (verify+close ~20 done issues; re-scope #40/#88; refresh #69).
-- ⏳ **Sonnet**: create ~11 detailed roadmap/follow-up issues.
-- ⏳ **Sonnet**: docs truth-pass (README/PROJECT_STATUS/PROJECT_PROGRESS/SECURITY/CHANGELOG → 2.8.0).
+| PR | Commit | What landed |
+|----|--------|-------------|
+| #91 | `9fe4309` | Consolidated autopilot + universal-login: G-001 OIDC IdP, G-003 JWT, G-002 billing (TEST-MODE), G-004 compliance, ~30 security fixes, migration 045, conflict→G-003 TokenService |
+| #105 | `c8bfeaf` | Dormant flexible pricing/entitlement catalog (mig 046 + fail-open `Entitlements`) + `Pricing_Strategy.md` + docs truth-pass to 2.8.0 |
+| #106 | `579c460` | HIBP breached-password (mig 047, k-anonymity, fail-open, **DISABLED by default**) |
+| #107 | `14c5581` | CAP-API Bucket A: fixed broken `notification-actions` endpoint, API password-policy gate, login/forgot throttling, CORS precedence, Validator PK, OpenAPI sync |
 
-## ⏭️ Next (ordered)
+Plus: CI + Dependabot + `composer audit` security across **main/alpha/beta**; issue-tracker reconciliation (21 closed, 3 re-scoped, 12 filed #94–104).
 
-- [ ] Commit docs truth-pass; commit Pricing_Strategy.md + dormant pricing/entitlements schema (Sonnet impl from Fable design).
-- [ ] Open a "launch-prep" PR off `claude/post-merge-launch-prep` → `main`; drive CI green; merge.
-- [ ] **CAP-API** capstone (#86, absorbs #35/#80) — Fable design + Sonnet impl.
-- [ ] Entitlements runtime gating (FG-011), HIBP breached-password (FG-009).
-- [ ] Cross-project integration issues (iHymns, CueRCode #88, iLyricsDB #64–66, intAppsAPI) — file in those repos; write code where warranted, documented in-issue.
-- [ ] Improvement-loop items (see `scratchpad/roadmap_analysis.md` §5).
+## ⏭️ Next (ordered) — all tracked as GitHub issues
+
+- [ ] **#86 CAP-API Bucket B** (needs decisions): error-envelope convergence (#35), `UsageController` partner↔user entitlement/IDOR, standalone-endpoint throttling + MFA attempt counter, REST-layer CSRF. Detail in the #86 comment + `scratchpad/cap_api_audit.md`.
+- [ ] **#9 cross-project integration** (BLOCKED — needs repo access; `add_repo` for iHymns/CueRCode/etc. was declined). File "Sign in with SIGNula.id" issues + code in those repos.
+- [ ] Feature build-out: #99 generic OIDC + LastPass · #98 email template designer · #100 SAML 2.0 IdP · #94 regen install v2.8.0 · #101 track self-hosted frontend libs.
+- [ ] Enable the built-but-disabled features before launch: pricing (#103/#97, after P-1…P-5) + HIBP (#96, `security.breached_password_check.enabled=true`). See `PRE_LAUNCH_REVIEW.md`.
+- [ ] Ops/QA/legal (human): #70 billing go-live, #71 staging + suite, #73 pen-test, #76 WCAG, #77–79, #81 legal, #83–85 prod creds/cron, #102 enable Dependency graph.
 
 ## 🧭 How to resume
 
-1. Read this file + `PRE_LAUNCH_REVIEW.md` + `scratchpad/roadmap_analysis.md`.
-2. Check open PR state + CI on branch `claude/review-merge-branches-main-ckh2sr`.
-3. Continue the ordered checklist above. New code work → branch off the latest `main`.
-4. For each work item: ensure a GitHub issue exists (reopen if wrongly closed); on
-   completion, update the issue, commit, and update this HANDOFF.
+1. Read this file + `PRE_LAUNCH_REVIEW.md` + `scratchpad/roadmap_analysis.md` + `scratchpad/cap_api_audit.md`.
+2. `git fetch origin main` (currently `14c5581`); new code work → branch off latest `main`.
+3. Pick the next item above (or a GitHub issue); for each: ensure an issue exists, implement, PR → green CI → merge, then sync `alpha`/`beta` to `main` and update this HANDOFF.
+4. Model routing: Fable `deep-architect` for analysis (sequential), Sonnet/Haiku `quick-edits` for implementation.
 
 ## 🗂️ Issue-tracker state (reconciled 2026-07-22, post PR #91)
 
 - **Closed as done (21):** #22–#34 (13 security MEDIUMs, commit `7d07045`), #36, #37, #38 (email flows), #87, #89, #90 (OIDC IdP), #41 (JWT, already closed). Each has an evidence comment.
 - **Re-scoped, kept OPEN:** #40 (credit redirect targets don't exist → wire to real providers), #88 (CueRCode OAuth client provisioning), #69 (run suite in CI; real counts 763 unit / 515 integration).
 - **New issues filed (#94–#104):** #94 regen install v2.8.0 · #95 docs truth-pass · #96 HIBP breached-password (FG-009) · #97 entitlements gating (FG-011) · #98 email template designer (FG-005) · #99 generic OIDC + LastPass (FG-008) · #100 SAML 2.0 IdP · #101 track self-hosted frontend libs · #102 enable Dependency graph (ops) · #103 pricing catalog (built-disabled) · #104 Dependabot on alpha/beta (**closed** — done via PR #91).
-- **This session's launch-prep PR** will address: #95 (docs), #103 + #97 (pricing catalog + entitlements resolver, dormant).
+- **Closed since:** #95 (docs, PR #105), #96 (HIBP, PR #106). #86 Bucket A shipped (PR #107); Bucket B tracked in a #86 comment. #103/#97 = pricing catalog + `Entitlements` resolver shipped **dormant** (PR #105) — enablement pending.
 
 ## 🔑 Key facts
 
