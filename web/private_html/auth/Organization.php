@@ -318,7 +318,7 @@ class Organization
                 $emailVariables = [
                     'organizationName' => $organization['organizationName'],
                     'inviterName' => $inviterName,
-                    'inviterMessage' => $message ?: '',
+                    'personalMessage' => $message ?: '',
                     'role' => ucfirst($role),
                     'acceptUrl' => $acceptUrl,
                     'expiryDays' => $expiryDays

@@ -193,7 +193,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isAdmin) {
                         $emailVariables = [
                             'organizationName' => $organization['organizationName'],
                             'inviterName' => $inviterName,
-                            'inviterMessage' => $invitation['message'] ?? '',
+                            'personalMessage' => $invitation['message'] ?? '',
                             'role' => ucfirst($invitation['role']),
                             'acceptUrl' => $acceptUrl,
                             'expiryDays' => 7

@@ -90,7 +90,7 @@ function handleInvite($input, $db, $accessControl, $sessionManager, $activityLog
     }
 
     // Get partner details
-    $stmt = $db->prepare("SELECT tier, companyName FROM tblPartners WHERE partnerID = ?");
+    $stmt = $db->prepare("SELECT tier, partnerName FROM tblPartners WHERE partnerID = ?");
     $stmt->bind_param('i', $partnerID);
     $stmt->execute();
     $partner = $stmt->get_result()->fetch_assoc();
@@ -178,9 +178,9 @@ function handleInvite($input, $db, $accessControl, $sessionManager, $activityLog
     $inviterName = $inviter ? trim($inviter['firstName'] . ' ' . $inviter['lastName']) : 'A team member';
 
     $emailVariables = [
-        'organizationName' => $partner['companyName'],
+        'organizationName' => $partner['partnerName'],
         'inviterName' => $inviterName,
-        'inviterMessage' => '',
+        'personalMessage' => '',
         'role' => ucfirst($role),
         'acceptUrl' => $inviteLink,
         'expiryDays' => 7
@@ -190,7 +190,7 @@ function handleInvite($input, $db, $accessControl, $sessionManager, $activityLog
 
     /*
     Email sent with variables:
-    - organizationName: {$partner['companyName']}
+    - organizationName: {$partner['partnerName']}
     - inviterName: {$inviterName}
     - role: {$role}
     - acceptUrl: {$inviteLink}
