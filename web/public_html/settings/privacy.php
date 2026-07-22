@@ -27,6 +27,123 @@ $messageType = null;
 $csrfToken = SecurityUtils::generateCSRFToken();
 
 // ============================================================================
+// 🔑 PRIVACY PREFERENCE KEY MAP
+// ============================================================================
+// 🐛 B-066: this page used to read/write tblUserPreferences as if it were a
+// WIDE table with one column per preference (profileVisibility,
+// shareActivityStatus, ...). The REAL schema (verified against
+// information_schema) is a generic per-user EAV key/value store —
+// (preferenceID, userID, preferenceKey, preferenceValue, createdAt,
+// updatedAt) — the SAME shape AvatarService.php already uses for
+// 'avatar.fallback_priority' and I18n.php uses for 'i18n.locale'. The old
+// `INSERT/UPDATE ... SET profileVisibility = ?, shareActivityStatus = ?, ...`
+// fatals with "Unknown column 'profileVisibility'" against the real table.
+//
+// Each short preference name below is namespaced 'privacy.<name>' when
+// stored, so it never collides with another feature's key in the same
+// shared table.
+//
+// @see web/private_html/utils/AvatarService.php (getUserFallbackPriority()/setUserFallbackPriority() — the upsert pattern this mirrors)
+$PRIVACY_PREFERENCE_KEYS = [
+    'profileVisibility'     => ['prefKey' => 'privacy.profileVisibility',     'default' => 'private'],
+    'shareActivityStatus'   => ['prefKey' => 'privacy.shareActivityStatus',   'default' => 0],
+    'allowThirdPartyAccess' => ['prefKey' => 'privacy.allowThirdPartyAccess', 'default' => 0],
+    'marketingEmails'       => ['prefKey' => 'privacy.marketingEmails',       'default' => 0],
+    'analyticsTracking'     => ['prefKey' => 'privacy.analyticsTracking',     'default' => 1],
+    'showOnlineStatus'      => ['prefKey' => 'privacy.showOnlineStatus',      'default' => 0],
+];
+
+// ============================================================================
+// 🍪 CONSENT TYPE ALLOWLIST (G-004 Layer 1 — FG-002a)
+// ============================================================================
+// 🔒 The ONLY consentType values this page is permitted to record via the
+// 'record_consent' POST action below. Server-authoritative closed set —
+// mirrors the free-but-conventional keys documented on
+// tblConsentRecords.consentType (migration 040). Also doubles as the
+// display map for the "My Consent History" read-only section further down.
+//
+// @see web/private_html/compliance/ConsentManager.php
+// @see _database/migrations/040_consent_and_dsar.sql
+$CONSENT_TYPE_LABELS = [
+    'cookies.analytics'  => 'Analytics Cookies',
+    'cookies.marketing'  => 'Marketing Cookies',
+    'cookies.functional' => 'Functional Cookies',
+    'marketing.email'    => 'Marketing Emails',
+];
+
+// ============================================================================
+// 📨 DSAR TYPE ALLOWLIST — user-initiable only (G-004 Layer 1 — Cycle B)
+// ============================================================================
+// 🔒 The ONLY requestType values THIS PAGE is permitted to submit via the
+// 'request_dsar' POST action below. DSARManager's own VALID_REQUEST_TYPES is
+// broader (it also covers types only ever created by other channels, e.g. a
+// future public /legal/data-request form or an admin-initiated restriction/
+// object/automated-decision-optout request) — this is the authenticated
+// "settings" surface's own narrower, server-authoritative closed set.
+//
+// @see web/private_html/compliance/DSARManager.php
+// @see _database/migrations/040_consent_and_dsar.sql
+$DSAR_TYPE_LABELS = [
+    'access'        => 'Access my data (see what SIGNula holds about me)',
+    'portability'   => 'Portability (download a machine-readable copy)',
+    'erasure'       => 'Erasure (delete my account and data)',
+    'rectification' => 'Rectification (correct inaccurate information)',
+];
+
+/**
+ * 📥 Load the current user's privacy preferences from the tblUserPreferences
+ * EAV store, filling in defaults for any key that has never been saved.
+ *
+ * @param int   $userID   The user to load preferences for
+ * @param array $keyMap   $PRIVACY_PREFERENCE_KEYS
+ * @return array<string, mixed> Short preference name => value
+ */
+function loadPrivacyPreferences(int $userID, array $keyMap): array
+{
+    $rows = Database::fetchAll(
+        "SELECT preferenceKey, preferenceValue FROM tblUserPreferences
+         WHERE userID = ? AND preferenceKey LIKE 'privacy.%'",
+        [$userID],
+        'i'
+    ) ?? [];
+
+    $byKey = [];
+    foreach ($rows as $row) {
+        $byKey[$row['preferenceKey']] = $row['preferenceValue'];
+    }
+
+    $result = [];
+    foreach ($keyMap as $shortName => $meta) {
+        $result[$shortName] = array_key_exists($meta['prefKey'], $byKey)
+            ? (is_int($meta['default']) ? (int) $byKey[$meta['prefKey']] : $byKey[$meta['prefKey']])
+            : $meta['default'];
+    }
+
+    return $result;
+}
+
+/**
+ * 💾 Upsert a single privacy preference into the tblUserPreferences EAV
+ * store — mirrors AvatarService::setUserFallbackPriority()'s
+ * INSERT ... ON DUPLICATE KEY UPDATE pattern exactly.
+ *
+ * @param int    $userID  The user the preference belongs to
+ * @param string $prefKey Namespaced preference key (e.g. 'privacy.profileVisibility')
+ * @param string $value   Preference value (scalars are stored as strings)
+ * @return void
+ */
+function savePrivacyPreference(int $userID, string $prefKey, string $value): void
+{
+    Database::query(
+        "INSERT INTO tblUserPreferences (userID, preferenceKey, preferenceValue)
+         VALUES (?, ?, ?)
+         ON DUPLICATE KEY UPDATE preferenceValue = ?, updatedAt = CURRENT_TIMESTAMP",
+        [$userID, $prefKey, $value, $value],
+        'isss'
+    );
+}
+
+// ============================================================================
 // 📥 HANDLE DATA EXPORT DOWNLOAD (GET with token)
 // ============================================================================
 if ($_SERVER['REQUEST_METHOD'] === 'GET' && !empty($_GET['action']) && $_GET['action'] === 'download_export') {
@@ -52,6 +169,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
 
     if ($action === 'update_privacy') {
+        // 🛡️ B-066: this branch (and revoke_app_access below) had NO CSRF
+        // check at all — added to match export_data/request_deletion/
+        // cancel_deletion below and the project's standing CSRF requirement.
+        if (!SecurityUtils::verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+            $message = 'Invalid security token. Please try again.';
+            $messageType = 'danger';
+        } else {
         try {
             // 📊 Get privacy preferences
             $profileVisibility = $_POST['profileVisibility'] ?? 'private';
@@ -67,70 +191,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new Exception('Invalid profile visibility setting');
             }
 
-            // 💾 Get existing preferences or create new
-            $existingPrefs = Database::fetchOne(
-                "SELECT * FROM tblUserPreferences WHERE userID = ?",
-                [$userID],
-                'i'
-            );
+            // 💾 Upsert each preference individually into the tblUserPreferences
+            // EAV store — see the $PRIVACY_PREFERENCE_KEYS map + savePrivacyPreference()
+            // above for why (B-066: tblUserPreferences has no per-preference columns).
+            $newValues = [
+                'profileVisibility'     => $profileVisibility,
+                'shareActivityStatus'   => $shareActivityStatus,
+                'allowThirdPartyAccess' => $allowThirdPartyAccess,
+                'marketingEmails'       => $marketingEmails,
+                'analyticsTracking'     => $analyticsTracking,
+                'showOnlineStatus'      => $showOnlineStatus,
+            ];
 
-            if ($existingPrefs) {
-                // 🔄 Update existing preferences
-                $query = "
-                    UPDATE tblUserPreferences
-                    SET profileVisibility = ?,
-                        shareActivityStatus = ?,
-                        allowThirdPartyAccess = ?,
-                        marketingEmails = ?,
-                        analyticsTracking = ?,
-                        showOnlineStatus = ?,
-                        updatedAt = NOW()
-                    WHERE userID = ?
-                ";
-
-                Database::query(
-                    $query,
-                    [
-                        $profileVisibility,
-                        $shareActivityStatus,
-                        $allowThirdPartyAccess,
-                        $marketingEmails,
-                        $analyticsTracking,
-                        $showOnlineStatus,
-                        $userID
-                    ],
-                    'siiiii'
-                );
-            } else {
-                // 📝 Create new preferences
-                $query = "
-                    INSERT INTO tblUserPreferences
-                    (userID, profileVisibility, shareActivityStatus, allowThirdPartyAccess,
-                     marketingEmails, analyticsTracking, showOnlineStatus, createdAt)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
-                ";
-
-                Database::query(
-                    $query,
-                    [
-                        $userID,
-                        $profileVisibility,
-                        $shareActivityStatus,
-                        $allowThirdPartyAccess,
-                        $marketingEmails,
-                        $analyticsTracking,
-                        $showOnlineStatus
-                    ],
-                    'isiiii'
-                );
+            foreach ($newValues as $shortName => $value) {
+                savePrivacyPreference($userID, $PRIVACY_PREFERENCE_KEYS[$shortName]['prefKey'], (string) $value);
             }
 
             // 📝 Log activity
+            // 🐛 B-066: ActivityLogger::log() has no $activityResult/$activityDetails
+            // params — see profile.php's B-066 note. Mapped to $description.
             ActivityLogger::log(
                 userID: $userID,
                 activityType: 'privacy_settings_updated',
-                activityResult: 'success',
-                activityDetails: 'Privacy settings updated'
+                description: 'Privacy settings updated'
             );
 
             $message = 'Privacy settings updated successfully!';
@@ -141,32 +224,52 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $message = $e->getMessage();
             $messageType = 'danger';
         }
+        } // end CSRF else (update_privacy)
     } elseif ($action === 'revoke_app_access') {
+        // 🛡️ B-066: see the update_privacy branch above — this action had
+        // no CSRF check either.
+        if (!SecurityUtils::verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+            $message = 'Invalid security token. Please try again.';
+            $messageType = 'danger';
+        } else {
+        // 🐛 B-066: tblAPIKeys has NO `userID` column (verified against
+        // information_schema — API keys in this schema belong to a PARTNER
+        // via `partnerID`, they are not scoped to an individual SIGNula
+        // user), so `WHERE keyID = ? AND userID = ?` fatals with "Unknown
+        // column 'userID'" on every GET load below, before this POST branch
+        // is even reached. "Third-party apps with access to MY account" is a
+        // per-USER, revocable grant — that IS exactly what tblOAuthConsents
+        // (userID, clientID, scope, grantedAt, revokedAt — built for the
+        // G-001 OAuth provider work) models. Retargeted the whole
+        // "Third-Party App Access" section to tblOAuthConsents + tblOAuthClients.
         try {
-            $apiKeyID = intval($_POST['apiKeyID'] ?? 0);
+            $consentID = intval($_POST['consentID'] ?? 0);
 
-            // 🔍 Verify API key belongs to user
-            $apiKey = Database::fetchOne(
-                "SELECT * FROM tblAPIKeys WHERE keyID = ? AND userID = ?",
-                [$apiKeyID, $userID],
+            // 🔍 Verify consent belongs to user and is not already revoked
+            $consent = Database::fetchOne(
+                "SELECT c.consentID, cl.clientName
+                 FROM tblOAuthConsents c
+                 INNER JOIN tblOAuthClients cl ON cl.clientID = c.clientID
+                 WHERE c.consentID = ? AND c.userID = ? AND c.revokedAt IS NULL",
+                [$consentID, $userID],
                 'ii'
             );
 
-            if (!$apiKey) {
-                throw new Exception('API key not found or does not belong to you');
+            if (!$consent) {
+                throw new Exception('Application access not found or does not belong to you');
             }
 
-            // 🗑️ Revoke API key
-            $query = "UPDATE tblAPIKeys SET isActive = 0, revokedAt = NOW() WHERE keyID = ?";
-            $result = Database::query($query, [$apiKeyID], 'i');
+            // 🗑️ Revoke consent (tblOAuthConsents has no isActive flag —
+            // revokedAt IS NULL is "active", mirroring tblOAuthAccessGrants)
+            $query = "UPDATE tblOAuthConsents SET revokedAt = NOW() WHERE consentID = ?";
+            $result = Database::query($query, [$consentID], 'i');
 
             if ($result) {
                 // 📝 Log activity
                 ActivityLogger::log(
                     userID: $userID,
                     activityType: 'api_access_revoked',
-                    activityResult: 'success',
-                    activityDetails: "Revoked API access for: {$apiKey['keyName']}"
+                    description: "Revoked API access for: {$consent['clientName']}"
                 );
 
                 $message = 'Third-party access revoked successfully!';
@@ -180,6 +283,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $message = htmlspecialchars($e->getMessage());
             $messageType = 'danger';
         }
+        } // end CSRF else (revoke_app_access)
 
     // ====================================================================
     // 📦 EXPORT USER DATA (GDPR Article 20)
@@ -251,31 +355,171 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // 🔄 Refresh user data after cancellation
             $user = getCurrentUser();
         }
+
+    // ====================================================================
+    // 🍪 RECORD CONSENT DECISION (G-004 Layer 1 — FG-002a)
+    // ====================================================================
+    // Server-persisted grant/withdraw for a cookie/marketing consent type.
+    // This is the authenticated "preference center" surface — the
+    // localStorage-only footer banner (public-footer.php) is replaced with
+    // a properly server-persisted, granular flow in a later G-004 cycle
+    // (Layer 2); this action gives logged-in users a working, auditable
+    // toggle today.
+    } elseif ($action === 'record_consent') {
+        if (!SecurityUtils::verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+            $message = 'Invalid security token. Please try again.';
+            $messageType = 'danger';
+        } else {
+            // 🧼 Sanitise, then validate against the server-authoritative
+            // allowlist ($CONSENT_TYPE_LABELS above) — this form must never
+            // be able to write an arbitrary consentType into the audit trail.
+            $consentType = SecurityUtils::sanitizeString($_POST['consent_type'] ?? '');
+            $granted = ($_POST['granted'] ?? '') === '1';
+
+            if (!array_key_exists($consentType, $CONSENT_TYPE_LABELS)) {
+                $message = 'Unrecognised consent type.';
+                $messageType = 'danger';
+            } else {
+                if (!class_exists('ConsentManager')) {
+                    require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'private_html'
+                        . DIRECTORY_SEPARATOR . 'compliance' . DIRECTORY_SEPARATOR . 'ConsentManager.php';
+                }
+
+                // 📝 visitorID is null here — this action only fires for an
+                // authenticated user (requireLogin() above), so the decision
+                // is recorded straight against userID. Pre-login/anonymous
+                // consent capture (visitorID cookie) is a Layer 2 concern.
+                ConsentManager::record(
+                    $userID,
+                    null,
+                    $consentType,
+                    $granted,
+                    ['mechanism' => 'preference_center']
+                );
+
+                $message = 'Your consent preference has been saved.';
+                $messageType = 'success';
+            }
+        }
+
+    // ====================================================================
+    // 🚫 "DO NOT SELL OR SHARE MY PERSONAL INFORMATION" (G-004 Layer 2)
+    // ====================================================================
+    // CCPA/CPRA-style opt-out toggle. granted=false means "opted OUT of
+    // sale/sharing" (see ConsentManager's consentType docblock + spec
+    // §3.3) — the button below always posts the OPPOSITE of the CURRENT
+    // opted-out state, so one click flips it.
+    } elseif ($action === 'set_do_not_sell') {
+        if (!SecurityUtils::verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+            $message = 'Invalid security token. Please try again.';
+            $messageType = 'danger';
+        } elseif (!(bool) getSetting('consent.do_not_sell.enabled', '1')) {
+            $message = 'This option is not currently enabled.';
+            $messageType = 'danger';
+        } else {
+            if (!class_exists('ConsentManager')) {
+                require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'private_html'
+                    . DIRECTORY_SEPARATOR . 'compliance' . DIRECTORY_SEPARATOR . 'ConsentManager.php';
+            }
+
+            // 🧼 granted arrives as '1' (allow sale — opt back IN) or '0'
+            // (opt OUT of sale) from the toggle button's hidden field below.
+            $doNotSellGranted = ($_POST['granted'] ?? '') === '1';
+
+            ConsentManager::record($userID, null, 'do_not_sell', $doNotSellGranted, ['mechanism' => 'preference_center']);
+
+            $message = $doNotSellGranted
+                ? 'You have opted back in — sale/sharing of your information is now allowed.'
+                : 'Your preference has been saved. We will not sell or share your personal information.';
+            $messageType = 'success';
+        }
+
+    // ====================================================================
+    // 📨 SUBMIT A DATA SUBJECT ACCESS REQUEST (G-004 Layer 1 — Cycle B)
+    // ====================================================================
+    // Submission ONLY — this page does not fulfil the request. An admin
+    // fulfils it from the compliance queue (Layer 1 / Cycle C — not built
+    // yet); DSARManager::submit() just creates the tracked request + its
+    // initial 'submitted' audit event and (best-effort) notifies compliance
+    // admins. IDOR-safe: $userID is read from $_SESSION at the top of this
+    // file, never from request input.
+    } elseif ($action === 'request_dsar') {
+        if (!SecurityUtils::verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+            $message = 'Invalid security token. Please try again.';
+            $messageType = 'danger';
+        } else {
+            // 🧼 Sanitise, then validate against the server-authoritative
+            // allowlist ($DSAR_TYPE_LABELS above) — this form must never be
+            // able to submit a requestType outside what a logged-in user is
+            // permitted to self-initiate (DSARManager's own allowlist is
+            // broader; this page's is deliberately narrower).
+            $dsarType = SecurityUtils::sanitizeString($_POST['dsar_type'] ?? '');
+
+            if (!array_key_exists($dsarType, $DSAR_TYPE_LABELS)) {
+                $message = 'Unrecognised request type.';
+                $messageType = 'danger';
+            } else {
+                if (!class_exists('DSARManager')) {
+                    require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'private_html'
+                        . DIRECTORY_SEPARATOR . 'compliance' . DIRECTORY_SEPARATOR . 'DSARManager.php';
+                }
+
+                try {
+                    $requestID = DSARManager::submit([
+                        'userID'      => $userID,
+                        'requestType' => $dsarType,
+                        'details'     => SecurityUtils::sanitizeString($_POST['dsar_details'] ?? ''),
+                        'actorType'   => 'user',
+                    ]);
+
+                    $message = 'Your request has been submitted (reference #' . (int) $requestID . '). '
+                        . 'We will review it and follow up by email.';
+                    $messageType = 'success';
+                } catch (InvalidArgumentException $e) {
+                    $message = 'Unable to submit your request. Please try again.';
+                    $messageType = 'danger';
+                }
+            }
+        }
     }
 }
 
-// 🔍 Get current privacy preferences
-$preferences = Database::fetchOne(
-    "SELECT * FROM tblUserPreferences WHERE userID = ?",
-    [$userID],
-    'i'
-) ?? [
-    'profileVisibility' => 'private',
-    'shareActivityStatus' => 0,
-    'allowThirdPartyAccess' => 0,
-    'marketingEmails' => 0,
-    'analyticsTracking' => 1,
-    'showOnlineStatus' => 0
-];
+// 🔍 Get current privacy preferences (see $PRIVACY_PREFERENCE_KEYS / loadPrivacyPreferences() above)
+$preferences = loadPrivacyPreferences($userID, $PRIVACY_PREFERENCE_KEYS);
 
-// 🔍 Get third-party apps with access
+// 🔍 Get third-party apps with access — tblOAuthConsents (per-user, revocable
+// grants to an OAuth CLIENT app), joined to tblOAuthClients for display
+// details. `cl.isFirstParty = 0` excludes SIGNula's own first-party
+// apps/services — this section is specifically "Third-Party App Access".
 $thirdPartyApps = Database::fetchAll(
-    "SELECT * FROM tblAPIKeys
-     WHERE userID = ? AND isActive = 1
-     ORDER BY createdAt DESC",
+    "SELECT c.consentID, c.clientID, c.scope, c.grantedAt,
+            cl.clientName, cl.logoURI
+     FROM tblOAuthConsents c
+     INNER JOIN tblOAuthClients cl ON cl.clientID = c.clientID
+     WHERE c.userID = ? AND c.revokedAt IS NULL AND cl.isFirstParty = 0
+     ORDER BY c.grantedAt DESC",
     [$userID],
     'i'
 ) ?? [];
+
+// 🔍 Get the user's current effective consent decisions (latest per type) —
+// used by the "My Consent History" read-only section below (G-004 Layer 1).
+// ConsentManager lives under private_html/compliance/, which is NOT one of
+// the directories web/_config/config.php's spl_autoload_register() scans
+// (auth/security/utils/api/email/database only), so it must be required
+// explicitly — same class_exists()-guarded lazy-require idiom used for
+// AccountManager above.
+if (!class_exists('ConsentManager')) {
+    require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'private_html'
+        . DIRECTORY_SEPARATOR . 'compliance' . DIRECTORY_SEPARATOR . 'ConsentManager.php';
+}
+$consentDecisions = ConsentManager::getEffectiveConsents($userID, null);
+
+// 🚫 "Do Not Sell or Share My Personal Information" (G-004 Layer 2) — current
+// state for the toggle section below. granted=false means "opted out".
+$doNotSellEnabled = (bool) getSetting('consent.do_not_sell.enabled', '1');
+$doNotSellCurrent = ConsentManager::getCurrent($userID, null, 'do_not_sell');
+$isOptedOutOfSale = $doNotSellCurrent !== null && (int) $doNotSellCurrent['granted'] === 0;
 
 // 🎨 Include header
 include SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'layout' . DIRECTORY_SEPARATOR . 'header.php';
@@ -296,7 +540,7 @@ include SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATO
 
                     <?php if ($message): ?>
                         <div class="alert alert-<?php echo $messageType; ?> alert-dismissible fade show" role="alert">
-                            <?php echo $message; ?>
+                            <?php echo htmlspecialchars($message, ENT_QUOTES, 'UTF-8'); ?>
                             <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                         </div>
                     <?php endif; ?>
@@ -307,6 +551,7 @@ include SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATO
 
                     <form method="POST" action="">
                         <input type="hidden" name="action" value="update_privacy">
+                        <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrfToken); ?>">
 
                         <!-- Profile Visibility -->
                         <div class="mb-4">
@@ -442,6 +687,90 @@ include SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATO
                 </div>
             </div>
 
+            <!-- ============================================================ -->
+            <!-- 🍪 CONSENT PREFERENCES + HISTORY (G-004 Layer 1 — FG-002a)   -->
+            <!-- ============================================================ -->
+            <div class="card shadow mt-4">
+                <div class="card-body p-4">
+                    <h5 class="mb-3"><i class="fas fa-clipboard-check text-primary"></i> My Consent History</h5>
+                    <p class="text-muted small mb-3">
+                        A record of your consent decisions for cookies and marketing communications.
+                        Every change is written as a new, timestamped entry — nothing is ever silently
+                        overwritten, so this is also your audit trail.
+                    </p>
+
+                    <div class="list-group">
+                        <?php foreach ($CONSENT_TYPE_LABELS as $consentTypeKey => $consentTypeLabel): ?>
+                            <?php
+                            // 🔍 Latest decision for this type — absent from the map means
+                            // "no decision recorded yet", which we treat as not-granted.
+                            $isConsentGranted = $consentDecisions[$consentTypeKey] ?? false;
+                            ?>
+                            <div class="list-group-item d-flex justify-content-between align-items-center">
+                                <div>
+                                    <strong><?php echo htmlspecialchars($consentTypeLabel, ENT_QUOTES, 'UTF-8'); ?></strong>
+                                    <div class="mt-1">
+                                        <span class="badge bg-<?php echo $isConsentGranted ? 'success' : 'secondary'; ?>">
+                                            <?php echo $isConsentGranted ? 'Granted' : 'Not granted'; ?>
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <form method="POST" action="" class="d-inline">
+                                    <input type="hidden" name="action" value="record_consent">
+                                    <input type="hidden" name="consent_type"
+                                           value="<?php echo htmlspecialchars($consentTypeKey, ENT_QUOTES, 'UTF-8'); ?>">
+                                    <input type="hidden" name="granted"
+                                           value="<?php echo $isConsentGranted ? '0' : '1'; ?>">
+                                    <input type="hidden" name="csrf_token"
+                                           value="<?php echo htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8'); ?>">
+                                    <button type="submit"
+                                            class="btn btn-sm btn-outline-<?php echo $isConsentGranted ? 'danger' : 'success'; ?>">
+                                        <?php echo $isConsentGranted ? 'Withdraw' : 'Grant'; ?>
+                                    </button>
+                                </form>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ============================================================ -->
+            <!-- 🚫 DO NOT SELL OR SHARE MY PERSONAL INFORMATION (G-004 L2)   -->
+            <!-- ============================================================ -->
+            <?php if ($doNotSellEnabled): ?>
+            <div class="card shadow mt-4">
+                <div class="card-body p-4">
+                    <h5 class="mb-3"><i class="fas fa-ban text-primary"></i> Do Not Sell or Share My Personal Information</h5>
+                    <p class="text-muted small mb-3">
+                        Separate from cookie preferences above — this tells us not to sell or share your personal
+                        information with third parties.
+                    </p>
+
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span class="badge bg-<?php echo $isOptedOutOfSale ? 'success' : 'secondary'; ?>">
+                            <?php echo $isOptedOutOfSale ? 'Opted out (not sold/shared)' : 'Not opted out'; ?>
+                        </span>
+
+                        <form method="POST" action="" class="d-inline">
+                            <input type="hidden" name="action" value="set_do_not_sell">
+                            <input type="hidden" name="granted" value="<?php echo $isOptedOutOfSale ? '1' : '0'; ?>">
+                            <input type="hidden" name="csrf_token"
+                                   value="<?php echo htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8'); ?>">
+                            <button type="submit"
+                                    class="btn btn-sm btn-outline-<?php echo $isOptedOutOfSale ? 'secondary' : 'danger'; ?>">
+                                <?php echo $isOptedOutOfSale ? 'Opt Back In (Allow Sale)' : 'Opt Out'; ?>
+                            </button>
+                        </form>
+                    </div>
+
+                    <p class="text-muted small mt-3 mb-0">
+                        See also the public <a href="https://SIGNula.com/legal/do-not-sell" target="_blank" rel="noopener">Do Not Sell / Share</a> page.
+                    </p>
+                </div>
+            </div>
+            <?php endif; ?>
+
             <!-- Third-Party App Access -->
             <div class="card shadow mt-4">
                 <div class="card-body p-4">
@@ -472,24 +801,23 @@ include SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATO
                                         </div>
 
                                         <div class="flex-grow-1">
-                                            <h6 class="mb-1"><?php echo htmlspecialchars($app['keyName']); ?></h6>
+                                            <h6 class="mb-1"><?php echo htmlspecialchars($app['clientName']); ?></h6>
                                             <small class="text-muted">
                                                 <i class="fas fa-calendar"></i>
-                                                Access granted <?php echo timeAgo($app['createdAt']); ?>
+                                                Access granted <?php echo timeAgo($app['grantedAt']); ?>
                                             </small>
-                                            <?php if ($app['lastUsedAt']): ?>
-                                                <small class="text-muted ms-2">
-                                                    <i class="fas fa-clock"></i>
-                                                    Last used <?php echo timeAgo($app['lastUsedAt']); ?>
-                                                </small>
-                                            <?php endif; ?>
+                                            <?php // 🐛 B-066: tblOAuthConsents has no lastUsedAt column — dropped
+                                                  // rather than invent one. ?>
 
-                                            <?php if ($app['permissions']): ?>
+                                            <?php if (!empty($app['scope'])): ?>
                                                 <div class="mt-2">
                                                     <small class="text-muted">
                                                         <strong>Permissions:</strong>
                                                         <?php
-                                                        $permissions = json_decode($app['permissions'], true) ?? [];
+                                                        // 🐛 B-066: tblOAuthConsents.scope is a space-separated OAuth2
+                                                        // scope string (VARCHAR(512)), NOT JSON — matches
+                                                        // tblOAuthAccessGrants.scope's same storage convention.
+                                                        $permissions = preg_split('/\s+/', trim($app['scope']));
                                                         echo htmlspecialchars(implode(', ', $permissions));
                                                         ?>
                                                     </small>
@@ -500,7 +828,8 @@ include SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATO
                                         <form method="POST" action="" class="d-inline"
                                               onsubmit="return confirm('Are you sure you want to revoke access for this application?');">
                                             <input type="hidden" name="action" value="revoke_app_access">
-                                            <input type="hidden" name="apiKeyID" value="<?php echo $app['keyID']; ?>">
+                                            <input type="hidden" name="consentID" value="<?php echo (int) $app['consentID']; ?>">
+                                            <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrfToken); ?>">
                                             <button type="submit" class="btn btn-sm btn-outline-danger">
                                                 <i class="fas fa-times"></i> Revoke
                                             </button>
@@ -537,6 +866,47 @@ include SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATO
 
                         <button type="submit" class="btn btn-primary">
                             <i class="fas fa-download me-1"></i> Export My Data
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- ============================================================ -->
+            <!-- 📨 DATA SUBJECT ACCESS REQUEST (G-004 Layer 1 — Cycle B)     -->
+            <!-- ============================================================ -->
+            <div class="card shadow mt-4">
+                <div class="card-body p-4">
+                    <h5 class="mb-3"><i class="fas fa-file-signature text-primary"></i> Submit a Data Subject Request</h5>
+                    <p class="text-muted small mb-3">
+                        Ask us to act on your data in a specific way — see what we hold about you,
+                        get a portable copy, request corrections, or request erasure. Every request
+                        is tracked and reviewed by an administrator; this form only submits it.
+                    </p>
+
+                    <form method="POST" action="">
+                        <input type="hidden" name="action" value="request_dsar">
+                        <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8'); ?>">
+
+                        <div class="mb-3">
+                            <label for="dsar_type" class="form-label">Request type</label>
+                            <select class="form-select" id="dsar_type" name="dsar_type" required>
+                                <option value="">Choose a request type&hellip;</option>
+                                <?php foreach ($DSAR_TYPE_LABELS as $dsarTypeKey => $dsarTypeLabel): ?>
+                                    <option value="<?php echo htmlspecialchars($dsarTypeKey, ENT_QUOTES, 'UTF-8'); ?>">
+                                        <?php echo htmlspecialchars($dsarTypeLabel, ENT_QUOTES, 'UTF-8'); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="dsar_details" class="form-label">Additional details (optional)</label>
+                            <textarea class="form-control" id="dsar_details" name="dsar_details" rows="3"
+                                      placeholder="Anything that helps us process your request faster"></textarea>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-paper-plane me-1"></i> Submit Request
                         </button>
                     </form>
                 </div>

@@ -1,8 +1,55 @@
 # SIGNula.ID Development Progress
 
-**Last Updated:** 2026-03-08
-**Current Version:** 2.7.0-beta
-**Project Status:** 🟢 Active Development
+**Last Updated:** 2026-07-01
+**Current Version:** 2.7.0-beta (on branch `autopilot/2026-06-30`)
+**Project Status:** 🟢 Active Development — Foundation hardened; feature campaign next
+
+---
+
+## ⚠️ Foundation Hardening (autopilot/2026-06-30, cycles 3-12) — 2026-07-01
+
+> **Honest status correction.** The table below was written against a unit-test suite that stubs the database layer; it reported ✅ 100% for components that were silently non-functional against a real database. An autonomous hardening run (10 cycles, branch `autopilot/2026-06-30`) found and fixed the following:
+
+### What was genuinely broken (now fixed)
+
+| Component | Was | Is now |
+| --------- | --- | ------ |
+| User registration | ❌ Failed every call (missing `tblUsers.organizationID`) | ✅ Fixed (migration 025) |
+| Email queue (`queueEmail`) | ❌ Failed every call (bind-param count mismatch) | ✅ Fixed |
+| Backup-code MFA | ❌ ENUM mismatch — verification always failed | ✅ Fixed |
+| Error logging (61 call sites) | ❌ `ErrorLogger::log()` undefined — all errors swallowed | ✅ Fixed |
+| `Database::getAffectedRows()` | ❌ Always returned -1 (read after `$stmt->close()`) — 12 callers broken | ✅ Fixed |
+| MFA / notification activity logging | ❌ Misordered `log()` args — wrote garbage into ENUM column | ✅ Fixed + ENUM widened (migration 029) |
+| WebAuthn registration | ❌ `Database::insert()` missing — credential save failed | ✅ Fixed (`insert()` + `insertId()` added) |
+| WebAuthn auth-bypass (FG-013) | ❌ No signature verification — **auth-bypass** | ✅ Fixed (CBOR/COSE/openssl_verify, red-team verified) |
+| Fresh install (consolidated SQL) | ❌ 74 SQL errors (FK drift, schema drift, duplicates) | ✅ Fixed → 0 errors (migrations 025-029) |
+| Installer tracked in git | ❌ `_database/*.sql` was gitignored — absent from clean checkout | ✅ Un-ignored and committed |
+| Install-wizard idempotency | ❌ Re-ran migrations 001-014 on every wizard run | ✅ Fixed (all 17 baked names seeded as `completed`) |
+| Integration test gate reliability | ❌ Flaky (~1/3 runs failed, FK/ENUM errors) | ✅ Reliable: 5/5 + 20/20 green (cycle 12) |
+| Multi-org tables | ❌ `Organization.php` referenced 6 tables that didn't exist | ✅ Created (migration 028) |
+
+### Security hardening applied
+
+- **WebAuthn auth-bypass (FG-013)** — closed; red-team verified across 7 vectors (cycle 6)
+- **CORS `*` + credentials** — fixed; origin now checked against `api.cors.allowed_origins` allowlist (B-024)
+- **X-Frame-Options / CSP frame-ancestors / X-Content-Type-Options** — added to all API responses (#29)
+- **Admin CSRF** — primary hole + a second hole on rate-limits unblock endpoint, both fixed (cycle 8)
+- **13 deferred MEDIUM issues #22-#34** — email validation, AMP allowlist, SMTP encryption-before-AUTH, credential-reset authz/pagination/indexes, token urlencode (cycle 8)
+- **WebAuthn challenge TOCTOU** — hardened with atomic compare-and-set (B-030/B-031)
+
+### Test counts (corrected)
+
+| Suite | Before hardening | After hardening |
+| ----- | ---------------- | --------------- |
+| Unit tests | 342 green | 407 green, 0 warnings |
+| Integration tests | Unreliable / not runnable | 71 green, gate reliable |
+
+### Still pending (honest)
+
+- **Feature campaign — 3 of 4 approved epics built** (as of cycle 46): G-003 (JWT API auth) **built**; G-001 (SIGNula as IdP — OAuth2/OIDC provider + iHymns integration) **built** (SAML deferred to a later phase); G-002 (recurring billing / dunning) **built — TEST-MODE only** (go-live is the owner's #70 step); G-004 (multi-jurisdiction compliance) **in progress** — Layer 1a (consent audit trail + `ConsentManager` + privacy-page consent surface, migration 040) shipped this cycle; DSAR engine, admin queue, the data-driven regime model, and breach/RoPA/retention machinery follow in later layers.
+- **Residual backlog**: B-035/B-036/B-038/B-042 (migration hygiene), B-044 (install wizard `DELIMITER` — CLI/phpMyAdmin path works; wizard `multi_query` cannot parse stored-proc blocks), B-045 (per-file test isolation).
+- **Operational items**: #83-#85 (prod credentials/cron setup), #70/#71 (live payment activation / staging deploy) — require human action.
+- **WCAG a11y** (#76) and **API completeness** (#86) — deferred to post-feature-campaign.
 
 ---
 

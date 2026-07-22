@@ -1,0 +1,166 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ============================================================================
+  SIGNula.id — Brand Symbol (theme-adaptive, animated)
+  ============================================================================
+  A horizontal key sliding into a lock, followed by a checkmark — reads as
+  "secure + verified identity". Fully transparent background (alpha).
+
+  Theme handling (in priority order):
+    1. `svg[data-theme="dark"|"light"]`  — explicit override, for when this
+       file is inlined (e.g. via <object>) and controlled by app JS, mirroring
+       the existing `html[data-theme]` pattern used elsewhere in SIGNula.
+    2. `@media (prefers-color-scheme: dark)` — automatic OS/browser theme.
+    3. Default block                          — falls back to light values.
+
+  Motion:
+    Pure CSS keyframes (no SMIL) so `@media (prefers-reduced-motion: reduce)`
+    can disable everything declaratively, with no JavaScript required — this
+    works even when the SVG is loaded as a plain <img>.
+
+  Recolouring:
+    Every colour is a CSS custom property on the <svg> element, applied only
+    through CLASS selectors (never inside raw attribute strings, since
+    var() is not reliably substituted inside plain presentation-attribute
+    values across renderers). To reskin, edit the sig dash prefixed custom
+    properties in the two theme blocks below — nothing else in the markup needs to change. Named
+    groups (<g id="key">, "lock", "check") make it easy to isolate/hide/
+    recolour a single part independently.
+
+  Docs: https://developer.mozilla.org/en-US/docs/Web/SVG
+        https://developer.mozilla.org/en-US/docs/Web/CSS/@media/prefers-color-scheme
+        https://developer.mozilla.org/en-US/docs/Web/CSS/@media/prefers-reduced-motion
+  ============================================================================
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img"
+     aria-labelledby="sig-sym-title sig-sym-desc">
+  <title id="sig-sym-title">SIGNula.id symbol</title>
+  <desc id="sig-sym-desc">A horizontal key sliding into a lock, followed by a checkmark, representing secure verified identity.</desc>
+
+  <defs>
+    <!-- 🎨 Two-stop brand gradient used by the lock plate -->
+    <linearGradient id="sigSymGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" class="sig-stop-a"/>
+      <stop offset="100%" class="sig-stop-b"/>
+    </linearGradient>
+
+    <!-- 🔑 Keyhole cut-out mask: white = visible plate, black = transparent hole -->
+    <mask id="sigKeyholeMask" maskUnits="userSpaceOnUse" x="0" y="0" width="100" height="100">
+      <rect x="60" y="18" width="28" height="64" rx="8" fill="#ffffff"/>
+      <circle cx="70" cy="48" r="6" fill="#000000"/>
+      <path d="M 64.5 49 L 75.5 49 L 72 63 L 68 63 Z" fill="#000000"/>
+    </mask>
+  </defs>
+
+  <style>
+    /* ============================ 🎨 Palette ============================ */
+    svg {
+      --sig-ink:      #5568d3; /* key + lock outline colour (AA 4.9:1 on white) */
+      --sig-stop-a:   #667eea; /* gradient start            (large-scale fill)  */
+      --sig-stop-b:   #764ba2; /* gradient end              (AA 6.4:1 on white) */
+      --sig-surface:  #ffffff; /* checkmark badge surface                      */
+      --sig-accent:   #764ba2; /* checkmark stroke                             */
+    }
+    @media (prefers-color-scheme: dark) {
+      svg {
+        --sig-ink:     #c7d0fc;
+        --sig-stop-a:  #7b93ee;
+        --sig-stop-b:  #9b7bc4;
+        --sig-surface: #101a33;
+        --sig-accent:  #b79bd6;
+      }
+    }
+    /* Explicit override hook for JS-driven theming when inlined */
+    svg[data-theme="dark"] {
+      --sig-ink:     #c7d0fc;
+      --sig-stop-a:  #7b93ee;
+      --sig-stop-b:  #9b7bc4;
+      --sig-surface: #101a33;
+      --sig-accent:  #b79bd6;
+    }
+    svg[data-theme="light"] {
+      --sig-ink:     #5568d3;
+      --sig-stop-a:  #667eea;
+      --sig-stop-b:  #764ba2;
+      --sig-surface: #ffffff;
+      --sig-accent:  #764ba2;
+    }
+
+    .sig-stop-a { stop-color: var(--sig-stop-a); }
+    .sig-stop-b { stop-color: var(--sig-stop-b); }
+
+    /* Colour assignment lives ONLY in these class rules — never in raw
+       attribute strings — so var() substitution always works. */
+    .sig-line        { fill: none; stroke: var(--sig-ink); stroke-linecap: round; }
+    .sig-fill-ink     { fill: var(--sig-ink); }
+    .sig-plate        { fill: url(#sigSymGrad); }
+    .sig-badge-circle { fill: var(--sig-surface); stroke: var(--sig-ink); stroke-width: 1.5; }
+    .sig-tick         { fill: none; stroke: var(--sig-accent); stroke-linecap: round; stroke-linejoin: round; }
+
+    /* ============================ 🏃 Motion ============================= */
+    #key {
+      animation: sigKeySlide 2.6s ease-in-out infinite;
+    }
+    @keyframes sigKeySlide {
+      0%   { transform: translateX(-34px); }
+      28%  { transform: translateX(-34px); }
+      55%  { transform: translateX(0); }
+      100% { transform: translateX(0); }
+    }
+    /* Base (non-animated-fallback) state is the "settled" look — opacity:1 /
+       dashoffset:0 — so renderers that don't execute CSS @keyframes at all
+       (some static SVG rasterisers, print/export paths) still show the
+       fully-assembled mark instead of a permanently-hidden checkmark. In any
+       browser that DOES run the animation, its own 0% keyframe (opacity:0 /
+       dashoffset:1) fully takes over for the duration of the loop, so the
+       animated look below is unaffected by this fallback value. */
+    .sig-badge-circle {
+      opacity: 1;
+      animation: sigBadgeFade 2.6s ease-in-out infinite;
+    }
+    @keyframes sigBadgeFade {
+      0%   { opacity: 0; }
+      52%  { opacity: 0; }
+      62%  { opacity: 1; }
+      100% { opacity: 1; }
+    }
+    .sig-tick {
+      stroke-dasharray: 1;
+      stroke-dashoffset: 0;
+      animation: sigCheckDraw 2.6s ease-in-out infinite;
+    }
+    @keyframes sigCheckDraw {
+      0%   { stroke-dashoffset: 1; }
+      58%  { stroke-dashoffset: 1; }
+      82%  { stroke-dashoffset: 0; }
+      100% { stroke-dashoffset: 0; }
+    }
+
+    /* ♿ Respect reduced-motion: freeze on the fully-assembled, "verified" state */
+    @media (prefers-reduced-motion: reduce) {
+      #key, .sig-badge-circle, .sig-tick { animation: none !important; }
+      #key              { transform: translateX(0) !important; }
+      .sig-badge-circle { opacity: 1 !important; }
+      .sig-tick         { stroke-dashoffset: 0 !important; }
+    }
+  </style>
+
+  <!-- 🔑 KEY — bow (ring) + shaft + bit teeth, slides in from the left -->
+  <g id="key">
+    <circle class="sig-line" cx="17" cy="50" r="9" stroke-width="6"/>
+    <rect class="sig-fill-ink" x="26" y="47" width="34" height="7" rx="1.5"/>
+    <rect class="sig-fill-ink" x="46" y="54" width="5" height="6"/>
+    <rect class="sig-fill-ink" x="54" y="54" width="6" height="9"/>
+  </g>
+
+  <!-- 🔒 LOCK — faceplate with a genuine transparent keyhole cut-out (alpha) -->
+  <g id="lock">
+    <rect class="sig-plate" x="60" y="18" width="28" height="64" rx="8" mask="url(#sigKeyholeMask)"/>
+  </g>
+
+  <!-- ✅ CHECK — verification badge, draws in once the key has landed -->
+  <g id="check">
+    <circle class="sig-badge-circle" cx="80" cy="75" r="13"/>
+    <path class="sig-tick" pathLength="1" d="M 73.5 75 L 78.5 80 L 88.5 67.5" stroke-width="4.5"/>
+  </g>
+</svg>

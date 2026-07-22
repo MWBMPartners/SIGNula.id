@@ -297,7 +297,35 @@ class Organization
                 'isssiis'
             );
 
-            // TODO: Send invitation email
+            // 📧 Send invitation email
+            $organization = Database::fetchOne(
+                "SELECT organizationName FROM tblOrganizations WHERE organizationID = ?",
+                [$organizationID],
+                'i'
+            );
+
+            $inviter = Database::fetchOne(
+                "SELECT firstName, lastName FROM tblUsers WHERE userID = ?",
+                [$invitedBy],
+                'i'
+            );
+
+            if ($organization && $inviter) {
+                $baseURL = getSetting('url.base', 'https://signula.id');
+                $acceptUrl = "{$baseURL}/organization/accept-invitation?token={$token}";
+                $inviterName = trim($inviter['firstName'] . ' ' . $inviter['lastName']);
+
+                $emailVariables = [
+                    'organizationName' => $organization['organizationName'],
+                    'inviterName' => $inviterName,
+                    'personalMessage' => $message ?: '',
+                    'role' => ucfirst($role),
+                    'acceptUrl' => $acceptUrl,
+                    'expiryDays' => $expiryDays
+                ];
+
+                EmailService::sendTemplateEmail($email, 'org_invitation', $emailVariables, null, 3);
+            }
 
             ActivityLogger::log($invitedBy, 'org_invitation_sent', 'account', 'info',
                 'Organization invitation sent', [

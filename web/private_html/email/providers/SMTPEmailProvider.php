@@ -60,6 +60,13 @@ class SMTPEmailProvider extends EmailProvider
     private bool $debug = false;
 
     /**
+     * @var bool Whether the current connection channel is encrypted (TLS/SSL).
+     *
+     * 🔐 #34: AUTH credentials must only ever be sent once this is true.
+     */
+    private bool $isEncrypted = false;
+
+    /**
      * 🏗️ Constructor
      */
     public function __construct()
@@ -129,9 +136,14 @@ class SMTPEmailProvider extends EmailProvider
             $port = $this->config['smtp_port'];
             $encryption = $this->config['smtp_encryption'];
 
-            // 🔐 SSL connection
+            // 🔐 Reset channel-encryption state for this fresh connection.
+            $this->isEncrypted = false;
+
+            // 🔐 SSL connection (implicit TLS — the socket is encrypted from the
+            //    first byte, so the channel is secure as soon as it opens).
             if ($encryption === 'ssl') {
                 $host = 'ssl://' . $host;
+                $this->isEncrypted = true;
             }
 
             // 🌐 Open socket connection
@@ -167,11 +179,14 @@ class SMTPEmailProvider extends EmailProvider
                     throw new RuntimeException('Failed to enable TLS encryption');
                 }
 
+                // ✅ The channel is now encrypted — AUTH may proceed.
+                $this->isEncrypted = true;
+
                 // 👤 Send EHLO again after TLS
                 $this->sendCommand('EHLO ' . $this->getClientDomain(), '250');
             }
 
-            // 🔑 Authenticate
+            // 🔑 Authenticate (only over an encrypted channel — see authenticate()).
             $this->authenticate();
 
         } catch (Exception $e) {
@@ -189,15 +204,30 @@ class SMTPEmailProvider extends EmailProvider
      */
     private function authenticate(): void
     {
+        // 🔐 #34: NEVER send AUTH credentials over a cleartext channel. SMTP AUTH
+        //    LOGIN transmits the username and password as (trivially reversible)
+        //    Base64, so without TLS/SSL they are effectively sent in the clear and
+        //    can be captured by a network MITM. Refuse to authenticate unless the
+        //    channel is encrypted.
+        //    @see https://datatracker.ietf.org/doc/html/rfc4954#section-9
+        if (!$this->isEncrypted) {
+            throw new RuntimeException(
+                'Refusing to send SMTP AUTH credentials over an unencrypted connection. '
+                . 'Configure email.smtp.encryption to "tls" or "ssl".'
+            );
+        }
+
         try {
             // 🔐 AUTH LOGIN method
             $this->sendCommand('AUTH LOGIN', '334');
 
             // 👤 Send username (Base64 encoded)
-            $this->sendCommand(base64_encode($this->config['smtp_username']), '334');
+            // 🔐 #30: mark as sensitive so the Base64 credential is not logged in
+            //    debug output (it would otherwise reveal the username verbatim).
+            $this->sendCommand(base64_encode($this->config['smtp_username']), '334', true);
 
-            // 🔑 Send password (Base64 encoded)
-            $this->sendCommand(base64_encode($this->config['smtp_password']), '235');
+            // 🔑 Send password (Base64 encoded) — also sensitive.
+            $this->sendCommand(base64_encode($this->config['smtp_password']), '235', true);
 
         } catch (Exception $e) {
             throw new RuntimeException('SMTP authentication failed: ' . $e->getMessage());
@@ -469,13 +499,18 @@ class SMTPEmailProvider extends EmailProvider
      *
      * @param string $command SMTP command
      * @param string $expectedCode Expected response code
+     * @param bool   $sensitive Whether $command carries credentials (#30) — when
+     *                          true the value is redacted in debug logs so the
+     *                          Base64 username/password never reaches the log.
      * @throws RuntimeException If response doesn't match expected code
      */
-    private function sendCommand(string $command, string $expectedCode): void
+    private function sendCommand(string $command, string $expectedCode, bool $sensitive = false): void
     {
         // 🐛 Debug output
+        // 🔐 #30: redact credential-bearing lines so debug mode cannot leak the
+        //    SMTP username/password (the Base64 here is trivially decodable).
         if ($this->debug) {
-            error_log("SMTP >> " . $command);
+            error_log("SMTP >> " . ($sensitive ? '[REDACTED CREDENTIAL]' : $command));
         }
 
         // 📤 Send command
@@ -485,8 +520,10 @@ class SMTPEmailProvider extends EmailProvider
         $response = $this->getResponse();
 
         // 🐛 Debug output
+        // 🔐 #30: an auth-step server response can echo prompt data, so redact it
+        //    too while the credential exchange is in flight.
         if ($this->debug) {
-            error_log("SMTP << " . $response);
+            error_log("SMTP << " . ($sensitive ? '[REDACTED]' : $response));
         }
 
         // ✅ Validate response
@@ -665,7 +702,9 @@ class SMTPEmailProvider extends EmailProvider
             'encryption_options' => [
                 'tls' => 'STARTTLS (port 587) - Most common and recommended',
                 'ssl' => 'SSL/TLS (port 465) - Legacy but still supported',
-                'none' => 'No encryption (port 25) - Not recommended for production'
+                // 🔐 #34: AUTH is refused over an unencrypted channel, so "none"
+                //    only works for relays that do NOT require SMTP AUTH.
+                'none' => 'No encryption (port 25) - AUTH is disabled on this channel; only usable with no-auth relays. Not recommended.'
             ],
             'benefits' => [
                 'Universal compatibility (works with any SMTP server)',

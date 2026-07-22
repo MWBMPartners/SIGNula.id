@@ -3,5 +3,9 @@
     "allow": [
       "Bash(cd:*)"
     ]
+  },
+  "enabledPlugins": {
+    "dev-team@dev-team": true,
+    "codex@openai-codex": true
   }
 }

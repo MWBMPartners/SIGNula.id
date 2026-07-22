@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ============================================================================
+  SIGNula.id — Brand Symbol (mono / high-contrast / colour-blind-safe)
+  ============================================================================
+  Single-colour version of the mark: every shape uses `currentColor`, so the
+  ENTIRE symbol recolours by setting `color` on the <svg> (inline style,
+  a wrapping element, or the `color` attribute) — no palette, no gradient,
+  no hue-based meaning at all. This is the safest variant for:
+    - any colour-vision deficiency (protanopia/deuteranopia/tritanopia),
+    - print, embroidery, engraving, or single-ink contexts,
+    - very small sizes where a gradient would just look muddy.
+  Meaning is carried entirely by SHAPE (key, lock, checkmark) and CONTRAST,
+  never by colour choice — nothing here relies on a red/green distinction.
+
+  Alpha transparency: background is fully transparent; the keyhole is a true
+  cut-out (SVG mask), not an opaque shape drawn on top.
+  ============================================================================
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img"
+     aria-labelledby="sig-sym-m-title sig-sym-m-desc" color="#111111">
+  <title id="sig-sym-m-title">SIGNula.id symbol (monochrome)</title>
+  <desc id="sig-sym-m-desc">A horizontal key sliding into a lock, followed by a checkmark, representing secure verified identity, rendered in a single colour for maximum accessibility.</desc>
+
+  <defs>
+    <mask id="sigKeyholeMaskM" maskUnits="userSpaceOnUse" x="0" y="0" width="100" height="100">
+      <rect x="60" y="18" width="28" height="64" rx="8" fill="#ffffff"/>
+      <circle cx="70" cy="48" r="6" fill="#000000"/>
+      <path d="M 64.5 49 L 75.5 49 L 72 63 L 68 63 Z" fill="#000000"/>
+    </mask>
+  </defs>
+
+  <style>
+    .sig-line          { fill: none; stroke: currentColor; stroke-linecap: round; }
+    .sig-fill-current  { fill: currentColor; }
+    .sig-badge-circle  { fill: currentColor; fill-opacity: 0.12; stroke: currentColor; stroke-width: 1.5; }
+    .sig-tick          { fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; }
+
+    #key { animation: sigKeySlide 2.6s ease-in-out infinite; }
+    @keyframes sigKeySlide {
+      0%   { transform: translateX(-34px); }
+      28%  { transform: translateX(-34px); }
+      55%  { transform: translateX(0); }
+      100% { transform: translateX(0); }
+    }
+    .sig-badge-circle { opacity: 1; animation: sigBadgeFade 2.6s ease-in-out infinite; }
+    @keyframes sigBadgeFade {
+      0% { opacity: 0; } 52% { opacity: 0; } 62% { opacity: 1; } 100% { opacity: 1; }
+    }
+    .sig-tick {
+      stroke-dasharray: 1; stroke-dashoffset: 0;
+      animation: sigCheckDraw 2.6s ease-in-out infinite;
+    }
+    @keyframes sigCheckDraw {
+      0% { stroke-dashoffset: 1; } 58% { stroke-dashoffset: 1; } 82% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      #key, .sig-badge-circle, .sig-tick { animation: none !important; }
+      #key              { transform: translateX(0) !important; }
+      .sig-badge-circle { opacity: 1 !important; }
+      .sig-tick         { stroke-dashoffset: 0 !important; }
+    }
+  </style>
+
+  <g id="key">
+    <circle class="sig-line" cx="17" cy="50" r="9" stroke-width="6"/>
+    <rect class="sig-fill-current" x="26" y="47" width="34" height="7" rx="1.5"/>
+    <rect class="sig-fill-current" x="46" y="54" width="5" height="6"/>
+    <rect class="sig-fill-current" x="54" y="54" width="6" height="9"/>
+  </g>
+
+  <g id="lock">
+    <rect class="sig-fill-current" x="60" y="18" width="28" height="64" rx="8" mask="url(#sigKeyholeMaskM)"/>
+  </g>
+
+  <g id="check">
+    <circle class="sig-badge-circle" cx="80" cy="75" r="13"/>
+    <path class="sig-tick" pathLength="1" d="M 73.5 75 L 78.5 80 L 88.5 67.5" stroke-width="4.5"/>
+  </g>
+</svg>

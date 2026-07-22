@@ -1,16 +1,49 @@
 # 📊 SIGNula - Complete Project Status
 
-**Version:** 2.6.0-beta
-**Date:** February 24, 2026
-**Overall Completion:** ~99%
+**Version:** 2.7.0-beta (branch `autopilot/2026-06-30`)
+**Date:** 2026-07-01
+**Overall Completion:** Foundation hardened and reliable; feature campaign (G-001..G-004) next
 
 ---
 
-## 🎯 Executive Summary
+## 🎯 Executive Summary — Updated 2026-07-01
 
-SIGNula is a comprehensive universal single sign-on (SSO) authentication system with **~99% of original requirements implemented** and **production-ready** for core features.
+An autonomous hardening run (10 cycles, `autopilot/2026-06-30`) discovered the "beta" had several core subsystems silently non-functional against a real database — hidden by a unit-test suite that stubs the DB layer. Those are now fixed.
 
-**Latest Milestones:**
+**Current gate status:**
+
+- Unit tests: **407 green, 0 warnings** (was 342)
+- Integration suite: **reliable** — 5/5 independent + 20/20 builder runs green (was flaky/unreliable)
+- Fresh install: **0 SQL errors** (was 74)
+- WebAuthn auth-bypass: **closed and red-team verified** (FG-013)
+
+**What was fixed (cycles 3-12):**
+
+- User registration (missing DB column), email queue (bind mismatch), backup-code MFA (ENUM), error logging (undefined method at 61 sites), `Database::getAffectedRows()` (always -1 — 12 callers), MFA/notification activity logging (misordered args), WebAuthn registration (`Database::insert()` missing), installer gitignored, install-wizard idempotency, multi-org tables (6 missing), integration test reliability.
+- Security: WebAuthn auth-bypass (FG-013), CORS allowlist, X-Frame/CSP on API, admin CSRF (2 holes), 13 deferred MEDIUM issues (#22-#34), WebAuthn challenge TOCTOU.
+- Migrations added: 025 (registration fix), 026 (MFA columns), 027 (credential-reset indexes), 028 (multi-org tables), 029 (ENUM widening).
+
+**Next up — feature campaign (approved, not yet built):**
+
+- G-003: JWT bearer-auth for API
+- G-001: SIGNula as IdP (SAML 2.0 / OIDC)
+- G-002: Recurring billing engine with dunning
+- G-004: GDPR/compliance tooling (data export, erasure, consent log)
+
+**Residual backlog (deferred):**
+
+- B-035/B-036/B-038/B-042: migration hygiene
+- B-044: install-wizard `DELIMITER` (CLI/phpMyAdmin load path works; `multi_query` cannot parse stored-proc blocks)
+- B-045: per-file test isolation
+- #83-#85: prod credentials / cron (require human action)
+- #70/#71: live payment activation / staging deploy (require human action)
+- #76: WCAG a11y; #86: API completeness — post-feature-campaign
+
+---
+
+## Previous summary (Feb 24, 2026 — pre-hardening)
+
+**Latest Milestones (pre-hardening):**
 
 - ✅ Phase 13 Complete (Feb 24, 2026): Mass Credential Reset & Email Enhancement — CredentialResetService, EmailTemplateBuilder, Admin UI, AMP email, 3 DB tables, 40 tests
 - ✅ Phase 12 Complete (Feb 20, 2026): Avatar System — AvatarService (750 lines), 5 fallback services, upload processing, profile UI, 5 API endpoints, serve endpoint (40 tests)

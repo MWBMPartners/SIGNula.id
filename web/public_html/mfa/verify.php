@@ -83,14 +83,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             MFA::trustDevice($userID, $deviceFingerprint);
                         }
 
-                        // 🔐 Complete login — create session in database and PHP
-                        Auth::loginOAuth($userID, $rememberMe);
+                        // 🔐 Complete login — create session in database and PHP.
+                        // B-055: loginOAuth() (a thin wrapper over
+                        // Auth::completeLogin()) can fail to create a session
+                        // (e.g. a DB error); if it does, we must NOT redirect to
+                        // the dashboard as if MFA + login had fully succeeded.
+                        // Throwing here routes through this block's existing
+                        // catch (Exception $e) below, which logs the failure and
+                        // surfaces a generic error to the user instead.
+                        if (!Auth::loginOAuth($userID, $rememberMe)) {
+                            throw new RuntimeException('Failed to complete login session after MFA verification.');
+                        }
 
                         // ✅ Redirect to intended destination
-                        $redirect = $_SESSION['redirect_after_login'] ?? '/dashboard';
+                        // 🔒 B-057: re-sanitize AT CONSUME TIME too, defensively — Auth::login()
+                        //    already sanitizes when it FIRST stores this value (see
+                        //    Auth.php's own comment), but re-validating here means this
+                        //    page never trusts a session value blindly even if something
+                        //    else ever wrote to it. sanitizeRedirectUrl() only accepts a
+                        //    single leading '/' relative path; anything else (including a
+                        //    non-scalar value, guarded below) falls back to '/dashboard'.
+                        $storedRedirect = $_SESSION['redirect_after_login'] ?? '/dashboard';
+                        $redirect = sanitizeRedirectUrl(is_scalar($storedRedirect) ? (string) $storedRedirect : '/dashboard');
                         unset($_SESSION['redirect_after_login']);
 
-                        redirect($redirect);
+                        // 🍪 G-004 Layer 2 — versioned re-consent gate. Runs
+                        // ONLY here: AFTER MFA verification has fully
+                        // succeeded and the login session is complete —
+                        // never mid-MFA. Gated behind
+                        // consent.reconsent.enforce (ships '0'/OFF); mirrors
+                        // login.php's own non-MFA success path exactly so
+                        // both routes to "truly logged in" apply the same
+                        // check.
+                        if (!class_exists('ConsentCategoryService')) {
+                            require_once ROOT_DIR . DIRECTORY_SEPARATOR . 'private_html'
+                                . DIRECTORY_SEPARATOR . 'compliance' . DIRECTORY_SEPARATOR . 'ConsentCategoryService.php';
+                        }
+                        $reconsentRedirect = ConsentCategoryService::maybeReconsentRedirect((int) $userID, $redirect);
+
+                        redirect($reconsentRedirect ?? $redirect);
                     } else {
                         $error = 'Invalid verification code. Please try again.';
                         ActivityLogger::log($userID, 'mfa_verification_failed', 'auth', 'warning',

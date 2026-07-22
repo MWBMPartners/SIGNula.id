@@ -127,6 +127,21 @@ class EmailService
         ?string $sendAsEmail = null
     ): bool {
         try {
+            // 🔐 B-012: Validate the recipient BEFORE persisting to the queue.
+            //    1. Strip CR / LF / NULL bytes — an address containing these could
+            //       smuggle extra SMTP/MIME headers downstream (header injection,
+            //       CWE-93). @see https://owasp.org/www-community/attacks/Email_Injection
+            //    2. Reject anything that is not a syntactically valid address.
+            //    A bad recipient is dropped here rather than poisoning tblEmailQueue.
+            $recipientEmail = str_replace(["\r", "\n", "\0"], '', trim($recipientEmail));
+            if (filter_var($recipientEmail, FILTER_VALIDATE_EMAIL) === false) {
+                ErrorLogger::logError(
+                    'EMAIL_ERROR',
+                    'queueEmail() rejected an invalid recipient address'
+                );
+                return false;
+            }
+
             $fromEmail = $fromEmail ?? getSetting('email.from.address', 'noreply@SIGNula.id');
             $fromName = $fromName ?? getSetting('email.from.name', 'SIGNula');
 
@@ -161,7 +176,10 @@ class EmailService
                 $attachmentsJson,
                 $priority,
                 $scheduledFor ? $scheduledFor->format('Y-m-d H:i:s') : null
-            ], 'iisssssssssssiss');
+            // 🔧 15 bound params: userID(i) templateID(i) + 11 strings + priority(i) + scheduledAt(s).
+            //    The type string previously had 16 chars (a stray extra 's'),
+            //    tripping ArgumentCountError on every queueEmail() call.
+            ], 'iisssssssssssis');
 
             return true;
 
@@ -182,7 +200,9 @@ class EmailService
     public static function sendVerificationEmail(string $email, string $token, string $code): bool
     {
         $baseURL = getSetting('url.base', 'https://SIGNula.id');
-        $verificationURL = "{$baseURL}/verify-email?token={$token}";
+        // 🔐 #27: URL-encode the token so reserved characters can't break the
+        //    query string or be reinterpreted as extra parameters.
+        $verificationURL = "{$baseURL}/verify-email?token=" . rawurlencode($token);
 
         $variables = [
             'displayName' => 'User',
@@ -211,7 +231,8 @@ class EmailService
         string $code
     ): bool {
         $baseURL = getSetting('url.base', 'https://SIGNula.id');
-        $resetURL = "{$baseURL}/reset-password?token={$token}";
+        // 🔐 #27: URL-encode the token (see sendVerificationEmail()).
+        $resetURL = "{$baseURL}/reset-password?token=" . rawurlencode($token);
 
         $variables = [
             'displayName' => $displayName,
@@ -240,7 +261,8 @@ class EmailService
         string $code
     ): bool {
         $baseURL = getSetting('url.base', 'https://SIGNula.id');
-        $loginURL = "{$baseURL}/passwordless-login?token={$token}";
+        // 🔐 #27: URL-encode the token (see sendVerificationEmail()).
+        $loginURL = "{$baseURL}/passwordless-login?token=" . rawurlencode($token);
 
         $variables = [
             'displayName' => $displayName,

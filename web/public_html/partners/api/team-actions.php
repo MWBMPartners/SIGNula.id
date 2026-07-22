@@ -90,7 +90,7 @@ function handleInvite($input, $db, $accessControl, $sessionManager, $activityLog
     }
 
     // Get partner details
-    $stmt = $db->prepare("SELECT tier, companyName FROM tblPartners WHERE partnerID = ?");
+    $stmt = $db->prepare("SELECT tier, partnerName FROM tblPartners WHERE partnerID = ?");
     $stmt->bind_param('i', $partnerID);
     $stmt->execute();
     $partner = $stmt->get_result()->fetch_assoc();
@@ -167,26 +167,34 @@ function handleInvite($input, $db, $accessControl, $sessionManager, $activityLog
         ['partnerID' => $partnerID, 'email' => $email, 'role' => $role]
     );
 
-    // Send invitation email
+    // 📧 Send invitation email
     $inviteLink = "https://" . $_SERVER['HTTP_HOST'] . "/partners/accept-invite.php?token=" . $invitationToken;
 
-    // TODO: Implement email sending via your email system
-    // For now, we'll just return success with the link
-    // In production, this should integrate with your email system
+    // Get inviter details
+    $inviterStmt = $db->prepare("SELECT firstName, lastName FROM tblUsers WHERE userID = ?");
+    $inviterStmt->bind_param('i', $invitedBy);
+    $inviterStmt->execute();
+    $inviter = $inviterStmt->get_result()->fetch_assoc();
+    $inviterName = $inviter ? trim($inviter['firstName'] . ' ' . $inviter['lastName']) : 'A team member';
+
+    $emailVariables = [
+        'organizationName' => $partner['partnerName'],
+        'inviterName' => $inviterName,
+        'personalMessage' => '',
+        'role' => ucfirst($role),
+        'acceptUrl' => $inviteLink,
+        'expiryDays' => 7
+    ];
+
+    EmailService::sendTemplateEmail($email, 'org_invitation', $emailVariables, null, 3);
 
     /*
-    Example email content:
-
-    Subject: You've been invited to join {$partner['companyName']} on SIGNula
-
-    Hello,
-
-    You've been invited to join {$partner['companyName']} as a {$role} on SIGNula.
-
-    Click the link below to accept this invitation:
-    {$inviteLink}
-
-    This invitation will expire in 7 days.
+    Email sent with variables:
+    - organizationName: {$partner['partnerName']}
+    - inviterName: {$inviterName}
+    - role: {$role}
+    - acceptUrl: {$inviteLink}
+    - expiryDays: 7
 
     If you don't have a SIGNula account yet, you'll need to create one first.
     */

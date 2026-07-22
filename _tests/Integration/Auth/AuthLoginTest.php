@@ -29,6 +29,10 @@ requireSource('private_html/security/SecurityUtils.php');
 requireSource('private_html/security/TOTP.php');
 requireSource('private_html/utils/ActivityLogger.php');
 requireSource('private_html/utils/ErrorLogger.php');
+// 🏢 Auth::register() calls Organization::findByEmailDomain(); the app
+//    autoloader resolves it in production, but the test bootstrap requires
+//    sources explicitly, so load it here too.
+requireSource('private_html/auth/Organization.php');
 requireSource('private_html/auth/Auth.php');
 
 /**
@@ -41,8 +45,24 @@ class AuthLoginTest extends DatabaseTestCase
 {
     /**
      * Tables to truncate before each test
+     *
+     * 🔧 B-043 (hermeticity): tblRateLimits MUST be included. Auth::login()
+     *    rate-limits by client IP via SecurityUtils::checkRateLimit(), which
+     *    reads/writes tblRateLimits through the Database SINGLETON connection —
+     *    a DIFFERENT connection from the one DatabaseTestCase wraps in a
+     *    rolled-back transaction. Those rate-limit rows are therefore committed
+     *    autonomously and are NOT undone by tearDown()'s rollback, so under
+     *    PHPUnit's random execution order they accumulate for the fixed test IP
+     *    (127.0.0.1) across tests until the 'login' bucket exceeds maxAttempts.
+     *    Once that happens, subsequent logins short-circuit with
+     *    "Too many login attempts" BEFORE credential validation, causing
+     *    testFailedLoginIncrementsAttemptCount / testAccountLockoutAfterMaxAttempts
+     *    / testLoginWithSuspendedAccount to fail order-dependently. Truncating
+     *    tblRateLimits per test (TRUNCATE is DDL → implicit cross-connection
+     *    commit, so it clears the singleton's committed rows too) makes each
+     *    test hermetic without weakening any assertion.
      */
-    protected array $truncateTables = ['tblUsers', 'tblActivityLog', 'tblUserSessions'];
+    protected array $truncateTables = ['tblUsers', 'tblActivityLog', 'tblUserSessions', 'tblRateLimits'];
 
     /**
      * Default test password used across tests
@@ -58,13 +78,15 @@ class AuthLoginTest extends DatabaseTestCase
     private function createUserWithPassword(array $overrides = []): array
     {
         $defaults = [
+            // 🆔 userUUID is NOT NULL / UNIQUE with no DB default
+            'userUUID' => self::generateTestUuid(),
             'email' => random_email('auth_test'),
             'username' => 'testuser_' . uniqid(),
             'passwordHash' => \SecurityUtils::hashPassword($this->testPassword),
             'displayName' => 'Auth Test User',
             'firstName' => 'Auth',
             'lastName' => 'Test',
-            'accountStatus' => 'Active',
+            'accountStatus' => 'active', // 🔧 B-028: canonical ENUM case (Auth.php compares lowercase)
             'emailVerified' => 1,
             'mfaEnabled' => 0,
             'failedLoginAttempts' => 0,
@@ -123,7 +145,7 @@ class AuthLoginTest extends DatabaseTestCase
      */
     public function testLoginWithSuspendedAccount(): void
     {
-        $user = $this->createUserWithPassword(['accountStatus' => 'Suspended']);
+        $user = $this->createUserWithPassword(['accountStatus' => 'suspended']); // 🔧 B-028: Auth.php compares === 'suspended'
 
         $result = \Auth::login($user['email'], $this->testPassword);
 
@@ -140,7 +162,7 @@ class AuthLoginTest extends DatabaseTestCase
      */
     public function testLoginWithLockedAccount(): void
     {
-        $user = $this->createUserWithPassword(['accountStatus' => 'Locked']);
+        $user = $this->createUserWithPassword(['accountStatus' => 'locked']); // 🔧 B-028: Auth.php compares === 'locked'
 
         $result = \Auth::login($user['email'], $this->testPassword);
 
@@ -210,6 +232,18 @@ class AuthLoginTest extends DatabaseTestCase
     public function testLoginWithMFAEnabledReturnsMFAFlag(): void
     {
         $user = $this->createUserWithPassword(['mfaEnabled' => 1]);
+
+        // 🔐 Auth::login() gates MFA via MFA::isEnabled(), which looks for an
+        //    ENABLED + VERIFIED row in tblUserMFA (NOT the tblUsers.mfaEnabled
+        //    flag). Seed a verified TOTP method so the MFA-required path triggers.
+        $this->insertRecord('tblUserMFA', [
+            'userID'     => $user['userID'],
+            'mfaType'    => 'totp',
+            'mfaEnabled' => 1,
+            'mfaSecret'  => 'TESTSECRET234567', // not validated on the login gate
+            'isVerified' => 1,
+            'createdAt'  => date('Y-m-d H:i:s'),
+        ]);
 
         $result = \Auth::login($user['email'], $this->testPassword);
 

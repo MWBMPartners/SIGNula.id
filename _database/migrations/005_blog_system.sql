@@ -84,11 +84,11 @@ CREATE TABLE IF NOT EXISTS tblBlogPosts (
 -- Purpose: Manage blog categories
 -- ============================================
 CREATE TABLE IF NOT EXISTS tblBlogCategories (
-    categoryID INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    categoryID BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     categoryName VARCHAR(100) NOT NULL COMMENT 'Category name',
     categorySlug VARCHAR(100) NOT NULL COMMENT 'URL-friendly slug',
     description TEXT DEFAULT NULL COMMENT 'Category description',
-    parentID INT UNSIGNED DEFAULT NULL COMMENT 'Parent category (for nested categories)',
+    parentID BIGINT UNSIGNED DEFAULT NULL COMMENT 'Parent category (for nested categories)',
     displayOrder INT DEFAULT 0 COMMENT 'Sort order',
     isActive BOOLEAN DEFAULT TRUE COMMENT 'Active status',
     createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -157,7 +157,7 @@ CREATE TABLE IF NOT EXISTS tblBlogComments (
 -- Purpose: Manage blog tags
 -- ============================================
 CREATE TABLE IF NOT EXISTS tblBlogTags (
-    tagID INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    tagID BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     tagName VARCHAR(50) NOT NULL COMMENT 'Tag name',
     tagSlug VARCHAR(50) NOT NULL COMMENT 'URL-friendly slug',
     usageCount INT UNSIGNED DEFAULT 0 COMMENT 'Number of posts using this tag',
@@ -174,7 +174,7 @@ CREATE TABLE IF NOT EXISTS tblBlogTags (
 -- ============================================
 CREATE TABLE IF NOT EXISTS tblBlogPostTags (
     postID BIGINT UNSIGNED NOT NULL,
-    tagID INT UNSIGNED NOT NULL,
+    tagID BIGINT UNSIGNED NOT NULL,
     createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     PRIMARY KEY (postID, tagID),
@@ -200,7 +200,7 @@ INSERT INTO tblBlogCategories (categoryName, categorySlug, description, displayO
 -- ============================================
 -- Insert Blog Settings
 -- ============================================
-INSERT INTO tblSettings (settingKey, settingValue, category, dataType, isEditable, isSensitive, description) VALUES
+INSERT INTO tblSettings (settingKey, settingValue, settingCategory, settingType, isEditable, isSensitive, description) VALUES
 ('blog.postsPerPage', '10', 'Blog', 'integer', TRUE, FALSE, 'Number of posts per page'),
 ('blog.enableComments', 'true', 'Blog', 'boolean', TRUE, FALSE, 'Enable comments on blog posts'),
 ('blog.moderateComments', 'true', 'Blog', 'boolean', TRUE, FALSE, 'Require comment moderation'),

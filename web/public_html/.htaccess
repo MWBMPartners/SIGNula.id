@@ -20,6 +20,15 @@ RewriteEngine On
 RewriteBase /
 
 # ----------------------------------------------------------------------------
+# 🔑 G-003: Allow the public JWKS endpoint (.well-known/jwks.json/)
+# ----------------------------------------------------------------------------
+# `.well-known/jwks.json` is a DIRECTORY (containing index.php) — its own
+# .htaccess re-grants access and serves the handler. This rule short-circuits
+# BEFORE the dot-file forbid rule below, so the public key document is reachable.
+# The trailing (/.*)? also allows the directory index without a redirect loop.
+RewriteRule "^\.well-known/jwks\.json(/.*)?$" - [L]
+
+# ----------------------------------------------------------------------------
 # 🔒 SECURITY: Force HTTPS (uncomment for production)
 # ----------------------------------------------------------------------------
 # RewriteCond %{HTTPS} off

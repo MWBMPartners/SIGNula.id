@@ -51,6 +51,37 @@ $currentDoc = $currentDoc ?? '';
                 </a>
             </div>
 
+            <!-- OIDC Integration -->
+            <div class="nav-section mt-4">
+                <h6 class="nav-section-title text-uppercase fw-bold text-muted small mb-2">
+                    <i class="fas fa-id-card me-2"></i>OIDC Integration
+                </h6>
+                <a class="nav-link <?php echo ($currentDoc === 'signin-with-signula') ? 'active' : ''; ?>"
+                   href="/docs/signin-with-signula">
+                    <i class="fas fa-book me-2"></i>Full Reference
+                </a>
+                <a class="nav-link <?php echo ($currentDoc === 'oidc-quickstart') ? 'active' : ''; ?>"
+                   href="/docs/oidc-quickstart">
+                    <i class="fas fa-rocket me-2"></i>Quickstart (5 min)
+                </a>
+                <a class="nav-link <?php echo ($currentDoc === 'oidc-web') ? 'active' : ''; ?>"
+                   href="/docs/oidc-web">
+                    <i class="fas fa-globe me-2"></i>Web / SPA / PWA
+                </a>
+                <a class="nav-link <?php echo ($currentDoc === 'oidc-native') ? 'active' : ''; ?>"
+                   href="/docs/oidc-native">
+                    <i class="fas fa-mobile-alt me-2"></i>Native / Mobile
+                </a>
+                <a class="nav-link <?php echo ($currentDoc === 'oidc-server') ? 'active' : ''; ?>"
+                   href="/docs/oidc-server">
+                    <i class="fas fa-server me-2"></i>Server-side
+                </a>
+                <a class="nav-link <?php echo ($currentDoc === 'oidc-security') ? 'active' : ''; ?>"
+                   href="/docs/oidc-security">
+                    <i class="fas fa-shield-alt me-2"></i>Security Checklist
+                </a>
+            </div>
+
             <!-- API Reference -->
             <div class="nav-section mt-4">
                 <h6 class="nav-section-title text-uppercase fw-bold text-muted small mb-2">

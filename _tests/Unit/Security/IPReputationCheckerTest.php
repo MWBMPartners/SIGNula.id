@@ -157,6 +157,29 @@ class IPReputationCheckerTest extends TestCase
     }
 
     /**
+     * 🐛 Regression: production's getSetting() returns an ALREADY-DECODED
+     * array for settingType='json' settings (config.php's loadSettings()
+     * json_decode()s typed settings before caching them) — NOT the raw JSON
+     * string the OLD code assumed. The old
+     * `json_decode(getSetting(...), true)` call therefore threw a PHP 8
+     * TypeError (arg #1 must be of type string, array given) any time this
+     * code path ran in production, even though the sibling test above
+     * (which feeds a JSON STRING) never caught it. This test feeds a real
+     * PHP array — exactly what production hands back — proving the fix
+     * tolerates that shape without throwing.
+     */
+    public function testCheckAllowsWhitelistedIPWhenSettingIsAlreadyDecodedArray(): void
+    {
+        // 🎯 Array, not string — simulates getSetting() for a json-typed row.
+        setTestSetting('security.ip_reputation.whitelist', ['8.8.8.8', '1.1.1.1']);
+
+        $result = \IPReputationChecker::check('8.8.8.8');
+
+        $this->assertTrue($result['allowed']);
+        $this->assertEquals('whitelist', $result['source']);
+    }
+
+    /**
      * Test check does not bypass pipeline for non-whitelisted public IPs
      */
     public function testCheckDoesNotWhitelistNonMatchingIP(): void

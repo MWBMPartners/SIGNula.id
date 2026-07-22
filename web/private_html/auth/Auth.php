@@ -374,7 +374,22 @@ class Auth
                     $_SESSION['mfa_user_id'] = $user['userID'];
                     $_SESSION['mfa_required'] = true;
                     $_SESSION['mfa_remember_me'] = $rememberMe;
-                    $_SESSION['redirect_after_login'] = $_GET['redirect'] ?? 'dashboard.php';
+                    // 🔒 B-057: sanitize the caller-supplied ?redirect= BEFORE it is
+                    //    ever stored in the session — an unvalidated value here would
+                    //    let an attacker craft a login link that open-redirects the
+                    //    victim to an external site once MFA verification completes
+                    //    (see mfa/verify.php's consume-time defensive re-sanitize too).
+                    //    sanitizeRedirectUrl() (web/_config/config.php) only accepts a
+                    //    single leading '/' relative path; anything else (absolute,
+                    //    protocol-relative, non-HTTP scheme) is replaced by the fallback.
+                    //    🛡️ Guard against a crafted non-scalar `redirect[]=` query param —
+                    //    sanitizeRedirectUrl()'s `string $url` parameter would otherwise
+                    //    TypeError on an array (this file has no strict_types coercion
+                    //    fallback to lean on), turning a crafted URL into a 500.
+                    $requestedRedirect = isset($_GET['redirect']) && is_scalar($_GET['redirect'])
+                        ? (string) $_GET['redirect']
+                        : '/dashboard';
+                    $_SESSION['redirect_after_login'] = sanitizeRedirectUrl($requestedRedirect);
 
                     // 📝 Log MFA challenge
                     ActivityLogger::log($user['userID'], 'mfa_challenge_issued', 'auth', 'info',
@@ -393,8 +408,31 @@ class Auth
                 }
             }
 
-            // ✅ Complete login (no MFA required)
-            self::completeLogin($user['userID'], $rememberMe);
+            // ✅ Complete login (no MFA required) — completeLogin() creates the
+            // tblUserSessions row + populates $_SESSION. If it fails (e.g. a DB
+            // error), NO session exists, so we must NOT report success back to
+            // the caller (B-055: this used to be ignored, producing a phantom
+            // "success" with no working session).
+            $sessionCreated = self::completeLogin($user['userID'], $rememberMe);
+
+            if ($sessionCreated !== true) {
+                // 📝 Log the failure for security/support auditing, matching the
+                // ActivityLogger convention used by the other failure branches
+                // in this method above.
+                ActivityLogger::log($user['userID'], 'login_failed', 'auth', 'error',
+                    'Login failed: completeLogin() could not establish a session');
+
+                ErrorLogger::logError('Warning',
+                    'completeLogin() returned false after successful credential check for userID ' . $user['userID'],
+                    __FILE__, __LINE__);
+
+                return [
+                    'success' => false,
+                    'userID' => null,
+                    'message' => 'Login failed. Please try again later.',
+                    'requiresMFA' => false
+                ];
+            }
 
             return [
                 'success' => true,
@@ -465,7 +503,15 @@ class Auth
                 $deviceInfo['osVersion'],
                 $deviceInfo['isMobile'],
                 $expiresAt
-            ], 'sissssssssii');
+            ], 'sissssssssis'); // 🐛 B-055: last char must be 's' — $expiresAt is a
+            // "Y-m-d H:i:s" DATETIME *string*, not an integer. The old 'i' caused
+            // mysqli to coerce it via PHP's leading-numeric-substring int cast
+            // (e.g. "2026-07-10 01:23:45" -> 2026), which fails strict-mode MySQL
+            // with "Incorrect datetime value: '2026'" and silently produced NO
+            // session row. Params in order: sessionToken(s), userID(i),
+            // deviceType(s), deviceName(s), ipAddress(s), userAgent(s),
+            // browserName(s), browserVersion(s), osName(s), osVersion(s),
+            // isMobile(i), expiresAt(s) => "s i ssssssss i s" = "sissssssssis" (12 chars).
 
             $sessionID = Database::getLastInsertId();
 
@@ -475,6 +521,19 @@ class Auth
 
             // 💾 Store in PHP session
             $_SESSION['user_id'] = $userID;
+            // 🐛 B-065: ALSO set a camelCase alias. All 13 settings/*.php pages
+            // (profile, security, mfa, passkeys, privacy, …) read the user id
+            // as `$_SESSION['userID']` directly (e.g. `$userID = $_SESSION['userID'];`),
+            // but every browser login flow (password Auth::login(), OAuth
+            // Auth::loginOAuth(), and browser MFA completion via mfa/verify.php)
+            // funnels through THIS method, which only ever wrote the snake_case
+            // `user_id`. Result: for a genuinely-logged-in user, `$userID` came
+            // out null on those pages → AvatarService::resolve(null) TypeError →
+            // fatal BEFORE the page ever reached its layout. Writing BOTH keys
+            // makes the legacy camelCase readers work unchanged while every
+            // existing `user_id` reader (Auth, SessionGuard, BaseController,
+            // Auth/MFA API controllers) is untouched. NEVER remove `user_id`.
+            $_SESSION['userID'] = $userID;
             $_SESSION['session_id'] = $sessionID;
             $_SESSION['session_token'] = $sessionToken;
 
@@ -561,6 +620,8 @@ class Auth
 
             if ($user && $user['failedLoginAttempts'] >= $maxAttempts) {
                 // Lock account
+                $lockoutMinutes = getSetting('security.login.lockout_duration_minutes', 30);
+
                 Database::query(
                     "UPDATE tblUsers SET accountStatus = 'locked' WHERE userID = ?",
                     [$userID],
@@ -570,7 +631,36 @@ class Auth
                 ActivityLogger::log($userID, 'account_locked', 'security', 'critical',
                     'Account locked due to multiple failed login attempts');
 
-                // TODO: Send email notification about account lockout
+                // 📧 Send lockout notification email
+                $userDetails = Database::fetchOne(
+                    "SELECT email, firstName, lastName FROM tblUsers WHERE userID = ?",
+                    [$userID],
+                    'i'
+                );
+
+                if ($userDetails) {
+                    $baseURL = getSetting('url.base', 'https://signula.id');
+                    $displayName = trim($userDetails['firstName'] . ' ' . $userDetails['lastName']) ?: 'User';
+                    $lockedUntil = date('Y-m-d H:i:s', strtotime("+{$lockoutMinutes} minutes"));
+
+                    $emailVariables = [
+                        'displayName' => $displayName,
+                        'email' => $userDetails['email'],
+                        'failedAttempts' => $user['failedLoginAttempts'],
+                        'lockedUntil' => $lockedUntil,
+                        'lockoutMinutes' => $lockoutMinutes,
+                        'ipAddress' => $_SERVER['REMOTE_ADDR'] ?? 'Unknown',
+                        'resetPasswordUrl' => "{$baseURL}/reset-password"
+                    ];
+
+                    EmailService::sendTemplateEmail(
+                        $userDetails['email'],
+                        'account_lockout',
+                        $emailVariables,
+                        $userID,
+                        1  // High priority
+                    );
+                }
             }
 
         } catch (Exception $e) {
@@ -682,6 +772,11 @@ class Auth
             if ($session) {
                 // Restore session
                 $_SESSION['user_id'] = $session['userID'];
+                // 🐛 B-065: camelCase alias for the 13 settings/*.php pages that
+                // read `$_SESSION['userID']` (see completeLogin() above for the
+                // full rationale). Cast to int to match what those pages then
+                // pass into typed APIs like AvatarService::resolve(int $userID).
+                $_SESSION['userID'] = (int)$session['userID'];
                 $_SESSION['session_id'] = $session['sessionID'];
                 $_SESSION['session_token'] = $_COOKIE['signula_session'];
 
@@ -695,6 +790,15 @@ class Auth
 
     /**
      * 👥 Get Current User Data
+     *
+     * 🐛 B-053 fix (HIGH): the SELECT below previously omitted the 4 admin/
+     * partner-context flags (`isSuperAdmin`, `isAdmin`, `isPartnerAdmin`,
+     * `partnerID`) that 50 call sites across web/public_html read straight off
+     * this array (e.g. `$userInfo['isSuperAdmin']`, `(int)($userInfo['partnerID']
+     * ?? 0)`). Every admin/partner gate therefore failed CLOSED (undefined
+     * array key -> falsy/0), 403'ing real admins. This method now enriches the
+     * base tblUsers row with those 4 keys — ADDITIVELY, so every pre-existing
+     * key/consumer keeps working unchanged.
      *
      * @return array|null User data or null if not authenticated
      */
@@ -710,15 +814,71 @@ class Auth
             return null;
         }
 
+        // 🔑 `isSuperAdmin` is a REAL tblUsers column (BOOLEAN NOT NULL DEFAULT
+        // FALSE, added by _database/migrations/009_multi_tier_admin.sql, with
+        // its own idx_super_admin index) — this is the SIGNula-owner "god mode"
+        // flag, global and NOT tied to any partner.
         $query = "
             SELECT userID, userUUID, username, email, firstName, lastName,
                    displayName, profilePicture, phoneNumber, locale, timezone,
-                   accountStatus, accountTier, emailVerified, lastLoginAt
+                   accountStatus, accountTier, emailVerified, lastLoginAt,
+                   isSuperAdmin
             FROM tblUsers
             WHERE userID = ? AND deletedAt IS NULL
         ";
 
-        self::$currentUser = Database::fetchOne($query, [$userID], 'i');
+        $user = Database::fetchOne($query, [$userID], 'i');
+
+        if ($user === null) {
+            return null;
+        }
+
+        // 🔢 mysqli returns BOOLEAN columns as the string '0'/'1' — normalise
+        // to a real PHP bool so `$userInfo['isSuperAdmin']` truthiness checks
+        // behave exactly as the 28 call sites across web/public_html expect.
+        $user['isSuperAdmin'] = (bool)(int)$user['isSuperAdmin'];
+
+        // 🤝 `partnerID` is NOT a tblUsers column — it is derived from the
+        // user's ACTIVE partner-team membership in tblPartnerTeamMembers
+        // (see _database/migrations/009_multi_tier_admin.sql). A user can, in
+        // principle, belong to more than one partner's team; we resolve a
+        // single "primary" membership (root-admin memberships preferred, then
+        // lowest partnerID for a stable/deterministic pick) since the 50
+        // consumers all treat `partnerID` as a single active-partner-context
+        // value (e.g. `(int)($userInfo['partnerID'] ?? 0)`).
+        //
+        // Mirrors AccessControl::isAdmin()/isPartnerAdmin() semantics
+        // (web/_backend/AccessControl.php): isAdmin = isSuperAdmin() ||
+        // has-any-active-membership; isPartnerAdmin (in THIS additive,
+        // membership-count sense) = has-any-active-membership. We deliberately
+        // do NOT instantiate AccessControl here (its constructor takes
+        // ($db, $sessionManager) and pulling it into Auth risks an
+        // Auth <-> SessionManager <-> AccessControl load cycle) — this is a
+        // single, self-contained, resilient (zero-row-safe) prepared query.
+        $membership = Database::fetchOne(
+            "
+                SELECT partnerID, isRootAdmin
+                FROM tblPartnerTeamMembers
+                WHERE userID = ? AND status = 'active'
+                ORDER BY isRootAdmin DESC, partnerID ASC
+                LIMIT 1
+            ",
+            [$userID],
+            'i'
+        );
+
+        $hasActiveMembership = ($membership !== null);
+
+        // 🚩 Enriched, DERIVED flags — additive keys only, every pre-existing
+        // key above is untouched.
+        $user['partnerID']      = $hasActiveMembership ? (int)$membership['partnerID'] : null;
+        $user['isPartnerAdmin'] = $hasActiveMembership;
+        $user['isAdmin']        = $user['isSuperAdmin'] || $hasActiveMembership;
+
+        // 💾 Cache the FULLY ENRICHED array (not the raw DB row) so repeat
+        // calls within the same request stay consistent with this first
+        // resolution.
+        self::$currentUser = $user;
 
         return self::$currentUser;
     }

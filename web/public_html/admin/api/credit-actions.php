@@ -762,10 +762,42 @@ function handleAdjustBalance(array $input): void
         /**
          * 💰 Use the CreditManager class for the adjustment.
          * This handles balance updates, transaction logging, and validation internally.
+         *
+         * 🩹 B-074 fix: the REAL signature is
+         * `adjustBalance(string $ownerType, int $ownerID, float $amount,
+         * string $description, int $performedBy, array $options = [])` —
+         * this call previously passed ($ownerType, $ownerID, $amount,
+         * $currency, $description, $adminUserID, null) positionally, which
+         * put $currency into the $description parameter, $description (a
+         * string) into the `int $performedBy` parameter, and $adminUserID
+         * (an int) into the `array $options` parameter — the last of these
+         * is a straight PHP TypeError (int given, array expected), so this
+         * call FATALED on every real invocation. Fixed to pass $description
+         * as $description, $adminUserID as $performedBy, and $currency via
+         * $options.
          * @see /private_html/payments/CreditManager.php — CreditManager::adjustBalance()
          */
-        $result     = CreditManager::adjustBalance($ownerType, $ownerID, $amount, $currency, $description, $adminUserID, null);
-        $newBalance = CreditManager::getBalance($ownerType, $ownerID, $currency, null);
+        $result = CreditManager::adjustBalance(
+            $ownerType,
+            $ownerID,
+            $amount,
+            $description,
+            $adminUserID,
+            ['currency' => $currency, 'referenceType' => 'admin_manual']
+        );
+
+        if (!($result['success'] ?? false)) {
+            throw new Exception($result['message'] ?? 'Credit adjustment failed.');
+        }
+
+        // 🩹 B-074 fix: adjustBalance() already returns the post-adjustment
+        // balance — use it directly rather than a SECOND (previously
+        // mis-ordered) getBalance() call. getBalance()'s real signature is
+        // `getBalance(string $ownerType, int $ownerID, ?int $partnerID =
+        // null, string $currency = 'GBP')`; the old call passed $currency
+        // into the `?int $partnerID` slot and `null` into the non-nullable
+        // `string $currency` slot — both TypeErrors.
+        $newBalance = (float)($result['newBalance'] ?? CreditManager::getBalance($ownerType, $ownerID, null, $currency));
     } else {
         /**
          * 🔧 FALLBACK — Direct database operations if CreditManager is not available.
@@ -882,10 +914,32 @@ function handleDepositCredits(array $input): void
     if (class_exists('CreditManager')) {
         /**
          * 💰 Use CreditManager for the deposit operation.
+         *
+         * 🩹 B-074 fix: the REAL signature is
+         * `deposit(string $ownerType, int $ownerID, float $amount,
+         * string $description, array $options = [])` — this call previously
+         * passed $currency where $description belongs, and passed
+         * $description (a string) into the `array $options` parameter — a
+         * PHP TypeError (string given, array expected) that fataled on every
+         * real invocation.
          * @see /private_html/payments/CreditManager.php — CreditManager::deposit()
          */
-        CreditManager::deposit($ownerType, $ownerID, $amount, $currency, $description, $reference, null);
-        $newBalance = CreditManager::getBalance($ownerType, $ownerID, $currency, null);
+        $depositOptions = ['currency' => $currency, 'referenceType' => 'manual', 'performedBy' => $adminUserID];
+        if ($reference !== '') {
+            $depositOptions['metadata'] = ['externalReference' => $reference];
+        }
+
+        $result = CreditManager::deposit($ownerType, $ownerID, $amount, $description, $depositOptions);
+
+        if (!($result['success'] ?? false)) {
+            throw new Exception($result['message'] ?? 'Credit deposit failed.');
+        }
+
+        // 🩹 B-074 fix: deposit() already returns the post-deposit balance —
+        // use it directly rather than a SECOND (previously mis-ordered)
+        // getBalance() call (see handleAdjustBalance()'s own comment for the
+        // exact argument-order bug this avoids).
+        $newBalance = (float)($result['newBalance'] ?? CreditManager::getBalance($ownerType, $ownerID, null, $currency));
     } else {
         /**
          * 🔧 FALLBACK — Direct database deposit if CreditManager is unavailable.
@@ -993,10 +1047,30 @@ function handleWithdrawCredits(array $input): void
         /**
          * 💰 Use CreditManager for the withdrawal operation.
          * CreditManager handles balance sufficiency checks internally.
+         *
+         * 🩹 B-074 fix: the REAL signature is
+         * `withdraw(string $ownerType, int $ownerID, float $amount,
+         * string $description, array $options = [])` — same call-shape bug
+         * as handleDepositCredits() (see its comment): $currency landed in
+         * $description and $description (a string) landed in the
+         * `array $options` parameter, a fatal TypeError.
          * @see /private_html/payments/CreditManager.php — CreditManager::withdraw()
          */
-        CreditManager::withdraw($ownerType, $ownerID, $amount, $currency, $description, $reference, null);
-        $newBalance = CreditManager::getBalance($ownerType, $ownerID, $currency, null);
+        $withdrawOptions = ['currency' => $currency, 'referenceType' => 'manual', 'performedBy' => $adminUserID];
+        if ($reference !== '') {
+            $withdrawOptions['metadata'] = ['externalReference' => $reference];
+        }
+
+        $result = CreditManager::withdraw($ownerType, $ownerID, $amount, $description, $withdrawOptions);
+
+        if (!($result['success'] ?? false)) {
+            throw new Exception($result['message'] ?? 'Credit withdrawal failed.');
+        }
+
+        // 🩹 B-074 fix: withdraw() already returns the post-withdrawal
+        // balance — see handleAdjustBalance()'s comment for the exact
+        // getBalance() argument-order bug this avoids.
+        $newBalance = (float)($result['newBalance'] ?? CreditManager::getBalance($ownerType, $ownerID, null, $currency));
     } else {
         /**
          * 🔧 FALLBACK — Direct database withdrawal with balance check.

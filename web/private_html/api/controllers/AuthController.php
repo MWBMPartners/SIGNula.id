@@ -101,8 +101,11 @@ class AuthController extends BaseController
             Database::query($tokenQuery, [$userId, $tokenHash, $expiresAt], 'iss');
 
             // 📧 Send verification email
+            // 🔒 B-039: rawurlencode() the token in the query string (hardening;
+            //    a no-op for the current hex tokens, safe against future formats,
+            //    no double-encoding since hex is unchanged by rawurlencode()).
             $verificationLink = getSetting('app.url', 'https://SIGNula.id')
-                . '/api/v1/auth/verify-email?token=' . $token;
+                . '/api/v1/auth/verify-email?token=' . rawurlencode($token);
 
             EmailService::sendTemplate(
                 $data['email'],
@@ -395,8 +398,11 @@ class AuthController extends BaseController
             Database::query($tokenQuery, [$user['userID'], $tokenHash, $expiresAt], 'iss');
 
             // 📧 Send reset email
+            // 🔒 B-039: rawurlencode() the token in the query string (hardening;
+            //    no-op for current hex tokens, safe against future formats, no
+            //    double-encoding since hex is unchanged by rawurlencode()).
             $resetLink = getSetting('app.url', 'https://SIGNula.id')
-                . '/auth/reset-password?token=' . $token;
+                . '/auth/reset-password?token=' . rawurlencode($token);
 
             EmailService::sendTemplate(
                 $user['email'],
@@ -566,6 +572,11 @@ class AuthController extends BaseController
 
         // Set session variables
         $_SESSION['user_id'] = $userId;
+        // 🐛 B-065: camelCase alias so a browser that authenticates through the
+        // API and then navigates to a settings/*.php page (which read
+        // `$_SESSION['userID']`) resolves the same user. Additive — the
+        // snake_case `user_id` every other reader uses is left untouched.
+        $_SESSION['userID'] = $userId;
         $_SESSION['session_token'] = hash('sha256', $sessionToken);
 
         return $sessionToken;

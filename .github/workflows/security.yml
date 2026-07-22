@@ -1,0 +1,120 @@
+# =============================================================================
+# 🛡️ SIGNula.id — Security scanning across the three-tier branch model
+# -----------------------------------------------------------------------------
+# WHY THIS FILE (and not CodeQL): GitHub's first-party CodeQL engine does NOT
+# support PHP, so we cannot use the standard `github/codeql-action`. Instead we
+# combine the security signals that DO work for a PHP/Dreamhost project:
+#
+#   1. dependency-review — on pull requests, blocks introducing dependencies
+#                          with known advisories / disallowed licenses.
+#   2. composer-audit    — scheduled + on-demand `composer audit` against the
+#                          PHP Security Advisories DB, run on EACH of the three
+#                          long-lived branches (main, beta, alpha). A scheduled
+#                          workflow only executes from the default branch, so we
+#                          fan out with a matrix that explicitly checks out each
+#                          branch — this is what gives alpha/beta the advisory
+#                          coverage Dependabot security-updates cannot (see
+#                          .github/dependabot.yml for the platform limitation).
+#
+# Dependabot (version updates on all three branches) is configured separately
+# in .github/dependabot.yml.
+#
+# Docs:
+#   https://docs.github.com/code-security/supply-chain-security/understanding-your-software-supply-chain/about-dependency-review
+#   https://getcomposer.org/doc/03-cli.md#audit
+# =============================================================================
+name: Security
+
+on:
+  pull_request:
+    branches: [main, beta, alpha]
+  schedule:
+    # 🗓️ Weekly, Monday 05:30 UTC — ahead of the Dependabot 06:00 window.
+    - cron: '30 5 * * 1'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 1️⃣  Dependency review — PR-only. Flags newly-introduced vulnerable deps.
+  # ---------------------------------------------------------------------------
+  dependency-review:
+    name: Dependency Review (PR)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Dependency Review
+        # 🟡 ADVISORY until the repository's Dependency graph is enabled in
+        #    Settings ▸ Code security. Without the graph, this action errors
+        #    ("Dependency review is not supported on this repository"), so we
+        #    do not let that block the PR. Enabling the graph ALSO activates
+        #    Dependabot alerts + security updates — see PRE_LAUNCH_REVIEW.md.
+        continue-on-error: true
+        uses: actions/dependency-review-action@v4
+        with:
+          # ⚖️ Fail the PR if a dependency change carries a moderate-or-worse
+          #    advisory. Tune as the project matures.
+          fail-on-severity: moderate
+          comment-summary-in-pr: on-failure
+
+  # ---------------------------------------------------------------------------
+  # 2️⃣  composer audit — runs against EACH branch (main, beta, alpha).
+  #     On PRs it audits the PR head; on schedule/dispatch it audits all three.
+  # ---------------------------------------------------------------------------
+  composer-audit:
+    name: composer audit (${{ matrix.branch }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        branch: [main, beta, alpha]
+    steps:
+      - name: Checkout ${{ matrix.branch }}
+        uses: actions/checkout@v4
+        with:
+          # 🌿 Explicitly pin the branch so the scheduled run (which starts on
+          #    the default branch) still audits alpha and beta. Missing branches
+          #    (e.g. before alpha/beta are first cut) simply no-op the step.
+          ref: ${{ matrix.branch }}
+          fetch-depth: 1
+        continue-on-error: true
+
+      - name: Setup PHP 8.4
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+          tools: composer:v2
+
+      - name: composer audit
+        shell: bash
+        # 🟡 ADVISORY: this project commits no composer.lock (its only runtime
+        #    require is `php`; the rest is dev tooling), so we resolve a lock
+        #    on the fly WITHOUT downloading packages, then audit it. Advisories
+        #    surface as warnings but never block — flip to blocking once a
+        #    committed composer.lock is maintained.
+        continue-on-error: true
+        run: |
+          if [ ! -f composer.json ]; then
+            echo "ℹ️ No composer.json on this branch; nothing to audit."
+            exit 0
+          fi
+          # Resolve a lockfile without installing (network-only metadata).
+          if [ ! -f composer.lock ]; then
+            composer update --no-install --no-interaction --no-audit --quiet || true
+          fi
+          if [ -f composer.lock ]; then
+            composer audit --locked --no-interaction --format=plain \
+              || echo "::warning::composer audit reported advisories on ${{ matrix.branch }} (advisory)."
+          else
+            echo "ℹ️ Could not resolve a lockfile on ${{ matrix.branch }}; skipping audit."
+          fi

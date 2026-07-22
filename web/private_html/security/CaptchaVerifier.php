@@ -89,10 +89,17 @@ class CaptchaVerifier
 
         // 📋 If form name provided, check if it's in the required forms list
         if ($formName !== null) {
-            $requiredForms = json_decode(
-                getSetting('captcha.required_forms', '["login","register","forgot-password","contact"]'),
-                true
-            );
+            // 🐛 Same double-decode anti-pattern as B-068b (SecurityAlertManager::
+            // notify()): 'captcha.required_forms' is seeded with settingType='json'
+            // (migration 014_security_enhancements.sql), so config.php's
+            // loadSettings() already json_decode()s it before caching — getSetting()
+            // returns a native PHP array in production, and json_decode(<array>, true)
+            // throws a PHP 8 TypeError whenever isRequired() is called with a
+            // $formName. Tolerate both shapes.
+            $requiredFormsRaw = getSetting('captcha.required_forms', '["login","register","forgot-password","contact"]');
+            $requiredForms = is_array($requiredFormsRaw)
+                ? $requiredFormsRaw
+                : (json_decode((string) $requiredFormsRaw, true) ?: []);
 
             if (is_array($requiredForms) && !in_array($formName, $requiredForms, true)) {
                 return false;

@@ -23,6 +23,12 @@
  * @since 2026-02-04
  */
 
+// 🚫 Prevent direct access
+if (!defined('SIGNULA_INIT')) {
+    http_response_code(403);
+    die('Direct access not permitted');
+}
+
 class APIKeyMiddleware {
     private $apiKeyManager;
     private $db;
@@ -271,10 +277,22 @@ class APIKeyMiddleware {
         }
 
         // Check for API key in Authorization header (Bearer token style)
+        // 🔒 G-003: a `Authorization: Bearer <jwt>` header carries a JWT ACCESS
+        //    TOKEN, NOT an API key. A compact JWT is three base64url segments
+        //    (two dots). If we returned it here, handle() would try to validate a
+        //    JWT as an API key, fail, and reject every Bearer-JWT request with a
+        //    401 — breaking BaseController's JWT auth path. So we IGNORE anything
+        //    that looks like a JWT and only treat a NON-JWT Bearer value as an API
+        //    key (SIGNula API keys are opaque `sk_...` strings with no dots).
+        //    JWT bearer tokens are handled downstream by BaseController::getUserByToken().
         if (isset($_SERVER['HTTP_AUTHORIZATION'])) {
             $authHeader = $_SERVER['HTTP_AUTHORIZATION'];
             if (preg_match('/^Bearer\s+(\S+)$/i', $authHeader, $matches)) {
-                return trim($matches[1]);
+                $bearerValue = trim($matches[1]);
+                // Only treat it as an API key if it is NOT a compact JWT.
+                if (substr_count($bearerValue, '.') !== 2) {
+                    return $bearerValue;
+                }
             }
         }
 

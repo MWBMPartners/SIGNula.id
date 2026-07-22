@@ -84,10 +84,13 @@ $securityStats['mfa_enabled'] = !empty($user['mfaEnabled']) && $user['mfaEnabled
 $securityStats['passwordless_enabled'] = !empty($user['passwordlessEnabled']) && $user['passwordlessEnabled'] == 1;
 
 // Recent logins
+// 🐛 B-066: tblActivityLog has NO `loggedAt` column — the real timestamp
+// column is `createdAt` (verified against information_schema). The ORDER BY
+// below fatals with "Unknown column 'loggedAt'" against the real schema.
 $recentLogins = Database::fetchAll(
     "SELECT * FROM tblActivityLog
      WHERE userID = ? AND activityType = 'login'
-     ORDER BY loggedAt DESC
+     ORDER BY createdAt DESC
      LIMIT 5",
     [$userID],
     'i'
@@ -310,16 +313,19 @@ include SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATO
                                     <div class="d-flex justify-content-between align-items-start">
                                         <div>
                                             <div class="d-flex align-items-center mb-1">
-                                                <?php if ($login['activityResult'] === 'success'): ?>
+                                                <?php // 🐛 B-066: real column is `success` (tinyint 1/0), not
+                                                      // `activityResult` ('success'/'failed' string). ?>
+                                                <?php if (!empty($login['success'])): ?>
                                                     <span class="badge bg-success me-2">✅ Success</span>
                                                 <?php else: ?>
                                                     <span class="badge bg-danger me-2">❌ Failed</span>
                                                 <?php endif; ?>
-                                                <strong><?php echo date('M j, Y g:i A', strtotime($login['loggedAt'])); ?></strong>
+                                                <strong><?php echo date('M j, Y g:i A', strtotime($login['createdAt'])); ?></strong>
                                             </div>
-                                            <?php if ($login['activityDetails']): ?>
+                                            <?php // 🐛 B-066: real column is `description`, not `activityDetails`. ?>
+                                            <?php if (!empty($login['description'])): ?>
                                                 <small class="text-muted d-block">
-                                                    <?php echo htmlspecialchars($login['activityDetails']); ?>
+                                                    <?php echo htmlspecialchars($login['description']); ?>
                                                 </small>
                                             <?php endif; ?>
                                             <?php if ($login['ipAddress']): ?>

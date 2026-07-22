@@ -899,11 +899,18 @@ class PartnerPaymentService
                     );
 
                     if ($discountResult['valid']) {
-                        $codeDiscountAmount = $discountResult['discountAmount'];
-                        $finalPrice = max(0, round($finalPrice - $codeDiscountAmount, 2));
-
-                        // 📊 Increment the discount code usage counter
-                        PaymentManager::incrementDiscountUsage($options['discountCode']);
+                        // 🔒 F-B04 FIX: incrementDiscountUsage() is now the
+                        // atomic "spend" — it increments currentUses AND
+                        // re-checks the maxUses cap in one guarded UPDATE,
+                        // returning false if a concurrent redemption already
+                        // exhausted the cap between validateDiscountCode()
+                        // (above) and here. Only apply the discount if we
+                        // actually won the redemption — otherwise proceed at
+                        // full price rather than double-spend past the cap.
+                        if (PaymentManager::incrementDiscountUsage($options['discountCode'])) {
+                            $codeDiscountAmount = $discountResult['discountAmount'];
+                            $finalPrice = max(0, round($finalPrice - $codeDiscountAmount, 2));
+                        }
                     }
                 }
                 // 🔇 If country validation fails, silently skip the discount

@@ -31,8 +31,7 @@
 -- ============================================================================
 
 -- 🔒 Record migration start
-INSERT INTO tblMigrations (migrationFile, description, startedAt)
-VALUES ('024_webhook_system.sql', 'Webhook subscription system with delivery tracking', NOW());
+-- [mig-fix] removed incompatible tblMigrations self-bookkeeping (the migration runner records migrations)
 
 -- ============================================================================
 -- 📋 Table: tblWebhooks
@@ -49,11 +48,11 @@ VALUES ('024_webhook_system.sql', 'Webhook subscription system with delivery tra
 
 CREATE TABLE IF NOT EXISTS `tblWebhooks` (
     -- 🔑 Primary key
-    `webhookID` INT UNSIGNED NOT NULL AUTO_INCREMENT
+    `webhookID` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT
         COMMENT 'Auto-incrementing unique webhook identifier',
 
     -- 🏢 Ownership (at least one of partnerID or userID should be set)
-    `partnerID` INT UNSIGNED NULL DEFAULT NULL
+    `partnerID` BIGINT UNSIGNED NULL DEFAULT NULL
         COMMENT 'Partner who owns this webhook (NULL for admin-created)',
     `userID` BIGINT UNSIGNED NULL DEFAULT NULL
         COMMENT 'User who created this webhook (NULL for system webhooks)',
@@ -119,7 +118,7 @@ CREATE TABLE IF NOT EXISTS `tblWebhookDeliveryLog` (
         COMMENT 'Auto-incrementing unique delivery identifier',
 
     -- 🔗 Foreign key to parent webhook
-    `webhookID` INT UNSIGNED NOT NULL
+    `webhookID` BIGINT UNSIGNED NOT NULL
         COMMENT 'Reference to tblWebhooks.webhookID',
 
     -- 🆔 Tracking
@@ -177,7 +176,7 @@ COMMENT='Webhook delivery attempt log with retry tracking';
 --
 -- @see https://docs.signula.id/admin/settings - Settings documentation
 
-INSERT INTO tblSettings (settingKey, settingValue, settingType, category, description, isPublic)
+INSERT INTO tblSettings (settingKey, settingValue, settingType, settingCategory, description, isEditable)
 VALUES
     -- 🔘 Master toggle — when disabled, dispatch() silently skips all deliveries
     ('webhooks.enabled', '1', 'boolean', 'webhooks', 'Enable or disable the entire webhook dispatch system', 0),
@@ -200,7 +199,4 @@ ON DUPLICATE KEY UPDATE settingKey = settingKey;
 
 
 -- ✅ Record migration completion
-UPDATE tblMigrations
-SET completedAt = NOW(),
-    status = 'completed'
-WHERE migrationFile = '024_webhook_system.sql';
+-- [mig-fix] removed incompatible tblMigrations self-bookkeeping (the migration runner records migrations)

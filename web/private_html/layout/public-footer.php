@@ -12,6 +12,47 @@
  */
 
 $currentYear = date('Y');
+
+// ============================================================================
+// 🍪 SERVER-PERSISTED CONSENT BANNER (G-004 Layer 2)
+// ============================================================================
+// Replaces the old localStorage-only banner. web/private_html/compliance/ is
+// NOT covered by config.php's spl_autoload_register() directory list, so —
+// mirroring every other compliance-class call site in this codebase — it is
+// explicitly required, guarded by class_exists().
+if (!class_exists('ConsentCategoryService')) {
+    require_once ROOT_DIR . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'compliance'
+        . DIRECTORY_SEPARATOR . 'ConsentCategoryService.php';
+}
+if (!class_exists('ConsentManager')) {
+    require_once ROOT_DIR . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'compliance'
+        . DIRECTORY_SEPARATOR . 'ConsentManager.php';
+}
+
+// 👤 Resolve identity — an authenticated userID if there is one, otherwise
+// the anonymous visitorID cookie (issued/refreshed here so it exists before
+// the banner's own POST needs it).
+$footerUserID = null;
+if (class_exists('Auth') && Auth::isAuthenticated()) {
+    $footerCurrentUser = Auth::getCurrentUser();
+    $footerUserID = isset($footerCurrentUser['userID']) ? (int) $footerCurrentUser['userID'] : null;
+}
+$footerVisitorID = ConsentCategoryService::issueOrGetVisitorID();
+
+// 🔍 Only show the banner if this subject has NO effective consent decision
+// yet. 'cookies.necessary' is ALWAYS the first category recorded on any
+// banner/preference-center submission (server-enforced — see
+// ConsentCategoryService::recordBannerChoices()), so its presence in the
+// effective-consents map is a reliable "a decision has already been made"
+// signal — cheaper than checking every category individually.
+$footerShowConsentBanner = false;
+if ((bool) getSetting('consent.banner.enabled', '1')) {
+    $footerEffectiveConsents = ConsentManager::getEffectiveConsents($footerUserID, $footerVisitorID);
+    $footerShowConsentBanner = !array_key_exists('cookies.necessary', $footerEffectiveConsents);
+}
+
+$footerConsentCategories = $footerShowConsentBanner ? ConsentCategoryService::getActiveCategories() : [];
+$footerConsentCsrfToken = $footerShowConsentBanner ? SecurityUtils::generateCSRFToken() : '';
 ?>
 
     </main> <!-- Close main content wrapper from header -->
@@ -120,46 +161,120 @@ $currentYear = date('Y');
     <!-- Custom JavaScript -->
     <script src="/assets/js/main.js"></script>
 
-    <!-- Cookie Consent Banner (if not already accepted) -->
-    <script>
-    // Simple cookie consent check
-    (function() {
-        const cookieConsent = localStorage.getItem('cookie_consent');
-        if (!cookieConsent) {
-            // Show cookie banner
-            const banner = document.createElement('div');
-            banner.className = 'cookie-consent-banner';
-            banner.innerHTML = `
-                <div class="container">
-                    <div class="row align-items-center">
-                        <div class="col-md-9 mb-3 mb-md-0">
-                            <p class="mb-0">
-                                <i class="fas fa-cookie-bite me-2"></i>
-                                We use cookies to enhance your experience. By continuing to visit this site you agree to our use of cookies.
-                                <a href="/legal/cookies" class="text-white text-decoration-underline">Learn more</a>
-                            </p>
-                        </div>
-                        <div class="col-md-3 text-md-end">
-                            <button onclick="acceptCookies()" class="btn btn-light btn-sm">
-                                Accept
-                            </button>
+    <!-- ========================================================================
+         🍪 SERVER-PERSISTED CONSENT BANNER (G-004 Layer 2)
+         ========================================================================
+         Rendered server-side from tblConsentCategories (via
+         ConsentCategoryService::getActiveCategories()) — NOT a hardcoded
+         markup string. Works WITHOUT JavaScript: this is a real
+         <form method="POST" action="/api/v1/consent"> that posts and gets a
+         303 redirect back with ?consent=saved. The <script> block below is
+         PURE progressive enhancement — it intercepts the same submit and
+         does it via fetch() instead, so there is no full page reload for
+         JS-capable browsers. localStorage is only a UX mirror; the
+         tblConsentRecords row written by the endpoint is the source of truth. -->
+    <?php if ($footerShowConsentBanner): ?>
+    <div class="cookie-consent-banner" id="signulaConsentBanner" role="region" aria-label="Cookie and privacy preferences">
+        <div class="container">
+            <form method="POST" action="/api/v1/consent" id="signulaConsentForm">
+                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($footerConsentCsrfToken, ENT_QUOTES, 'UTF-8'); ?>">
+                <input type="hidden" name="return_to" value="<?php echo htmlspecialchars($_SERVER['REQUEST_URI'] ?? '/', ENT_QUOTES, 'UTF-8'); ?>">
+                <div class="row align-items-start">
+                    <div class="col-lg-8 mb-3 mb-lg-0">
+                        <p class="mb-2">
+                            <i class="fas fa-cookie-bite me-2"></i>
+                            We use cookies. Some are strictly necessary; others help us improve the site or personalise your
+                            experience — you choose which. <a href="/legal/cookies" class="text-white text-decoration-underline">Learn more</a>
+                        </p>
+                        <div class="d-flex flex-wrap gap-3">
+                            <?php foreach ($footerConsentCategories as $footerCategory): ?>
+                                <?php
+                                $footerCategoryKey = (string) $footerCategory['categoryKey'];
+                                $footerIsNecessary = (bool) $footerCategory['isStrictlyNecessary'];
+                                $footerPreChecked = $footerIsNecessary || (bool) $footerCategory['defaultGranted'];
+                                $footerFieldId = 'signulaConsentCat_' . preg_replace('/[^a-z0-9_]/i', '', $footerCategoryKey);
+                                ?>
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox"
+                                           id="<?php echo htmlspecialchars($footerFieldId, ENT_QUOTES, 'UTF-8'); ?>"
+                                           name="categories[<?php echo htmlspecialchars($footerCategoryKey, ENT_QUOTES, 'UTF-8'); ?>]"
+                                           value="1"
+                                           <?php echo $footerPreChecked ? 'checked' : ''; ?>
+                                           <?php echo $footerIsNecessary ? 'disabled' : ''; ?>>
+                                    <label class="form-check-label text-white" for="<?php echo htmlspecialchars($footerFieldId, ENT_QUOTES, 'UTF-8'); ?>">
+                                        <?php echo htmlspecialchars((string) $footerCategory['label'], ENT_QUOTES, 'UTF-8'); ?>
+                                        <?php if ($footerIsNecessary): ?><small>(always on)</small><?php endif; ?>
+                                    </label>
+                                </div>
+                            <?php endforeach; ?>
                         </div>
                     </div>
+                    <div class="col-lg-4 text-lg-end">
+                        <button type="submit" name="accept_mode" value="all" class="btn btn-light btn-sm me-2">
+                            Accept All
+                        </button>
+                        <button type="submit" name="accept_mode" value="custom" class="btn btn-outline-light btn-sm">
+                            Save Preferences
+                        </button>
+                    </div>
                 </div>
-            `;
-            document.body.appendChild(banner);
-        }
-    })();
+            </form>
+        </div>
+    </div>
+    <!-- ♿ No-JS fallback — a real, fully-working full-page preference center. -->
+    <noscript>
+        <div class="container mt-2 text-center">
+            <a href="/legal/consent" class="text-white">Manage your cookie preferences</a>
+        </div>
+    </noscript>
+    <script>
+    // 🍪 Progressive enhancement ONLY — see the block comment above. The
+    // <form> already works without this script (native POST + 303 redirect).
+    (function () {
+        var form = document.getElementById('signulaConsentForm');
+        var banner = document.getElementById('signulaConsentBanner');
+        if (!form || !banner) { return; }
 
-    function acceptCookies() {
-        localStorage.setItem('cookie_consent', 'true');
-        const banner = document.querySelector('.cookie-consent-banner');
-        if (banner) {
-            banner.style.opacity = '0';
-            setTimeout(() => banner.remove(), 300);
+        // 📌 Track which submit button triggered the submission — a plain
+        // FormData(form) does NOT include the clicked button's name/value,
+        // only a real browser form submission does that automatically.
+        var lastClickedButton = null;
+        var buttons = form.querySelectorAll('button[type="submit"]');
+        for (var i = 0; i < buttons.length; i++) {
+            buttons[i].addEventListener('click', function (evt) {
+                lastClickedButton = evt.currentTarget;
+            });
         }
-    }
+
+        form.addEventListener('submit', function (event) {
+            event.preventDefault();
+
+            var formData = new FormData(form);
+            if (lastClickedButton && lastClickedButton.name) {
+                formData.append(lastClickedButton.name, lastClickedButton.value);
+            }
+
+            fetch(form.getAttribute('action'), {
+                method: 'POST',
+                body: formData,
+                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                credentials: 'same-origin'
+            }).then(function (response) {
+                if (!response.ok) { throw new Error('consent save failed'); }
+                return response.json();
+            }).then(function () {
+                // 🪞 UX mirror only — the server row is the source of truth.
+                try { localStorage.setItem('cookie_consent', 'true'); } catch (storageError) { /* ignore */ }
+                banner.style.opacity = '0';
+                setTimeout(function () { banner.remove(); }, 300);
+            }).catch(function () {
+                // 🛟 Fall back to a genuine form submission (still works).
+                form.submit();
+            });
+        });
+    })();
     </script>
+    <?php endif; ?>
 
     <!-- 📱 Service Worker Registration -->
     <!-- @see https://developer.mozilla.org/en-US/docs/Web/API/ServiceWorkerContainer/register -->

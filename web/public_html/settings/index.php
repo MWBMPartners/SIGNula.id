@@ -42,17 +42,24 @@ $stats['passkeys'] = $passkeyCount['count'] ?? 0;
 $stats['mfa_enabled'] = !empty($user['mfaEnabled']) && $user['mfaEnabled'] == 1;
 
 // Get connected accounts count
+// 🐛 B-066: `tblOAuthTokens` does not exist (verified against
+// information_schema) — the real table is `tblUserOAuthTokens` (which DOES
+// have an `isActive` column, unlike tblOAuthAccounts above). This query used
+// to fatal with "Table 'signula_test.tblOAuthTokens' doesn't exist" on every
+// load of this page.
 $connectedAccounts = Database::fetchOne(
-    "SELECT COUNT(*) as count FROM tblOAuthTokens WHERE userID = ? AND isActive = 1",
+    "SELECT COUNT(*) as count FROM tblUserOAuthTokens WHERE userID = ? AND isActive = 1",
     [$userID],
     'i'
 );
 $stats['connected_accounts'] = $connectedAccounts['count'] ?? 0;
 
 // Get recent activity count (last 7 days)
+// 🐛 B-066: tblActivityLog has NO `loggedAt` column — the real timestamp
+// column is `createdAt` (verified against information_schema).
 $recentActivity = Database::fetchOne(
     "SELECT COUNT(*) as count FROM tblActivityLog
-     WHERE userID = ? AND loggedAt >= DATE_SUB(NOW(), INTERVAL 7 DAY)",
+     WHERE userID = ? AND createdAt >= DATE_SUB(NOW(), INTERVAL 7 DAY)",
     [$userID],
     'i'
 );
@@ -280,7 +287,7 @@ include SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATO
                     $recentActivities = Database::fetchAll(
                         "SELECT * FROM tblActivityLog
                          WHERE userID = ?
-                         ORDER BY loggedAt DESC
+                         ORDER BY createdAt DESC
                          LIMIT 5",
                         [$userID],
                         'i'
@@ -312,19 +319,22 @@ include SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATO
                                             <div class="d-flex justify-content-between">
                                                 <div>
                                                     <strong><?php echo ucwords(str_replace('_', ' ', $activity['activityType'])); ?></strong>
-                                                    <?php if ($activity['activityResult']): ?>
-                                                        <span class="badge bg-<?php echo $activity['activityResult'] === 'success' ? 'success' : 'danger'; ?> ms-2">
-                                                            <?php echo ucfirst($activity['activityResult']); ?>
-                                                        </span>
-                                                    <?php endif; ?>
+                                                    <?php
+                                                    // 🐛 B-066: tblActivityLog's real columns are `success` (tinyint
+                                                    // 1/0) and `description` — not `activityResult`/`activityDetails`.
+                                                    $activityResultLabel = !empty($activity['success']) ? 'success' : 'failed';
+                                                    ?>
+                                                    <span class="badge bg-<?php echo $activityResultLabel === 'success' ? 'success' : 'danger'; ?> ms-2">
+                                                        <?php echo ucfirst($activityResultLabel); ?>
+                                                    </span>
                                                 </div>
                                                 <small class="text-muted">
-                                                    <?php echo timeAgo($activity['loggedAt']); ?>
+                                                    <?php echo timeAgo($activity['createdAt']); ?>
                                                 </small>
                                             </div>
-                                            <?php if ($activity['activityDetails']): ?>
+                                            <?php if (!empty($activity['description'])): ?>
                                                 <small class="text-muted">
-                                                    <?php echo htmlspecialchars($activity['activityDetails']); ?>
+                                                    <?php echo htmlspecialchars($activity['description']); ?>
                                                 </small>
                                             <?php endif; ?>
                                         </div>

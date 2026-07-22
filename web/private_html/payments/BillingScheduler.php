@@ -95,13 +95,36 @@ class BillingScheduler
     // 🔧 CONSTANTS
     // ========================================================================
 
-    /** @var array Valid task types for tblBillingSchedule.taskType ENUM */
+    /**
+     * @var array Valid task types for tblBillingSchedule.taskType ENUM.
+     *
+     * 🩹 B-025: widened to match BOTH the current DB ENUM (migration
+     * 012 + 018's taskType MODIFY) AND every literal this class actually
+     * passes to createTask() elsewhere in this file. Before this fix,
+     * 'generate_invoice', 'fee_change_notification', 'calculate_usage',
+     * 'charge_usage', and 'archive_usage' were valid ENUM members that
+     * self::createTask()'s own validation silently REJECTED (grep-confirmed
+     * call sites: processUsageCalculation() -> createTask('charge_usage', …)
+     * at ~L2400 and similar usage-billing scheduling calls) — the opposite
+     * direction of the schema↔code drift from the taskID/scheduleID and
+     * missing-column issues fixed elsewhere in this migration/PR.
+     */
     const TASK_TYPES = [
         'charge_subscription',
         'send_reminder',
         'suspend_account',
         'expire_trial',
         'process_remittance',
+        'generate_invoice',
+        'fee_change_notification',
+        'calculate_usage',
+        'charge_usage',
+        'archive_usage',
+        // 🩹 G-002 S4 — dunning retry ladder (§5 of the spec). Extended via
+        // migration 039's `taskType` ENUM widen (mirrors the B-025 pattern
+        // migration 018 used to add the usage-billing task types above).
+        'dunning_retry',
+        'dunning_final_cancel',
     ];
 
     /** @var array Valid target types for tblBillingSchedule.targetType ENUM */
@@ -196,6 +219,8 @@ class BillingScheduler
                         'calculate_usage'     => self::processUsageCalculation($targetID),
                         'charge_usage'        => self::processUsageCharge($targetID),
                         'archive_usage'       => self::processUsageArchival(),
+                        'dunning_retry'       => self::processDunningRetry($task),
+                        'dunning_final_cancel' => self::processDunningFinalCancel($task),
                         default               => ['success' => false, 'message' => 'Unknown task type: ' . $taskType],
                     };
 
@@ -229,8 +254,16 @@ class BillingScheduler
                         'message'  => $result['message'] ?? '',
                     ];
 
-                } catch (\Exception $e) {
-                    // 🛑 Catch per-task exceptions so one failing task doesn't abort the batch
+                } catch (\Throwable $e) {
+                    // 🛑 F-B02 FIX: \Throwable (not just \Exception) — a
+                    // phantom-method \Error (e.g. the now-guarded
+                    // chargeStoredMethod() call chain — @see
+                    // self::executeProviderCharge()) previously escaped this
+                    // catch entirely (Error does NOT extend Exception),
+                    // propagating out of the WHOLE cron batch and skipping
+                    // every later due task (dunning, suspension, reminders,
+                    // …). Catching \Throwable here is what actually makes
+                    // "one failing task doesn't abort the batch" true.
                     self::markTaskProcessed($taskID, 'failed', $e->getMessage());
                     $failed++;
 
@@ -518,8 +551,13 @@ class BillingScheduler
                 ];
             }
 
-        } catch (\Exception $e) {
-            // 🛑 Unexpected exception during charge processing
+        } catch (\Throwable $e) {
+            // 🛑 F-B02 FIX: \Throwable — defence-in-depth so a direct call to
+            // processSubscriptionCharge() (this method is also called
+            // directly by callers other than the per-task loop, e.g. admin
+            // manual-retry tooling) fails closed through the normal
+            // ['success' => false, ...] contract even if executeProviderCharge()
+            // ever throws an \Error again in the future.
             ActivityLogger::log(
                 null,
                 'charge_exception',
@@ -1109,6 +1147,110 @@ class BillingScheduler
     }
 
     // ========================================================================
+    // 🔔 DUNNING RETRY LADDER (G-002 Stage S4)
+    // ========================================================================
+
+    /**
+     * 🔔 Schedule the Next Dunning Retry Rung
+     *
+     * Enqueues a `dunning_retry` task for the given subscription/attempt
+     * number, timed via the CONFIGURABLE `billing.dunning.retry_days` CSV
+     * ladder (default `'1,3,5,7'`) — REUSES the existing generic task queue
+     * (`createTask()`/`getTasksDue()`/`processDueTasks()`) rather than a
+     * bespoke dunning scheduler.
+     *
+     * `billing.dunning.retry_days[N-1]` is the number of days to wait
+     * BEFORE rung N fires, timed from the moment it is scheduled — i.e. rung
+     * 1 fires `retry_days[0]` days after the subscription enters `past_due`
+     * (called from `PaymentManager::applyWebhookTransition()`), rung 2 fires
+     * `retry_days[1]` days after rung 1's FAILED attempt (called from
+     * `self::processDunningRetry()`), and so on — a chained-interval model
+     * (mirrors Stripe Smart Retries' own "days since last attempt" spacing)
+     * rather than fixed offsets from a single anchor timestamp, so no new
+     * `tblSubscriptions` column is needed to remember when the episode
+     * started. If `$attemptNumber` exceeds the configured ladder length, the
+     * LAST configured interval is reused (defensive default rather than an
+     * error).
+     *
+     * Idempotent: any earlier PENDING `dunning_retry` task for this
+     * subscription is cancelled first, so a re-entrant call (e.g. a retried
+     * webhook re-triggering rung 1) can never stack two divergent rungs.
+     *
+     * @param int $subscriptionID The subscription entering/continuing dunning
+     * @param int $attemptNumber  1-based rung number (1 = first retry)
+     *
+     * @return array {@see self::createTask()}'s return shape
+     *
+     * @see self::processDunningRetry()      Executes the rung when due
+     * @see self::getSetting()               Reads billing.dunning.retry_days
+     * @see .dev-team/specs/G-002.md §5/§6.4 (dunning ladder settings)
+     */
+    public static function scheduleDunningRetry(int $subscriptionID, int $attemptNumber = 1): array
+    {
+        try {
+            $attemptNumber = max(1, $attemptNumber);
+
+            // 📋 Parse the CSV ladder — defensive against a blank/malformed
+            // setting (falls back to the documented default).
+            $retryDaysSetting = self::getSetting('billing.dunning.retry_days', '1,3,5,7');
+            $retryDays = array_values(array_filter(
+                array_map('intval', explode(',', $retryDaysSetting)),
+                static fn(int $d): bool => $d > 0
+            ));
+            if (empty($retryDays)) {
+                $retryDays = [1, 3, 5, 7];
+            }
+
+            $rungIndex = min($attemptNumber - 1, count($retryDays) - 1);
+            $daysDelay = $retryDays[$rungIndex];
+
+            $scheduledFor = date('Y-m-d H:i:s', strtotime('+' . $daysDelay . ' days'));
+
+            // 🧹 Idempotent re-schedule (§4.3): clear any earlier pending
+            // rung for this subscription before creating the new one.
+            self::cancelPendingTasks('subscription', $subscriptionID, 'dunning_retry');
+
+            $task = self::createTask(
+                'dunning_retry',
+                'subscription',
+                $subscriptionID,
+                $scheduledFor,
+                ['attemptNumber' => $attemptNumber]
+            );
+
+            if ($task['success']) {
+                ActivityLogger::log(
+                    null,
+                    'dunning_retry_scheduled',
+                    'payment',
+                    'info',
+                    'Dunning retry #' . $attemptNumber . ' scheduled for subscription #' . $subscriptionID . ' on ' . $scheduledFor,
+                    [
+                        'subscriptionID' => $subscriptionID,
+                        'attemptNumber'  => $attemptNumber,
+                        'scheduledFor'   => $scheduledFor,
+                        'daysDelay'      => $daysDelay,
+                    ]
+                );
+            }
+
+            return $task;
+
+        } catch (\Throwable $e) {
+            ActivityLogger::log(
+                null,
+                'dunning_retry_schedule_exception',
+                'payment',
+                'error',
+                'Exception scheduling dunning retry for subscription #' . $subscriptionID . ': ' . $e->getMessage(),
+                ['subscriptionID' => $subscriptionID, 'attemptNumber' => $attemptNumber]
+            );
+
+            return ['success' => false, 'taskID' => 0, 'message' => 'Scheduling failed: ' . $e->getMessage()];
+        }
+    }
+
+    // ========================================================================
     // ✅ PAYMENT SUCCESS — Auto-Resume
     // ========================================================================
 
@@ -1474,8 +1616,15 @@ class BillingScheduler
      */
     public static function getTasksDue(int $limit = self::DEFAULT_BATCH_SIZE): array
     {
+        // 🩹 B-025 schema↔code reconciliation: the table's PK column is
+        // `scheduleID` (migration 012), but every consumer of this method
+        // (processDueTasks(), processLazyBatch(), and the admin API) reads
+        // $task['taskID']. Rather than rename the PK (destructive — forbidden
+        // by the migration safety rules), alias it in the SELECT so the rest
+        // of this class's existing `$task['taskID']` reads keep working
+        // unchanged. @see https://dev.mysql.com/doc/refman/8.0/en/select.html
         return Database::fetchAll(
-            "SELECT *
+            "SELECT *, scheduleID AS taskID
              FROM tblBillingSchedule
              WHERE status = 'pending'
                AND (
@@ -1511,6 +1660,9 @@ class BillingScheduler
     public static function markTaskProcessed(int $taskID, string $status, ?string $result = null): void
     {
         try {
+            // 🩹 B-025: $taskID is the PHP-side name (matches the public method
+            // signature and every caller), but the actual PK column is
+            // `scheduleID` — target that in the WHERE clause. @see getTasksDue()
             Database::query(
                 "UPDATE tblBillingSchedule
                  SET status = ?,
@@ -1518,7 +1670,7 @@ class BillingScheduler
                      lastAttemptAt = NOW(),
                      result = ?,
                      updatedAt = NOW()
-                 WHERE taskID = ?",
+                 WHERE scheduleID = ?",
                 [$status, $result, $taskID],
                 'ssi'
             );
@@ -1556,6 +1708,7 @@ class BillingScheduler
         try {
             $nextRetryAt = date('Y-m-d H:i:s', strtotime('+' . $retryMinutes . ' minutes'));
 
+            // 🩹 B-025: see markTaskProcessed() — WHERE targets the real PK (`scheduleID`).
             Database::query(
                 "UPDATE tblBillingSchedule
                  SET status = 'pending',
@@ -1563,7 +1716,7 @@ class BillingScheduler
                      attempts = attempts + 1,
                      lastAttemptAt = NOW(),
                      updatedAt = NOW()
-                 WHERE taskID = ?",
+                 WHERE scheduleID = ?",
                 [$nextRetryAt, $taskID],
                 'si'
             );
@@ -1738,6 +1891,8 @@ class BillingScheduler
                         'calculate_usage'     => self::processUsageCalculation($targetID),
                         'charge_usage'        => self::processUsageCharge($targetID),
                         'archive_usage'       => self::processUsageArchival(),
+                        'dunning_retry'       => self::processDunningRetry($task),
+                        'dunning_final_cancel' => self::processDunningFinalCancel($task),
                         default               => ['success' => false, 'message' => 'Unknown task type: ' . $taskType],
                     };
 
@@ -1756,7 +1911,11 @@ class BillingScheduler
                         }
                     }
 
-                } catch (\Exception $e) {
+                } catch (\Throwable $e) {
+                    // 🛑 F-B02 FIX: \Throwable — mirrors the same fix in
+                    // self::processDueTasks()'s per-task loop; a phantom-
+                    // method \Error must fail just this one task, not abort
+                    // the lazy safety-net batch.
                     self::markTaskProcessed($taskID, 'failed', $e->getMessage());
                 }
             }
@@ -1976,6 +2135,577 @@ class BillingScheduler
         }
     }
 
+    // ========================================================================
+    // 🔔 DUNNING RETRY LADDER — TASK HANDLERS (G-002 Stage S4)
+    // ========================================================================
+
+    /**
+     * 🔔 Process a `dunning_retry` Task
+     *
+     * Executed when a scheduled dunning rung comes due (via
+     * `self::scheduleDunningRetry()`). Flow (G-002 spec §5 / build order):
+     *   1. Idempotent no-op if the subscription already left `past_due`
+     *      (resolved by a provider webhook, a prior tick, cancellation, …)
+     *      — covers "already resolved" AND a stale/duplicate task.
+     *   2. Idempotent no-op if THIS exact (subscriptionID, attemptNumber)
+     *      rung already has a `tblBillingAttempts` row — covers a genuine
+     *      double-tick (e.g. two due tasks for the same rung processed in
+     *      one batch).
+     *   3. `BillingMode::assertTestMode($provider)` — BEFORE any collection
+     *      attempt (§9.1). A live-mode-guarded refusal is fail-closed: no
+     *      email, no next rung, no state change (BillingMode itself already
+     *      wrote the audited 'blocked' row).
+     *   4. Attempt re-collection (`self::attemptDunningCollection()` — see
+     *      its doc-comment: NEVER a real charge; mocked in tests via
+     *      `$task['metadata']['mockCollectionResult']`).
+     *   5. SUCCESS → reuse `PaymentManager::recordSubscriptionRenewal()`
+     *      (the SAME path a real renewal webhook takes) to record the
+     *      payment/invoice, advance the period, and transition
+     *      `past_due -> active` — clearing dunning by cancelling any
+     *      further pending rungs / the final-cancel task.
+     *   6. FAILURE → record the attempt, send the dunning email (reuses the
+     *      existing `payment_failed` template), then either schedule the
+     *      next rung or — if `billing.dunning.max_retries` is reached —
+     *      exhaust the ladder into `grace` (`self::exhaustDunningLadder()`).
+     *
+     * @param array $task The full task row from `tblBillingSchedule`
+     *                     (needs `targetID` and `metadata`)
+     *
+     * @return array{success: bool, message: string}
+     *
+     * @see self::scheduleDunningRetry()      Enqueues rung N+1 on failure
+     * @see self::exhaustDunningLadder()      Ladder-exhausted -> grace + final-cancel task
+     * @see PaymentManager::recordSubscriptionRenewal() Reused renewal path on success
+     * @see .dev-team/specs/G-002.md §4.2/§5/§9.1
+     */
+    private static function processDunningRetry(array $task): array
+    {
+        try {
+            $subscriptionID = (int) $task['targetID'];
+            $metadata = !empty($task['metadata']) ? (json_decode((string) $task['metadata'], true) ?: []) : [];
+            $attemptNumber = max(1, (int) ($metadata['attemptNumber'] ?? 1));
+
+            $subscription = Database::fetchOne(
+                "SELECT s.*, t.tierName, u.displayName, u.email AS userEmail
+                 FROM tblSubscriptions s
+                 JOIN tblSubscriptionTiers t ON s.tierID = t.tierID
+                 JOIN tblUsers u ON s.userID = u.userID
+                 WHERE s.subscriptionID = ?",
+                [$subscriptionID],
+                'i'
+            );
+
+            // 🔁 Idempotent no-op (§4.3): already resolved — a provider
+            // webhook, a prior tick, or a manual cancel already moved the
+            // subscription out of 'past_due'. Nothing left for this rung to do.
+            if (!$subscription || $subscription['subscriptionStatus'] !== 'past_due') {
+                return [
+                    'success' => true,
+                    'message' => 'Subscription #' . $subscriptionID . ' is no longer past_due — dunning retry #' . $attemptNumber . ' skipped (already resolved)',
+                ];
+            }
+
+            $userID = (int) $subscription['userID'];
+            $provider = strtolower((string) ($subscription['paymentMethod'] ?? ''));
+
+            // 🔑 Stable per-rung idempotency key (§4.3) — sha256 to fit
+            // tblBillingAttempts.idempotencyKey VARCHAR(64).
+            $idempotencyKey = hash('sha256', 'dunning_retry:' . $subscriptionID . ':' . $attemptNumber);
+
+            // ♻️ Idempotent double-tick guard: ANY prior row for this exact
+            // rung (success OR failure) means the side effects (email/next
+            // rung/renewal) already happened — never redo them.
+            $prior = Database::fetchOne(
+                "SELECT attemptID, status FROM tblBillingAttempts WHERE idempotencyKey = ? AND action = 'dunning_retry' LIMIT 1",
+                [$idempotencyKey],
+                's'
+            );
+            if ($prior) {
+                return [
+                    'success' => true,
+                    'message' => 'Dunning retry #' . $attemptNumber . ' for subscription #' . $subscriptionID . ' already processed (idempotent replay, prior status: ' . $prior['status'] . ')',
+                ];
+            }
+
+            // 🛡️ TEST-MODE guard (§9.1) — BEFORE any collection attempt.
+            // Only meaningful for a real provider; free/manual/apple_pay/
+            // google_pay/crypto methods have no provider "mode" to guard.
+            if (in_array($provider, ['paypal', 'stripe', 'coinbase'], true)) {
+                $billingModePath = __DIR__ . DIRECTORY_SEPARATOR . 'BillingMode.php';
+                $billingModeExceptionPath = __DIR__ . DIRECTORY_SEPARATOR . 'BillingModeException.php';
+                if (file_exists($billingModeExceptionPath)) {
+                    require_once $billingModeExceptionPath;
+                }
+                if (file_exists($billingModePath)) {
+                    require_once $billingModePath;
+                }
+
+                if (class_exists('BillingMode')) {
+                    try {
+                        BillingMode::assertTestMode($provider);
+                    } catch (\Throwable $guardException) {
+                        // 🚫 Fail-closed: refused BEFORE any collection
+                        // attempt. BillingMode::assertTestMode() already
+                        // wrote the audited 'blocked' tblBillingAttempts
+                        // row itself — no email, no next rung, no state
+                        // change. The generic scheduler retry/backoff
+                        // (processDueTasks()) is left to retry this same
+                        // task later, matching every other guard-blocked
+                        // entry point's behaviour in this codebase.
+                        ActivityLogger::log(
+                            $userID,
+                            'dunning_retry_blocked',
+                            'payment',
+                            'warning',
+                            'Dunning retry #' . $attemptNumber . ' refused by TEST-MODE guard for subscription #' . $subscriptionID . ': ' . $guardException->getMessage(),
+                            ['subscriptionID' => $subscriptionID, 'attemptNumber' => $attemptNumber, 'provider' => $provider]
+                        );
+
+                        return ['success' => false, 'message' => 'Refused by TEST-MODE guard: ' . $guardException->getMessage()];
+                    }
+                }
+            }
+
+            // 💳 Attempt re-collection — MOCKED in tests, never a real charge.
+            $collection = self::attemptDunningCollection($subscription, $metadata);
+
+            if ($collection['success'] ?? false) {
+                // ✅ SUCCESS — reuse the SAME renewal path a real provider
+                // webhook takes (records payment + invoice, advances the
+                // period, transitions past_due -> active).
+                //
+                // 🐛 A SEPARATE sha256 digest, NOT `$idempotencyKey . ':renewal'`
+                // — tblBillingAttempts.idempotencyKey is VARCHAR(64) and a
+                // sha256 hex digest IS already exactly 64 characters, so
+                // appending any suffix silently overflowed the column
+                // (caught only by recordWebhookAuditRow()'s own non-fatal
+                // try/catch — found while running this suite for the first
+                // time; fixed here rather than left as dead capacity).
+                $renewalIdempotencyKey = hash('sha256', 'dunning_retry_renewal:' . $subscriptionID . ':' . $attemptNumber);
+
+                $renewal = PaymentManager::recordSubscriptionRenewal(
+                    $subscriptionID,
+                    $provider !== '' ? $provider : 'manual',
+                    (float) $subscription['amount'],
+                    (string) ($subscription['currency'] ?? 'GBP'),
+                    $collection['transactionID'] ?? ('dunning-retry-' . $subscriptionID . '-' . $attemptNumber),
+                    $renewalIdempotencyKey,
+                    'Dunning retry #' . $attemptNumber . ' collection succeeded'
+                );
+
+                self::recordDunningAttempt(
+                    $subscriptionID,
+                    $userID,
+                    $provider,
+                    $idempotencyKey,
+                    'succeeded',
+                    $attemptNumber,
+                    'Dunning retry #' . $attemptNumber . ' succeeded — ' . ($renewal['message'] ?? 'renewed')
+                );
+
+                // 🧹 Clear the rest of the ladder — no further rungs or a
+                // final-cancel should fire now that the subscription is active.
+                self::cancelPendingTasks('subscription', $subscriptionID, 'dunning_retry');
+                self::cancelPendingTasks('subscription', $subscriptionID, 'dunning_final_cancel');
+
+                ActivityLogger::log(
+                    $userID,
+                    'dunning_retry_succeeded',
+                    'payment',
+                    'info',
+                    'Dunning retry #' . $attemptNumber . ' succeeded for subscription #' . $subscriptionID . ' — subscription active',
+                    ['subscriptionID' => $subscriptionID, 'attemptNumber' => $attemptNumber]
+                );
+
+                return ['success' => true, 'message' => 'Dunning retry #' . $attemptNumber . ' succeeded — subscription active'];
+            }
+
+            // ❌ FAILURE — record, email, then either schedule the next rung
+            // or exhaust the ladder into 'grace'.
+            $failureReason = (string) ($collection['message'] ?? 'Payment could not be processed');
+
+            self::recordDunningAttempt(
+                $subscriptionID,
+                $userID,
+                $provider,
+                $idempotencyKey,
+                'failed',
+                $attemptNumber,
+                'Dunning retry #' . $attemptNumber . ' failed: ' . $failureReason
+            );
+
+            self::sendDunningRetryEmail($subscription, $attemptNumber, $failureReason);
+
+            $maxRetries = (int) self::getSetting('billing.dunning.max_retries', '4');
+
+            if ($attemptNumber >= $maxRetries) {
+                self::exhaustDunningLadder($subscription);
+
+                return ['success' => true, 'message' => 'Dunning retry #' . $attemptNumber . ' failed — retries exhausted, subscription moved to grace'];
+            }
+
+            self::scheduleDunningRetry($subscriptionID, $attemptNumber + 1);
+
+            return ['success' => true, 'message' => 'Dunning retry #' . $attemptNumber . ' failed — next rung scheduled'];
+
+        } catch (\Throwable $e) {
+            ActivityLogger::log(
+                null,
+                'dunning_retry_exception',
+                'payment',
+                'error',
+                'Exception during dunning retry processing: ' . $e->getMessage(),
+                ['task' => $task, 'trace' => $e->getTraceAsString()]
+            );
+
+            return ['success' => false, 'message' => 'Dunning retry processing exception: ' . $e->getMessage()];
+        }
+    }
+
+    /**
+     * 💳 Attempt a Dunning Re-Collection (mocked in tests — NEVER a real charge)
+     *
+     * G-002 spec §14 explicitly forbids a self-driven "pull a stored card on
+     * a timer" engine — recurring billing here is PROVIDER-managed, and
+     * `chargeStoredMethod()` does not exist on any provider class in this
+     * codebase (grep-verified — see `BillingMode.php`'s own class doc-comment
+     * for the same finding). This method therefore has NO real collection
+     * path of its own: for a provider-managed subscription, resolution
+     * normally arrives via the PROVIDER's own retry + webhook
+     * (`PAYMENT.SALE.COMPLETED` / `invoice.paid` ->
+     * `PaymentManager::applyWebhookTransition()`/`recordSubscriptionRenewal()`).
+     * Absent a webhook, this tick's job is the dunning BOOKKEEPING (email +
+     * next rung + eventual grace/cancel) while we wait — so the default
+     * result is always an honest, non-fabricated failure.
+     *
+     * Tests supply a mocked outcome via `$metadata['mockCollectionResult']`
+     * (`'success'` or anything else = failure) — the ONLY caller that
+     * creates a `dunning_retry` task (`self::scheduleDunningRetry()`) never
+     * sets this key, so production tasks always take the honest-failure path.
+     *
+     * @param array $subscription The joined subscription/tier/user row
+     * @param array $metadata     The task's decoded metadata (may carry the test mock key)
+     *
+     * @return array{success: bool, message?: string, transactionID?: string}
+     */
+    private static function attemptDunningCollection(array $subscription, array $metadata): array
+    {
+        // 🧪 TEST-ONLY mock hook — see doc-comment above.
+        if (array_key_exists('mockCollectionResult', $metadata)) {
+            if ($metadata['mockCollectionResult'] === 'success') {
+                return ['success' => true, 'transactionID' => 'mock-' . bin2hex(random_bytes(4))];
+            }
+
+            return ['success' => false, 'message' => 'Mocked collection failure (test)'];
+        }
+
+        return [
+            'success' => false,
+            'message' => 'No local collection path for provider-managed subscriptions — awaiting provider webhook',
+        ];
+    }
+
+    /**
+     * 🚨 Exhaust the Dunning Ladder — past_due -> grace + schedule final-cancel
+     *
+     * Called when `billing.dunning.max_retries` rungs have all failed.
+     * Transitions the subscription to `grace` (idempotent — a no-op if it is
+     * already there), sends the "final warning" email, and schedules the
+     * `dunning_final_cancel` task at `now + billing.grace_period_days`.
+     *
+     * @param array $subscription The joined subscription/tier/user row
+     *
+     * @return void
+     *
+     * @see self::processDunningFinalCancel() Executes when the grace window lapses
+     */
+    private static function exhaustDunningLadder(array $subscription): void
+    {
+        $subscriptionID = (int) $subscription['subscriptionID'];
+        $userID = (int) $subscription['userID'];
+
+        $stateMachinePath = __DIR__ . DIRECTORY_SEPARATOR . 'SubscriptionStateMachine.php';
+        $transitionExceptionPath = __DIR__ . DIRECTORY_SEPARATOR . 'InvalidSubscriptionTransitionException.php';
+        if (file_exists($transitionExceptionPath)) {
+            require_once $transitionExceptionPath;
+        }
+        if (file_exists($stateMachinePath)) {
+            require_once $stateMachinePath;
+        }
+
+        if (class_exists('SubscriptionStateMachine')) {
+            try {
+                SubscriptionStateMachine::transition($subscriptionID, 'grace', 'dunning_exhausted');
+            } catch (\Throwable $e) {
+                ActivityLogger::log(
+                    $userID,
+                    'dunning_exhausted_transition_failed',
+                    'payment',
+                    'error',
+                    'Failed to transition subscription #' . $subscriptionID . ' to grace after dunning exhaustion: ' . $e->getMessage(),
+                    ['subscriptionID' => $subscriptionID]
+                );
+            }
+        }
+
+        // 📧 Final-warning email — reuses the standard template mechanism;
+        // seeded by migration 039 (`dunning_final_notice`).
+        $userEmail = (string) ($subscription['userEmail'] ?? self::getUserEmail($userID));
+        $gracePeriodDays = (int) self::getSetting('billing.grace_period_days', '7');
+
+        if (!empty($userEmail)) {
+            EmailService::sendTemplateEmail(
+                $userEmail,
+                'dunning_final_notice',
+                [
+                    '{{displayName}}' => $subscription['displayName'] ?? 'Valued Customer',
+                    '{{tierName}}'    => $subscription['tierName'] ?? 'Your Plan',
+                    '{{currency}}'    => $subscription['currency'] ?? 'GBP',
+                    '{{amount}}'      => number_format((float) $subscription['amount'], 2),
+                    '{{graceDays}}'   => (string) $gracePeriodDays,
+                    '{{updateURL}}'   => getSetting('app.url', 'https://signula.id') . '/account/billing',
+                ],
+                $userID,
+                1 // 📨 Highest priority
+            );
+        }
+
+        ActivityLogger::log(
+            $userID,
+            'dunning_exhausted',
+            'payment',
+            'warning',
+            'Dunning retries exhausted for subscription #' . $subscriptionID . ' — moved to grace (grace period: ' . $gracePeriodDays . ' days)',
+            ['subscriptionID' => $subscriptionID, 'gracePeriodDays' => $gracePeriodDays]
+        );
+
+        if (class_exists('WebhookManager')) {
+            WebhookManager::dispatch('subscription.grace_entered', [
+                'subscriptionID' => $subscriptionID,
+                'userID'         => $userID,
+                'gracePeriodDays' => $gracePeriodDays,
+            ]);
+        }
+
+        // ⏰ Schedule the final-cancel task at now + grace_period_days.
+        // Idempotent re-schedule: clear any earlier pending final-cancel task first.
+        self::cancelPendingTasks('subscription', $subscriptionID, 'dunning_final_cancel');
+
+        $graceEndsAt = date('Y-m-d H:i:s', strtotime('+' . $gracePeriodDays . ' days'));
+        self::createTask('dunning_final_cancel', 'subscription', $subscriptionID, $graceEndsAt, [
+            'reason' => 'dunning_exhausted',
+        ]);
+    }
+
+    /**
+     * 🔔 Process a `dunning_final_cancel` Task
+     *
+     * Executed when a subscription's grace window (`billing.grace_period_days`
+     * after `self::exhaustDunningLadder()`) lapses without a successful
+     * payment. Idempotent no-op if the subscription already left `grace`
+     * (reactivated, or already cancelled). Otherwise transitions
+     * `grace -> cancelled` and sends the final "subscription cancelled" email.
+     *
+     * @param array $task The full task row from `tblBillingSchedule`
+     *
+     * @return array{success: bool, message: string}
+     */
+    private static function processDunningFinalCancel(array $task): array
+    {
+        try {
+            $subscriptionID = (int) $task['targetID'];
+
+            $subscription = Database::fetchOne(
+                "SELECT s.*, t.tierName, u.displayName, u.email AS userEmail
+                 FROM tblSubscriptions s
+                 JOIN tblSubscriptionTiers t ON s.tierID = t.tierID
+                 JOIN tblUsers u ON s.userID = u.userID
+                 WHERE s.subscriptionID = ?",
+                [$subscriptionID],
+                'i'
+            );
+
+            // 🔁 Idempotent no-op: already resolved — reactivated out of
+            // grace, or already terminal (cancelled/expired).
+            if (!$subscription || $subscription['subscriptionStatus'] !== 'grace') {
+                return [
+                    'success' => true,
+                    'message' => 'Subscription #' . $subscriptionID . ' is no longer in grace — final-cancel skipped (already resolved)',
+                ];
+            }
+
+            $userID = (int) $subscription['userID'];
+
+            $stateMachinePath = __DIR__ . DIRECTORY_SEPARATOR . 'SubscriptionStateMachine.php';
+            $transitionExceptionPath = __DIR__ . DIRECTORY_SEPARATOR . 'InvalidSubscriptionTransitionException.php';
+            if (file_exists($transitionExceptionPath)) {
+                require_once $transitionExceptionPath;
+            }
+            if (file_exists($stateMachinePath)) {
+                require_once $stateMachinePath;
+            }
+
+            if (class_exists('SubscriptionStateMachine')) {
+                SubscriptionStateMachine::transition($subscriptionID, 'cancelled', 'grace_expired');
+            }
+
+            $userEmail = (string) ($subscription['userEmail'] ?? self::getUserEmail($userID));
+            if (!empty($userEmail)) {
+                EmailService::sendTemplateEmail(
+                    $userEmail,
+                    'subscription_cancelled',
+                    [
+                        '{{displayName}}'    => $subscription['displayName'] ?? 'Valued Customer',
+                        '{{tierName}}'       => $subscription['tierName'] ?? 'Your Plan',
+                        '{{reactivateURL}}'  => getSetting('app.url', 'https://signula.id') . '/account/billing',
+                    ],
+                    $userID,
+                    2 // 📨 High priority
+                );
+            }
+
+            ActivityLogger::log(
+                $userID,
+                'dunning_grace_expired',
+                'payment',
+                'warning',
+                'Grace window expired for subscription #' . $subscriptionID . ' — subscription cancelled',
+                ['subscriptionID' => $subscriptionID]
+            );
+
+            if (class_exists('WebhookManager')) {
+                WebhookManager::dispatch('subscription.cancelled', [
+                    'subscriptionID' => $subscriptionID,
+                    'userID'         => $userID,
+                    'reason'         => 'grace_expired',
+                ]);
+            }
+
+            return ['success' => true, 'message' => 'Grace window expired — subscription #' . $subscriptionID . ' cancelled'];
+
+        } catch (\Throwable $e) {
+            ActivityLogger::log(
+                null,
+                'dunning_final_cancel_exception',
+                'payment',
+                'error',
+                'Exception during dunning final-cancel processing: ' . $e->getMessage(),
+                ['task' => $task, 'trace' => $e->getTraceAsString()]
+            );
+
+            return ['success' => false, 'message' => 'Final-cancel processing exception: ' . $e->getMessage()];
+        }
+    }
+
+    /**
+     * 📧 Send a Dunning Retry Failure Email
+     *
+     * Reuses the EXISTING `payment_failed` template (per the build
+     * instruction — no new per-rung template) for every failed rung's
+     * notification, correctly populated to match the template's real
+     * placeholders (`{{displayName}}`/`{{currency}}`/`{{amount}}`/
+     * `{{failureReason}}`/`{{updateURL}}` — see migration 012).
+     *
+     * @param array  $subscription  The joined subscription/tier/user row
+     * @param int    $attemptNumber 1-based rung number, for logging only
+     * @param string $failureReason Human-readable failure detail
+     *
+     * @return void
+     */
+    private static function sendDunningRetryEmail(array $subscription, int $attemptNumber, string $failureReason): void
+    {
+        $userID = (int) $subscription['userID'];
+        $userEmail = (string) ($subscription['userEmail'] ?? self::getUserEmail($userID));
+
+        if (empty($userEmail)) {
+            return;
+        }
+
+        EmailService::sendTemplateEmail(
+            $userEmail,
+            'payment_failed',
+            [
+                '{{displayName}}'   => $subscription['displayName'] ?? 'Valued Customer',
+                '{{tierName}}'      => $subscription['tierName'] ?? 'Your Plan',
+                '{{currency}}'      => $subscription['currency'] ?? 'GBP',
+                '{{amount}}'        => number_format((float) $subscription['amount'], 2),
+                '{{failureReason}}' => $failureReason,
+                '{{updateURL}}'     => getSetting('app.url', 'https://signula.id') . '/account/billing',
+            ],
+            $userID,
+            2 // 📨 High priority
+        );
+
+        ActivityLogger::log(
+            $userID,
+            'dunning_retry_email_sent',
+            'payment',
+            'info',
+            'Dunning retry #' . $attemptNumber . ' failure email sent for subscription #' . $subscription['subscriptionID'],
+            ['subscriptionID' => $subscription['subscriptionID'], 'attemptNumber' => $attemptNumber]
+        );
+    }
+
+    /**
+     * 📝 Record a `tblBillingAttempts` Audit Row for a Dunning Retry
+     *
+     * Mirrors `PaymentManager::recordWebhookAuditRow()`'s established
+     * one-shot-per-outcome pattern (no separate "attempted" pre-write — a
+     * single row per terminal outcome). The row's `idempotencyKey` is what
+     * `self::processDunningRetry()`'s own double-tick guard checks.
+     *
+     * @param int    $subscriptionID
+     * @param int    $userID
+     * @param string $provider       Lower-cased provider key (may be '')
+     * @param string $idempotencyKey
+     * @param string $status         'succeeded' | 'failed'
+     * @param int    $attemptNumber
+     * @param string $detail         Human-readable outcome detail
+     *
+     * @return void
+     */
+    private static function recordDunningAttempt(
+        int $subscriptionID,
+        int $userID,
+        string $provider,
+        string $idempotencyKey,
+        string $status,
+        int $attemptNumber,
+        string $detail
+    ): void {
+        try {
+            $mode = 'n/a';
+            if (in_array($provider, ['paypal', 'stripe', 'coinbase'], true)) {
+                $billingModePath = __DIR__ . DIRECTORY_SEPARATOR . 'BillingMode.php';
+                if (file_exists($billingModePath)) {
+                    require_once $billingModePath;
+                    if (class_exists('BillingMode')) {
+                        $mode = BillingMode::providerMode($provider);
+                    }
+                }
+            }
+
+            Database::query(
+                "INSERT INTO tblBillingAttempts
+                    (provider, action, mode, subscriptionID, userID, idempotencyKey, status, detail, ipAddress, createdAt)
+                 VALUES (?, 'dunning_retry', ?, ?, ?, ?, ?, ?, ?, NOW())",
+                [
+                    $provider !== '' ? $provider : 'none',
+                    $mode,
+                    $subscriptionID,
+                    $userID,
+                    $idempotencyKey,
+                    $status,
+                    json_encode(['attemptNumber' => $attemptNumber, 'detail' => $detail], JSON_UNESCAPED_UNICODE),
+                    $_SERVER['REMOTE_ADDR'] ?? null,
+                ],
+                'ssiissss'
+            );
+        } catch (\Throwable $e) {
+            error_log('🚨 [BillingScheduler::recordDunningAttempt] Failed to write tblBillingAttempts audit row: ' . $e->getMessage());
+        }
+    }
+
     /**
      * 💸 Process Remittance Task
      *
@@ -2043,52 +2773,66 @@ class BillingScheduler
         $providerMethodID = $paymentMethod['providerMethodID'] ?? null;
 
         try {
-            // 🔀 Route to the appropriate payment provider
-            switch ($provider) {
-                case 'paypal':
-                    // 💳 PayPal charge via stored billing agreement or payment token
-                    if (class_exists('PayPalProvider')) {
-                        return PayPalProvider::chargeStoredMethod(
-                            $providerMethodID,
-                            $amount,
-                            $currency,
-                            $invoiceNumber
-                        );
-                    }
-                    return ['success' => false, 'message' => 'PayPalProvider class not available'];
+            // 🩹 F-B02 SAFETY FIX: NONE of PayPalProvider / StripeProvider /
+            // CoinbaseProvider actually declare a chargeStoredMethod() method
+            // (grep-confirmed zero hits — @see BillingMode.php's class
+            // doc-comment and PaymentManager::chargeViaProvider() for the
+            // same finding). G-002 is provider-MANAGED recurring billing —
+            // PayPal Subscriptions / Stripe Billing renew themselves and
+            // notify us via webhook (@see PayPalProvider::handleWebhookEvent(),
+            // StripeProvider::handleWebhookEvent()); a self-driven "pull a
+            // stored card on a timer" engine is explicitly OUT of scope for
+            // G-002 (spec §14) and tracked separately as B-075.
+            //
+            // Calling a nonexistent static method raises a PHP \Error ("Call
+            // to undefined method"), which is NOT an \Exception — the
+            // catch(\Exception) below did NOT catch it, so it propagated all
+            // the way out of the per-task loop in processDueTasks()/
+            // processLazyBatch() (which also only caught \Exception),
+            // FATALLY crashing the entire cron batch and skipping every
+            // later task (dunning, suspension, reminders, …) in that run.
+            // method_exists() detects this BEFORE the call and fails
+            // closed + informatively instead. @see self::processDueTasks()
+            // and self::processLazyBatch() for the matching \Throwable
+            // widening on the per-task catch that makes this defence-in-depth.
+            $providerClassByKey = [
+                'paypal'   => 'PayPalProvider',
+                'stripe'   => 'StripeProvider',
+                'coinbase' => 'CoinbaseProvider',
+            ];
 
-                case 'stripe':
-                    // 💳 Stripe charge via stored payment method
-                    if (class_exists('StripeProvider')) {
-                        return StripeProvider::chargeStoredMethod(
-                            $providerMethodID,
-                            $amount,
-                            $currency,
-                            $invoiceNumber
-                        );
-                    }
-                    return ['success' => false, 'message' => 'StripeProvider class not available'];
-
-                case 'coinbase':
-                    // 🪙 Cryptocurrency charge via Coinbase Commerce
-                    if (class_exists('CoinbaseProvider')) {
-                        return CoinbaseProvider::chargeStoredMethod(
-                            $providerMethodID,
-                            $amount,
-                            $currency,
-                            $invoiceNumber
-                        );
-                    }
-                    return ['success' => false, 'message' => 'CoinbaseProvider class not available'];
-
-                default:
-                    return [
-                        'success' => false,
-                        'message' => 'Unsupported payment provider: ' . $provider,
-                    ];
+            if (!array_key_exists($provider, $providerClassByKey)) {
+                return [
+                    'success' => false,
+                    'message' => 'Unsupported payment provider: ' . $provider,
+                ];
             }
 
-        } catch (\Exception $e) {
+            $providerClass = $providerClassByKey[$provider];
+
+            if (!class_exists($providerClass)) {
+                return ['success' => false, 'message' => $providerClass . ' class not available'];
+            }
+
+            if (!method_exists($providerClass, 'chargeStoredMethod')) {
+                return [
+                    'success' => false,
+                    'message' => 'unsupported: card-on-file self-charge not implemented for ' . $provider
+                        . ' (provider-managed subscriptions renew via webhook — see G-002 spec §14 / B-075)',
+                ];
+            }
+
+            // 🚧 Unreachable today (the method never exists — see above) but
+            // kept so a deliberately-implemented chargeStoredMethod() (B-075)
+            // is dispatched to correctly without another edit here.
+            return $providerClass::chargeStoredMethod(
+                $providerMethodID,
+                $amount,
+                $currency,
+                $invoiceNumber
+            );
+
+        } catch (\Throwable $e) {
             ActivityLogger::log(
                 null,
                 'provider_charge_exception',

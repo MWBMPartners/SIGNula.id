@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SIGNula.id — Brand Assets (Preview)</title>
+<style>
+  :root {
+    --bg: #f4f5fb;
+    --card: #ffffff;
+    --card-dark: #12172b;
+    --text: #23233a;
+    --text-muted: #5c5c78;
+    --border: #e1e2f0;
+    --code-bg: #1c1f2e;
+    --code-text: #d9dcf0;
+    --accent: #764ba2;
+    --link: #5568d3;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0c0e18;
+      --card: #171a2b;
+      --card-dark: #050710;
+      --text: #eceaf6;
+      --text-muted: #a8a8c4;
+      --border: #2a2e45;
+      --code-bg: #05060c;
+      --code-text: #cfd2ec;
+      --accent: #b79bd6;
+      --link: #a9b6f5;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    line-height: 1.55;
+  }
+  main { max-width: 1120px; margin: 0 auto; padding: 2.5rem 1.5rem 5rem; }
+  h1 { font-size: clamp(1.7rem, 3vw, 2.4rem); margin: 0 0 0.35rem; }
+  h2 { font-size: 1.4rem; margin: 3rem 0 0.75rem; border-bottom: 2px solid var(--border); padding-bottom: 0.5rem; }
+  h3 { font-size: 1.05rem; margin: 1.5rem 0 0.5rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  p { max-width: 72ch; }
+  .lede { color: var(--text-muted); font-size: 1.1rem; max-width: 68ch; }
+  a { color: var(--link); }
+  code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .badge {
+    display: inline-block; padding: 0.15rem 0.6rem; border-radius: 999px;
+    background: color-mix(in srgb, var(--accent) 18%, transparent);
+    color: var(--accent); font-size: 0.78rem; font-weight: 600; letter-spacing: 0.02em;
+    margin-left: 0.5rem; vertical-align: middle;
+  }
+  .grid { display: grid; gap: 1.25rem; }
+  .grid.cols-3 { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+  .grid.cols-2 { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+  .tile {
+    border: 1px solid var(--border); border-radius: 14px; overflow: hidden;
+    background: var(--card);
+  }
+  .tile header {
+    padding: 0.55rem 0.9rem; font-size: 0.82rem; font-weight: 600;
+    display: flex; justify-content: space-between; align-items: center;
+    border-bottom: 1px solid var(--border); color: var(--text-muted);
+  }
+  .swatch-row { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.6rem; }
+  .swatch-row .chip {
+    width: 26px; height: 26px; border-radius: 8px; flex: none;
+    border: 1px solid rgba(0,0,0,0.15);
+  }
+  .stage {
+    display: flex; align-items: center; justify-content: center;
+    padding: 1.75rem 1rem; min-height: 140px;
+  }
+  .stage.on-light { background: #ffffff; }
+  .stage.on-dark  { background: linear-gradient(135deg, #0a1f44, #1d3557); }
+  .stage img { max-width: 100%; height: auto; display: block; }
+  .stage.symbol img { width: 84px; height: 84px; }
+  .stage.wordmark img { width: 100%; max-width: 260px; }
+  .stage.lockup img { width: 100%; max-width: 360px; }
+
+  .callout {
+    border: 1px solid var(--border); border-left: 4px solid var(--accent);
+    background: var(--card); border-radius: 10px; padding: 1rem 1.25rem; margin: 1.25rem 0;
+    max-width: 76ch;
+  }
+  .callout.warn { border-left-color: #b45309; }
+  pre {
+    background: var(--code-bg); color: var(--code-text);
+    padding: 1rem 1.1rem; border-radius: 10px; overflow-x: auto;
+    font-size: 0.85rem; line-height: 1.5; max-width: 100%;
+  }
+  table { border-collapse: collapse; width: 100%; max-width: 76ch; margin: 1rem 0; }
+  th, td { text-align: left; padding: 0.5rem 0.7rem; border-bottom: 1px solid var(--border); font-size: 0.92rem; }
+  th { color: var(--text-muted); font-weight: 600; }
+  .controls { display: flex; gap: 0.6rem; flex-wrap: wrap; margin: 0.75rem 0 1.25rem; }
+  button.demo-btn {
+    font: inherit; font-size: 0.85rem; font-weight: 600; cursor: pointer;
+    padding: 0.5rem 0.9rem; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--card); color: var(--text);
+  }
+  button.demo-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .demo-stage {
+    display: flex; align-items: center; justify-content: center;
+    padding: 2rem; border-radius: 14px; transition: background 0.3s;
+    min-height: 200px;
+  }
+  .demo-stage object { width: 260px; height: 62px; }
+  footer { margin-top: 4rem; padding-top: 1.5rem; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 0.85rem; }
+  ul.tight li { margin-bottom: 0.4rem; }
+  .fig-caption { font-size: 0.8rem; color: var(--text-muted); padding: 0.5rem 0.9rem 0.8rem; }
+</style>
+</head>
+<body>
+<main>
+
+  <h1>SIGNula.id — Brand Assets <span class="badge">first design pass</span></h1>
+  <p class="lede">
+    A horizontal key sliding into a lock, followed by a drawn-in checkmark — security,
+    verification, and identity in one animated mark — paired with the "SIGNula.id"
+    wordmark. Every file below lives in <code>web/public_html/assets/brand/</code> and
+    is a real, loadable asset (this page references the actual files, nothing here is
+    a mock-up).
+  </p>
+
+  <!-- ============================== PALETTE ============================== -->
+  <h2>Palette</h2>
+  <p>
+    The codebase currently has two competing brand colours in play: the pre-launch
+    teaser at <code>web/public_html_landing/index.php</code> uses teal
+    (<code>--primary:#1abc9c</code>), while <code>web/public_html/assets/css/main.css</code>
+    — used across login, dashboard, account, security, admin, and partner pages —
+    already uses a blue→purple gradient. This pass adopts <strong>the existing
+    blue→purple gradient</strong> as the one true brand palette, for three reasons:
+    it already covers far more of the real, authenticated app than the single teaser
+    page; blue-to-purple hues stay distinguishable under every common form of colour
+    vision deficiency (unlike red/green or red/orange pairings); and it reads as more
+    distinctive in the identity/SSO space than the ubiquitous "security teal/green"
+    look. Nothing in this system uses red or green to convey meaning.
+  </p>
+
+  <div class="grid cols-3">
+    <div class="tile">
+      <header>Light-surface ink <span class="mono">#5568d3</span></header>
+      <div style="padding:1rem;">
+        <div class="swatch-row"><span class="chip" style="background:#5568d3"></span> Key / lock line colour — <strong>4.9 : 1</strong> on white (AA, normal text)</div>
+        <div class="swatch-row"><span class="chip" style="background:#667eea"></span> Gradient start <span class="mono">#667eea</span> — 3.7 : 1 on white (AA large-scale/graphic use)</div>
+        <div class="swatch-row"><span class="chip" style="background:#764ba2"></span> Gradient end / accent <span class="mono">#764ba2</span> — <strong>6.4 : 1</strong> on white</div>
+      </div>
+    </div>
+    <div class="tile">
+      <header>Dark-surface ink <span class="mono">#c7d0fc</span></header>
+      <div style="padding:1rem; background:#0a1f44; border-radius:0 0 14px 14px;">
+        <div class="swatch-row"><span class="chip" style="background:#c7d0fc"></span> Line colour on navy — <strong>4.9 : 1</strong></div>
+        <div class="swatch-row"><span class="chip" style="background:#7b93ee"></span> Gradient start <span class="mono">#7b93ee</span> — 4.6 : 1</div>
+        <div class="swatch-row"><span class="chip" style="background:#9b7bc4"></span> Gradient end <span class="mono">#9b7bc4</span> — 4.9 : 1</div>
+      </div>
+    </div>
+    <div class="tile">
+      <header>Mono / colour-blind-safe</header>
+      <div style="padding:1rem;">
+        <div class="swatch-row"><span class="chip" style="background:#111111"></span> <code>currentColor</code> — set once, recolours everything</div>
+        <p style="margin:0.5rem 0 0; font-size:0.88rem; color:var(--text-muted);">
+          No gradient, no hue-based meaning. Safe for print, embroidery, and every
+          form of colour vision deficiency. Meaning is carried by shape and weight only.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================== LIVE DEMO ============================== -->
+  <h2>Live demo — theme override &amp; motion</h2>
+  <p>
+    This is <code>symbol-adaptive.svg</code> embedded live via <code>&lt;object&gt;</code>
+    (a real, running instance of the file, not a screenshot). The two buttons below
+    exercise the two theme-control paths described in the file's own comments.
+  </p>
+  <div class="controls">
+    <button class="demo-btn" id="btnTheme">Toggle light / dark (sets <code>data-theme</code>)</button>
+    <button class="demo-btn" id="btnMotion">Simulate prefers-reduced-motion</button>
+  </div>
+  <div class="demo-stage" id="demoStage" style="background:#eef0fb;">
+    <object id="demoObject" data="symbol-adaptive.svg" type="image/svg+xml" style="width:140px;height:140px;" aria-label="SIGNula.id animated symbol demo"></object>
+  </div>
+  <p class="fig-caption">
+    "Toggle light / dark" sets <code>svg[data-theme]</code> on the embedded document's
+    root — the same hook an app would use if it inlines the SVG and controls it from
+    JS (mirroring the existing <code>html[data-theme]</code> pattern already used on
+    the landing page). "Simulate prefers-reduced-motion" is a preview-only stand-in
+    for the OS setting (a real browser can't be told "pretend the user asked for
+    reduced motion" from a button click), implemented by toggling an extra class the
+    production files don't ship — the actual accessibility behaviour comes from the
+    <code>@media (prefers-reduced-motion: reduce)</code> block inside each file, which
+    responds to the visitor's real OS/browser setting with no JavaScript at all.
+  </p>
+
+  <div class="callout">
+    <strong>How the animation works:</strong> pure CSS <code>@keyframes</code> (no
+    SMIL) — the key group (<code>#key</code>) slides in from off-canvas via
+    <code>translateX</code>, then the checkmark badge fades in and its stroke draws
+    on using <code>stroke-dasharray</code>/<code>stroke-dashoffset</code>, on a loop.
+    Using CSS (rather than SMIL) means <code>prefers-reduced-motion</code> can turn
+    it off declaratively, with no script required — it works even when the SVG is
+    loaded as a plain <code>&lt;img&gt;</code>. Every animated file's fallback
+    (non-animated) state is the fully-assembled "verified" look, so a renderer that
+    doesn't execute CSS animations at all (some static rasterisers, print/export
+    paths, ancient browsers) still shows the complete mark instead of a permanently
+    missing checkmark.
+  </div>
+
+  <!-- ============================== SYMBOL ============================== -->
+  <h2>Symbol</h2>
+  <p>Key-into-lock + checkmark. Alpha-transparent background; the keyhole is a genuine
+     SVG-mask cut-out, not an opaque shape drawn on top.</p>
+
+  <h3>symbol-adaptive.svg — follows OS/browser theme</h3>
+  <div class="grid cols-2">
+    <div class="tile"><header>on light</header><div class="stage symbol on-light"><img src="symbol-adaptive.svg" alt="SIGNula.id symbol, adaptive, on light"></div></div>
+    <div class="tile"><header>on dark</header><div class="stage symbol on-dark"><img src="symbol-adaptive.svg" alt="SIGNula.id symbol, adaptive, on dark"></div></div>
+  </div>
+
+  <h3>Pinned variants — symbol-light.svg / symbol-dark.svg / symbol-mono.svg</h3>
+  <div class="grid cols-3">
+    <div class="tile"><header>light</header><div class="stage symbol on-light"><img src="symbol-light.svg" alt="SIGNula.id symbol, light"></div></div>
+    <div class="tile"><header>dark</header><div class="stage symbol on-dark"><img src="symbol-dark.svg" alt="SIGNula.id symbol, dark"></div></div>
+    <div class="tile"><header>mono</header><div class="stage symbol on-light"><img src="symbol-mono.svg" alt="SIGNula.id symbol, monochrome" style="filter:none;"></div></div>
+  </div>
+  <div class="grid cols-3">
+    <div class="tile"><header>light, on dark stage</header><div class="stage symbol on-dark"><img src="symbol-light.svg" alt="SIGNula.id symbol, light variant on dark stage"></div></div>
+    <div class="tile"><header>dark, on light stage</header><div class="stage symbol on-light"><img src="symbol-dark.svg" alt="SIGNula.id symbol, dark variant on light stage"></div></div>
+    <div class="tile"><header>mono, on dark stage</header><div class="stage symbol on-dark"><img src="symbol-mono.svg" alt="SIGNula.id symbol, monochrome on dark stage" style="filter:invert(1) hue-rotate(180deg);"></div></div>
+  </div>
+  <p class="fig-caption">
+    The mono file defaults to a dark ink (<code>color="#111111"</code>) via
+    <code>currentColor</code> — on a dark stage above it's shown inverted purely as a
+    page-level CSS filter for legibility in this preview; the real recolour mechanism
+    is simply setting <code>color</code> on the <code>&lt;svg&gt;</code> (see "how to
+    recolour" below).
+  </p>
+
+  <!-- ============================== WORDMARK ============================== -->
+  <h2>Wordmark</h2>
+  <p>
+    "SIGN" bold, "ula" medium weight, ".id" bold in the accent colour — a nod to the
+    SIGNulo.id domain used for the "behind the scenes" side of the product (sign-in,
+    account hub, API). Text-based (not outlined) using the app's existing system font
+    stack — see the follow-ups section for the outlining trade-off.
+  </p>
+  <div class="grid cols-3">
+    <div class="tile"><header>light</header><div class="stage wordmark on-light"><img src="wordmark-light.svg" alt="SIGNula.id wordmark, light"></div></div>
+    <div class="tile"><header>dark</header><div class="stage wordmark on-dark"><img src="wordmark-dark.svg" alt="SIGNula.id wordmark, dark"></div></div>
+    <div class="tile"><header>mono</header><div class="stage wordmark on-light"><img src="wordmark-mono.svg" alt="SIGNula.id wordmark, monochrome"></div></div>
+  </div>
+  <p class="fig-caption">
+    Mono variant: the ".id" emphasis is carried by font-weight <em>and</em> an
+    underline — never by colour alone — so it survives greyscale and any colour
+    vision deficiency unchanged.
+  </p>
+
+  <!-- ============================== LOCKUP ============================== -->
+  <h2>Combined lockup</h2>
+  <p>Symbol + wordmark, horizontal, self-contained single files (no external references).</p>
+  <div class="grid cols-3">
+    <div class="tile"><header>light</header><div class="stage lockup on-light"><img src="lockup-light.svg" alt="SIGNula.id lockup, light"></div></div>
+    <div class="tile"><header>dark</header><div class="stage lockup on-dark"><img src="lockup-dark.svg" alt="SIGNula.id lockup, dark"></div></div>
+    <div class="tile"><header>mono</header><div class="stage lockup on-light"><img src="lockup-mono.svg" alt="SIGNula.id lockup, monochrome"></div></div>
+  </div>
+
+  <!-- ============================== FAVICON / PWA ============================== -->
+  <h2>Favicon &amp; PWA icons</h2>
+  <p>
+    The full symbol's fine key-teeth detail doesn't survive down to 16–32px, so the
+    favicon uses a simplified derivative: a bold gradient badge with a large keyhole
+    cut-out plus the same checkmark badge. <code>favicon.svg</code> follows the OS
+    theme automatically; <code>favicon-light.svg</code> / <code>favicon-dark.svg</code>
+    are fixed-colour fallbacks. These are wired into <code>web/public_html/assets/images/</code>
+    (previously empty/missing — every app page's <code>&lt;link rel="icon"&gt;</code>
+    was 404ing) and a real multi-resolution <code>favicon.ico</code> (16/32/48) plus
+    the full PWA icon set declared in <code>manifest.json</code>
+    (<code>icon-72x72.png</code> … <code>icon-512x512.png</code>) were rasterised
+    from these sources and now exist on disk.
+  </p>
+  <div class="grid cols-3">
+    <div class="tile"><header>favicon-light.svg</header><div class="stage symbol on-light"><img src="favicon-light.svg" alt="Favicon, light" style="width:56px;height:56px;"></div></div>
+    <div class="tile"><header>favicon-dark.svg</header><div class="stage symbol on-dark"><img src="favicon-dark.svg" alt="Favicon, dark" style="width:56px;height:56px;"></div></div>
+    <div class="tile"><header>icon-maskable.svg (full-bleed, safe-zone)</header><div class="stage symbol on-light"><img src="icon-maskable.svg" alt="Maskable PWA icon" style="width:72px;height:72px;border-radius:16px;"></div></div>
+  </div>
+  <table>
+    <tr><th>Reference</th><th>Path</th><th>Status</th></tr>
+    <tr><td><code>&lt;link rel="icon"&gt;</code> (login/dashboard/account/… — 14 pages)</td><td class="mono">/assets/images/favicon.svg</td><td>created</td></tr>
+    <tr><td><code>&lt;link rel="alternate icon"&gt;</code> (index.php)</td><td class="mono">/assets/images/favicon.ico</td><td>created (16/32/48 multi-res)</td></tr>
+    <tr><td>Landing page theme toggle</td><td class="mono">public_html_landing/assets/favicon-{light,dark}.svg</td><td>created</td></tr>
+    <tr><td><code>manifest.json</code> icon array (8 sizes)</td><td class="mono">/assets/images/icons/icon-*.png</td><td>rasterised from icon-maskable.svg</td></tr>
+  </table>
+
+  <!-- ============================== RECOLOUR ============================== -->
+  <h2>How to recolour (named layers)</h2>
+  <p>Every file groups its shapes under semantic, stable IDs, so a part can be
+     isolated, hidden, or restyled without touching geometry:</p>
+  <pre>&lt;g id="signula-lockup"&gt;
+  &lt;g id="symbol"&gt;
+    &lt;g id="key"&gt;   ... &lt;/g&gt;
+    &lt;g id="lock"&gt;  ... &lt;/g&gt;
+    &lt;g id="check"&gt; ... &lt;/g&gt;
+  &lt;/g&gt;
+  &lt;g id="wordmark"&gt; ... &lt;/g&gt;
+&lt;/g&gt;</pre>
+  <p>Colour lives in CSS custom properties inside each file's own <code>&lt;style&gt;</code>
+     (never hard-coded into an attribute), applied only through class selectors so
+     <code>var()</code> substitution is always honoured:</p>
+  <pre>/* inside e.g. lockup-light.svg */
+svg { --sig-ink: #5568d3; --sig-accent: #764ba2; --sig-surface: #ffffff; --sig-text: #3d3d55; }
+.sig-fill-ink { fill: var(--sig-ink); }
+.sig-tick     { stroke: var(--sig-accent); }</pre>
+  <p>To reskin: edit the four <code>--sig-*</code> values at the top of the file — no
+     other markup changes needed. The mono files go further and use
+     <code>currentColor</code> everywhere, so the entire mark recolours from a single
+     <code>color</code> value:</p>
+  <pre>&lt;!-- shifts the whole mono mark to the brand's dark ink --&gt;
+&lt;img src="lockup-mono.svg" style="color:#3d3d55"&gt;
+&lt;!-- or, if inlined --&gt;
+&lt;svg id="signula-mark" style="color:#3d3d55"&gt;...&lt;/svg&gt;</pre>
+
+  <!-- ============================== BASE64 FALLBACK ============================== -->
+  <h2>SVG-with-Base64-fallback pattern</h2>
+  <p>
+    Per the project brief's rule for icons/graphics ("SVG preferred, Base64-encoded
+    fallback for clients that don't support it, detected dynamically where possible")
+    — the same pattern <code>AvatarService.php</code> already uses for avatar
+    fallbacks. <code>&lt;picture&gt;</code> is the standards-based way to do this: the
+    browser uses the first <code>&lt;source&gt;</code> it supports, falling all the
+    way back to the plain <code>&lt;img&gt;</code>'s <code>src</code> (which can be a
+    Base64 data URI) if nothing else matches.
+  </p>
+  <pre>&lt;picture&gt;
+  &lt;source srcset="/assets/brand/lockup-light.svg" type="image/svg+xml"&gt;
+  &lt;img
+    src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA...(truncated, see lockup-fallback.png)"
+    alt="SIGNula.id"
+    width="420" height="100"
+    loading="lazy"
+  &gt;
+&lt;/picture&gt;</pre>
+  <p>Live example — this exact PNG fallback (a real Base64-encoded raster export of
+     <code>lockup-light.svg</code>, generated with <code>rsvg-convert</code>, also
+     saved alongside the source files as <code>lockup-fallback.png</code>) rendered
+     with a plain <code>&lt;img&gt;</code>, no SVG involved:</p>
+  <div class="tile"><div class="stage lockup on-light">
+    <img alt="SIGNula.id (Base64 PNG fallback demo)" width="420" height="100"
+         src="data:image/png;base64,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"
+  ></div></div>
+
+  <!-- ============================== FOLLOW-UPS ============================== -->
+  <h2>Owner follow-ups</h2>
+  <ul class="tight">
+    <li><strong>Approve the palette.</strong> This pass picked the existing blue→purple
+      gradient over the teaser page's teal — reversible if you'd rather standardise
+      on teal instead (all colour values are isolated in each file's
+      <code>&lt;style&gt;</code> block, so a swap is mechanical).</li>
+    <li><strong>Wordmark is text, not outlines.</strong> It uses the app's existing
+      system font stack (renders correctly everywhere, stays editable/searchable),
+      but that means its exact shape depends on whatever font the visitor's OS
+      substitutes. A vector-perfect wordmark that renders pixel-identically
+      everywhere would need converting this text to outlined paths — worth a
+      follow-up pass once the wordmark treatment itself is approved.</li>
+    <li><strong>PNG/ICO export — already done, not just noted.</strong>
+      <code>rsvg-convert</code> + ImageMagick were available in this environment, so
+      <code>favicon.ico</code> and the full 8-size <code>manifest.json</code> PWA
+      icon set were actually rasterised, not left as a TODO.</li>
+    <li><strong>Maskable safe-zone is a good-faith first pass,</strong> not
+      pixel-audited against every Android launcher shape — <code>icon-maskable.svg</code>
+      keeps content inside the standard 80% safe circle, but a dedicated maskable-icon
+      QA pass (e.g. Chrome DevTools' maskable icon tester) is worth doing before
+      shipping to production.</li>
+    <li><strong>Verification caveat:</strong> this preview's screenshots during
+      development were spot-checked with <code>rsvg-convert</code> (librsvg), which
+      does not resolve CSS <code>var()</code> inside <code>&lt;style&gt;</code> blocks
+      — so command-line rasterised previews can show shapes in black/white even
+      though the same markup renders in full colour in every evergreen browser
+      (Chrome, Firefox, Safari all fully support CSS custom properties inside SVG
+      stylesheets). Please sanity-check the live colours by opening this page itself
+      in a browser, not by re-rasterising the source files with an older SVG CLI tool.</li>
+  </ul>
+
+  <footer>
+    SIGNula.id brand assets — first design pass. Files:
+    symbol-{adaptive,light,dark,mono}.svg · wordmark-{light,dark,mono}.svg ·
+    lockup-{light,dark,mono}.svg · favicon{,-light,-dark}.svg · icon-maskable.svg ·
+    lockup-fallback.png · this page (preview.html). All under
+    <code>web/public_html/assets/brand/</code>.
+  </footer>
+
+</main>
+
+<script>
+  (function () {
+    "use strict";
+
+    var themeBtn  = document.getElementById("btnTheme");
+    var motionBtn = document.getElementById("btnMotion");
+    var stage     = document.getElementById("demoStage");
+    var obj       = document.getElementById("demoObject");
+    var isDark    = false;
+    var reduced   = false;
+
+    function getSvgRoot() {
+      try {
+        return obj.contentDocument ? obj.contentDocument.querySelector("svg") : null;
+      } catch (e) {
+        return null; // cross-origin / not-yet-loaded guard
+      }
+    }
+
+    themeBtn.addEventListener("click", function () {
+      var root = getSvgRoot();
+      if (!root) { return; }
+      isDark = !isDark;
+      root.setAttribute("data-theme", isDark ? "dark" : "light");
+      stage.style.background = isDark
+        ? "linear-gradient(135deg, #0a1f44, #1d3557)"
+        : "#eef0fb";
+    });
+
+    motionBtn.addEventListener("click", function () {
+      var doc = obj.contentDocument;
+      if (!doc) { return; }
+      reduced = !reduced;
+      var styleId = "sig-preview-reduced-motion-sim";
+      var existing = doc.getElementById(styleId);
+      if (reduced) {
+        if (!existing) {
+          var style = doc.createElement("style");
+          style.id = styleId;
+          // Mirrors the file's own @media (prefers-reduced-motion: reduce) block,
+          // keyed off a class instead of the media feature, purely so this preview
+          // can demonstrate the effect on demand. Not shipped in the production files.
+          style.textContent =
+            ".sig-force-reduced #key, .sig-force-reduced .sig-badge-circle, .sig-force-reduced .sig-tick { animation: none !important; }" +
+            ".sig-force-reduced #key { transform: translateX(0) !important; }" +
+            ".sig-force-reduced .sig-badge-circle { opacity: 1 !important; }" +
+            ".sig-force-reduced .sig-tick { stroke-dashoffset: 0 !important; }";
+          doc.head.appendChild(style);
+        }
+        doc.querySelector("svg").classList.add("sig-force-reduced");
+        motionBtn.textContent = "Resume animation";
+      } else {
+        var root = doc.querySelector("svg");
+        if (root) { root.classList.remove("sig-force-reduced"); }
+        motionBtn.textContent = "Simulate prefers-reduced-motion";
+      }
+    });
+  })();
+</script>
+</body>
+</html>

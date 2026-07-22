@@ -69,11 +69,14 @@ class AccountManager
             // 🔐 Verify password
             if (!password_verify($password, $user['passwordHash'])) {
                 if (class_exists('ActivityLogger')) {
+                    // 🐛 B-066: ActivityLogger::log()'s real signature has no
+                    // $activityResult/$activityDetails params — mapped to
+                    // $description (see settings/profile.php's B-066 fix for
+                    // the full explanation of why the old named args fatal).
                     ActivityLogger::log(
                         userID: $userID,
                         activityType: 'account_deletion_failed',
-                        activityResult: 'failure',
-                        activityDetails: 'Incorrect password during account deletion request'
+                        description: 'Incorrect password during account deletion request'
                     );
                 }
                 return ['success' => false, 'message' => 'Incorrect password.', 'scheduled_for' => null];
@@ -103,12 +106,13 @@ class AccountManager
             );
 
             // 📝 Log activity
+            // 🐛 B-066: mapped to $description — see the password-verify
+            // failure branch above for the full explanation.
             if (class_exists('ActivityLogger')) {
                 ActivityLogger::log(
                     userID: $userID,
                     activityType: 'account_deletion_requested',
-                    activityResult: 'success',
-                    activityDetails: 'Account deletion requested, scheduled for ' . $deletionDateStr
+                    description: 'Account deletion requested, scheduled for ' . $deletionDateStr
                 );
             }
 
@@ -176,12 +180,13 @@ class AccountManager
                 return ['success' => false, 'message' => 'No pending deletion request found.'];
             }
 
+            // 🐛 B-066: mapped to $description — see requestAccountDeletion()'s
+            // password-verify failure branch above for the full explanation.
             if (class_exists('ActivityLogger')) {
                 ActivityLogger::log(
                     userID: $userID,
                     activityType: 'account_deletion_cancelled',
-                    activityResult: 'success',
-                    activityDetails: 'Account deletion request cancelled by user'
+                    description: 'Account deletion request cancelled by user'
                 );
             }
 
@@ -335,6 +340,18 @@ class AccountManager
                 'i'
             );
 
+            // 🛡️ G-004 §2.4: anonymise (NEVER delete) compliance records — the FACT of
+            // consent / of a data-subject request must survive erasure for regulator
+            // proof; the PII must not. Neither table has a hard FK to tblUsers by design.
+            Database::query(
+                "UPDATE tblConsentRecords SET userID = NULL, ipAddress = NULL, userAgent = 'REDACTED' WHERE userID = ?",
+                [$userID], 'i'
+            );
+            Database::query(
+                "UPDATE tblDataSubjectRequests SET userID = NULL, requesterEmail = NULL, ipAddress = NULL WHERE userID = ?",
+                [$userID], 'i'
+            );
+
             // 🔒 Anonymise payment records (financial records must be retained)
             Database::query(
                 "UPDATE tblPayments SET ipAddress = 'REDACTED', userAgent = 'REDACTED'
@@ -368,12 +385,13 @@ class AccountManager
             Database::commit();
 
             // 📝 Log (system-level, no userID since user is deleted)
+            // 🐛 B-066: mapped to $description — see requestAccountDeletion()'s
+            // password-verify failure branch above for the full explanation.
             if (class_exists('ActivityLogger')) {
                 ActivityLogger::log(
                     userID: null,
                     activityType: 'account_permanently_deleted',
-                    activityResult: 'success',
-                    activityDetails: 'User account #' . $userID . ' permanently deleted per GDPR request'
+                    description: 'User account #' . $userID . ' permanently deleted per GDPR request'
                 );
             }
 
@@ -467,7 +485,7 @@ class AccountManager
                  (userID, status, filePath, fileSize, fileHash, downloadToken, ipAddress, completedAt, expiresAt)
                  VALUES (?, 'completed', ?, ?, ?, ?, ?, NOW(), ?)",
                 [$userID, $fileName, $fileSize, $fileHash, $downloadToken, getClientIP(), $expiresAt],
-                'isisss s'
+                'isissss'
             );
 
             $exportID = Database::insertId();
@@ -483,12 +501,13 @@ class AccountManager
             }
 
             // 📝 Log
+            // 🐛 B-066: mapped to $description — see requestAccountDeletion()'s
+            // password-verify failure branch above for the full explanation.
             if (class_exists('ActivityLogger')) {
                 ActivityLogger::log(
                     userID: $userID,
                     activityType: 'data_export_completed',
-                    activityResult: 'success',
-                    activityDetails: 'GDPR data export generated (' . number_format($fileSize) . ' bytes)'
+                    description: 'GDPR data export generated (' . number_format($fileSize) . ' bytes)'
                 );
             }
 
@@ -543,8 +562,20 @@ class AccountManager
         ];
 
         // 📝 Activity log (last 1000 entries)
+        // 🐛 B-066-class fix: tblActivityLog has NO `activityResult`/
+        // `activityDetails` columns (verified against information_schema —
+        // same real schema ActivityLogger::log() writes to: activityType,
+        // severity, description, ipAddress, createdAt, ...). The old SELECT
+        // referenced non-existent columns and fatalled with "Unknown column
+        // 'activityResult' in 'field list'" on EVERY call, regardless of
+        // whether the user had any activity rows — meaning exportUserData()
+        // never actually completed successfully. Mapped to the real
+        // columns; `success` is the closest real analogue to the intended
+        // "activityResult" (though every row currently logs success=TRUE
+        // unconditionally — see ActivityLogger::log(), a separate,
+        // pre-existing, out-of-scope quirk).
         $activities = Database::fetchAll(
-            "SELECT activityType, activityResult, activityDetails, ipAddress, createdAt
+            "SELECT activityType, severity, success, description, ipAddress, createdAt
              FROM tblActivityLog WHERE userID = ? ORDER BY createdAt DESC LIMIT 1000",
             [$userID],
             'i'
@@ -561,8 +592,12 @@ class AccountManager
         $data['mfa_methods'] = $mfaMethods ?: [];
 
         // 🔑 WebAuthn credentials (no private keys)
+        // 🐛 B-066-class fix: tblWebAuthnCredentials has NO `credentialType`
+        // column (verified against information_schema) — the real column
+        // recording the credential's kind is `authenticatorType`
+        // (ENUM('platform','cross-platform','unknown')).
         $passkeys = Database::fetchAll(
-            "SELECT credentialType, deviceName, deviceType, lastUsedAt, createdAt
+            "SELECT authenticatorType, deviceName, deviceType, lastUsedAt, createdAt
              FROM tblWebAuthnCredentials WHERE userID = ?",
             [$userID],
             'i'
@@ -570,8 +605,11 @@ class AccountManager
         $data['passkeys'] = $passkeys ?: [];
 
         // 🔗 Linked OAuth accounts
+        // 🐛 B-066-class fix: tblOAuthAccounts has NO `providerEmail`/
+        // `providerDisplayName` columns (verified against
+        // information_schema) — the real columns are `email`/`displayName`.
         $linkedAccounts = Database::fetchAll(
-            "SELECT provider, providerEmail, providerDisplayName, linkedAt
+            "SELECT provider, email, displayName, linkedAt
              FROM tblOAuthAccounts WHERE userID = ?",
             [$userID],
             'i'

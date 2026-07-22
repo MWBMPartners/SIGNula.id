@@ -51,11 +51,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 Database::query("DELETE FROM tblMFABackupCodes WHERE userID = ?", [$userID], 'i');
 
                 // 📝 Log activity
+                // 🐛 B-067: ActivityLogger::log()'s real signature is
+                // (?int $userID, string $activityType, string $category = 'other',
+                //  string $severity = 'info', string $description = '', array $metadata = [],
+                //  ?int $sessionID = null) — it has NO $activityResult/$activityDetails
+                // parameters. Calling it with those named arguments throws
+                // `Error: Unknown named parameter $activityResult` in PHP 8
+                // (named-argument matching is by declared parameter name, not
+                // by position), which fatals this POST handler AFTER MFA was
+                // already disabled. Mapped to the real parameters: $description
+                // takes the free-text detail, and $category is set to
+                // 'security' since MFA changes are security-relevant (mirrors
+                // SessionGuard/SecurityAlertManager's own ActivityLogger::log()
+                // calls) — matches the B-066 fix already applied to the other
+                // settings pages (see settings/profile.php's B-066 note).
                 ActivityLogger::log(
                     userID: $userID,
                     activityType: 'mfa_disabled',
-                    activityResult: 'success',
-                    activityDetails: 'Two-factor authentication disabled'
+                    category: 'security',
+                    description: 'Two-factor authentication disabled'
                 );
 
                 $message = 'Two-factor authentication has been disabled.';
@@ -98,11 +112,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             // 📝 Log activity
+            // 🐛 B-067: see the disable_mfa branch above for why
+            // $activityResult/$activityDetails (not real ActivityLogger::log()
+            // parameters) are replaced with $category/$description here.
             ActivityLogger::log(
                 userID: $userID,
                 activityType: 'mfa_backup_codes_regenerated',
-                activityResult: 'success',
-                activityDetails: 'Backup recovery codes regenerated'
+                category: 'security',
+                description: 'Backup recovery codes regenerated'
             );
 
             $message = 'New backup codes generated successfully. Please save them securely.';

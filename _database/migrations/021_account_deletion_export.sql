@@ -95,7 +95,7 @@ CREATE TABLE IF NOT EXISTS `tblDataExportRequests` (
 -- ⚙️ SETTINGS
 -- ============================================================================
 
-INSERT INTO `tblSettings` (`settingKey`, `settingValue`, `settingDescription`, `settingCategory`, `isSensitive`)
+INSERT INTO `tblSettings` (`settingKey`, `settingValue`, `description`, `settingCategory`, `isSensitive`)
 VALUES
     ('gdpr.deletion.grace_period_days', '30',
      'Number of days to wait before permanently deleting an account after user request',
@@ -121,7 +121,7 @@ VALUES
 -- 📧 EMAIL TEMPLATES
 -- ============================================================================
 
-INSERT INTO `tblEmailTemplates` (`templateKey`, `templateName`, `subject`, `htmlBody`, `textBody`, `requiredVariables`, `isActive`)
+INSERT INTO `tblEmailTemplates` (`templateKey`, `templateName`, `subject`, `bodyHTML`, `bodyText`, `requiredVariables`, `isActive`)
 VALUES
     (
         'account_deletion_requested',

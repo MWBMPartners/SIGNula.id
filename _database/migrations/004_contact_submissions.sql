@@ -124,7 +124,7 @@ COMMENT='Contact form submissions from SIGNula.com marketing website';
 -- ============================================================================
 
 -- Add setting for contact form email notifications
-INSERT INTO tblSettings (settingKey, settingValue, settingType, isSensitive, description, category)
+INSERT INTO tblSettings (settingKey, settingValue, settingType, isSensitive, description, settingCategory)
 VALUES
     ('contact.notification.enabled', '1', 'boolean', 0, 'Enable email notifications for new contact submissions', 'Contact Form'),
     ('contact.notification.email', 'support@signula.com', 'string', 0, 'Email address to receive contact form notifications', 'Contact Form'),

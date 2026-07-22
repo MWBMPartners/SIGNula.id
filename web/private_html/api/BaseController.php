@@ -200,16 +200,82 @@ abstract class BaseController
     }
 
     /**
-     * 🎫 Get user by JWT token
+     * 🎫 Get user by JWT bearer token (G-003 Stage 3).
      *
-     * @param string $token JWT token
-     * @return array|null User data
+     * Verifies an `Authorization: Bearer <jwt>` access token and resolves the
+     * SIGNula user it belongs to. The full verification chain lives in
+     * TokenService::verifyAccessToken() (which layers the jti denylist + the
+     * per-user tokensInvalidBefore cutoff on top of Jwt::verify()'s RS256-pinned,
+     * iss/aud/exp/nbf/typ-validated crypto). We:
+     *
+     *   1. Verify the token (typ = at+jwt enforced). ANY failure — bad signature,
+     *      expired, tampered, alg:none, HS256-confusion, wrong iss/aud, unknown
+     *      kid, denylisted jti, or predating the user's revoke cutoff — throws a
+     *      JwtException here, which we swallow and turn into `null` so
+     *      requireAuth() emits the SAME generic 401 as any other auth miss.
+     *      🔒 We NEVER leak WHY the token was rejected to the response body
+     *      (G-003 §6); the detail is logged server-side only.
+     *   2. Load the user by the `sub` (userID) claim, active accounts only.
+     *   3. Tag the resolved user with auth_method='jwt' + the token's scope/jti so
+     *      controllers can enforce method-specific rules (§5 coexistence).
+     *
+     * API-key and session auth are unaffected — getCurrentUser() tries this path
+     * only when a Bearer token is present, and falls through to the API-key path
+     * on a null return.
+     *
+     * @param string $token The raw JWT from the Authorization header.
+     * @return array|null   The user row (+ auth markers) or null on any failure.
      */
     private function getUserByToken(string $token): ?array
     {
-        // TODO: Implement JWT validation
-        // For now, return null
-        return null;
+        // 🧰 Defensive: the JWT stack must be loadable. If TokenService/Jwt are
+        //    somehow unavailable, fail closed (null → 401) rather than error.
+        if (!class_exists('TokenService')) {
+            return null;
+        }
+
+        try {
+            // 1️⃣ Verify under full SIGNula policy (throws JwtException on failure).
+            $claims = TokenService::verifyAccessToken($token, ['typ' => 'at+jwt']);
+        } catch (Throwable $e) {
+            // 🔇 Log the real reason server-side ONLY; never surface it.
+            if (class_exists('ActivityLogger')) {
+                try {
+                    ActivityLogger::log(
+                        null,
+                        'jwt_verify_failed',
+                        'auth',
+                        'warning',
+                        'Bearer JWT rejected'
+                        // Deliberately NO token and NO failure reason in metadata.
+                    );
+                } catch (Throwable $ignored) {
+                    // never let logging break the auth path
+                }
+            }
+            return null;
+        }
+
+        // 2️⃣ Resolve the subject. `sub` is the userID as a string per JWT
+        //    convention; coerce to int and load the ACTIVE user row.
+        $sub = isset($claims['sub']) ? (int) $claims['sub'] : 0;
+        if ($sub <= 0) {
+            return null;
+        }
+
+        $user = $this->getUserById($sub);
+        if ($user === null) {
+            // Verified token but the user is gone / not active → treat as 401.
+            return null;
+        }
+
+        // 3️⃣ Tag with the auth method + token context (controllers may branch on
+        //    this — e.g. some partner endpoints want api_key only).
+        $user['auth_method'] = 'jwt';
+        $user['scope']       = isset($claims['scope']) && is_string($claims['scope']) ? $claims['scope'] : '';
+        $user['jti']         = isset($claims['jti']) && is_string($claims['jti']) ? $claims['jti'] : '';
+
+        return $user;
     }
 
     /**
@@ -221,17 +287,26 @@ abstract class BaseController
     private function getUserByApiKey(string $apiKey): ?array
     {
         try {
+            // 🔑 B-050 FIX: API keys are stored HASHED, never in plaintext.
+            //    APIKeyManager::createKey() persists hash('sha256', $apiKey) into
+            //    tblAPIKeys.keyHash (there is no `apiKey` column — the previous
+            //    `WHERE k.apiKey = ?` referenced a non-existent column AND compared
+            //    a plaintext value, so this lookup always failed). Match the same
+            //    keyHash pattern used by APIKeyManager::validateKey() and
+            //    UsageController so this fallback actually resolves a key.
+            $keyHash = hash('sha256', $apiKey);
+
             $query = "
                 SELECT u.*
                 FROM tblUsers u
                 INNER JOIN tblAPIKeys k ON u.userID = k.userID
-                WHERE k.apiKey = ?
+                WHERE k.keyHash = ?
                 AND k.isActive = 1
                 AND (k.expiresAt IS NULL OR k.expiresAt > NOW())
                 AND u.accountStatus = 'active'
             ";
 
-            $result = Database::query($query, [$apiKey], 's');
+            $result = Database::query($query, [$keyHash], 's');
 
             if ($result && $user = $result->fetch_assoc()) {
                 return $user;

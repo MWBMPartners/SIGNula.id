@@ -426,6 +426,13 @@ ProjectBrief_Chat.gpt
 # 🚫 NEVER commit these files - they contain sensitive credentials
 _private/auth.php
 _private/keys/*
+# 🔑 G-003: JWT signing-key material lives under _private/keys/jwt/. The `/*`
+#    above only matches DIRECT children, so cover the whole subtree here — this
+#    catches both the private .key files AND the .pub public keys that
+#    KeyManager mirrors to disk as a DB fallback (test runs generate many).
+_private/keys/**
+web/_private/keys/**
+**/keys/jwt/*.pub
 _private/backups/*
 *.pem
 *.key
@@ -590,6 +597,11 @@ web/.vscode/
 # Database files (keep structure, ignore generated SQL)
 _database/*.sql
 !_database/migrations/*.sql
+# B-033: the consolidated installer IS the canonical fresh-install artifact used
+# by web/public_html/install/index.php and _scripts/setup_test_db.sh. It must be
+# present in a clean checkout (the build-complete-install.sh generator is stale
+# and cannot reproduce it). Track it so "builds & runs from clean checkout" holds.
+!_database/signula_complete_install_v2.5.0.sql
 
 # ============================================================
 # Logs

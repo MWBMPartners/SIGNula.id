@@ -62,7 +62,7 @@ CREATE TABLE IF NOT EXISTS `tblPasswordHistory` (
 -- ⚙️ SETTINGS — Password History & Notification Configuration
 -- ============================================================================
 
-INSERT INTO `tblSettings` (`settingKey`, `settingValue`, `settingDescription`, `settingCategory`, `isSensitive`)
+INSERT INTO `tblSettings` (`settingKey`, `settingValue`, `description`, `settingCategory`, `isSensitive`)
 VALUES
     -- 🔐 Password history settings
     ('security.password.history_count', '5',
@@ -96,13 +96,17 @@ VALUES
 
     ('security.password.notify_on_reset', 'true',
      'Send security alert email when a password is reset via token',
-     'security', 0);
+     'security', 0)
+-- [mig-fix] idempotent: some of these keys (e.g. security.password.min_length)
+-- are already seeded by the consolidated installer. ON DUPLICATE KEY UPDATE
+-- keeps replay safe without overwriting an operator's tuned value.
+ON DUPLICATE KEY UPDATE `settingKey` = `settingKey`;
 
 -- ============================================================================
 -- 📧 EMAIL TEMPLATE — Password Changed Notification
 -- ============================================================================
 
-INSERT INTO `tblEmailTemplates` (`templateKey`, `templateName`, `subject`, `htmlBody`, `textBody`, `requiredVariables`, `isActive`)
+INSERT INTO `tblEmailTemplates` (`templateKey`, `templateName`, `subject`, `bodyHTML`, `bodyText`, `requiredVariables`, `isActive`)
 VALUES
     (
         'password_changed_notification',

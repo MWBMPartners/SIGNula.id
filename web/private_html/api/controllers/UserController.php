@@ -532,8 +532,13 @@ class UserController extends BaseController
             Database::query($tokenQuery, [$user['userID'], $tokenHash, $expiresAt], 'iss');
 
             // 📧 Send verification email
+            // 🔒 B-039: rawurlencode() the token in the query string. Current
+            //    tokens are hex (bin2hex → URL-safe, so a no-op today) but this
+            //    hardens the link against any future token format containing
+            //    URL-reserved characters. No double-encoding risk — hex passes
+            //    through rawurlencode() unchanged.
             $verificationLink = getSetting('app.url', 'https://SIGNula.id')
-                . '/api/v1/auth/verify-email?token=' . $token;
+                . '/api/v1/auth/verify-email?token=' . rawurlencode($token);
 
             EmailService::sendTemplate(
                 $data['new_email'],

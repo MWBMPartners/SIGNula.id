@@ -9,10 +9,250 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Multi-jurisdiction compliance — Layer 1a: consent foundation (G-004, in progress).**
+  - New migration `040_consent_and_dsar.sql` creates the append-only consent
+    audit trail (`tblConsentRecords`), the data-subject-request tracker
+    (`tblDataSubjectRequests`), and its status-change timeline
+    (`tblDataSubjectRequestEvents`), plus six `privacy`-category settings
+    (DSAR SLA / identity-token / notify defaults, consent proof-hash toggle).
+    Also widens `tblActivityLog.activityCategory` to accept the `privacy` category.
+  - New `ConsentManager` (`web/private_html/compliance/`) — records every
+    grant/withdraw as an immutable new row (never an update), with packed-IP
+    minimisation (`VARBINARY(16)` via `inet_pton`), a tamper-evidence SHA-256
+    proof hash, and full activity-log auditing; resolves the latest decision
+    per consent type and reconciles anonymous-visitor consent to a user on login.
+  - `settings/privacy.php` gains a server-persisted consent toggle and a
+    read-only "My Consent History" section (CSRF-protected, server-authoritative
+    allowlist, works without JavaScript).
+  - Data-driven by design: no jurisdiction value is hardcoded — the regime
+    model, DSAR fulfilment engine, and admin queue land in later G-004 cycles.
+- **Multi-jurisdiction compliance — Layer 1b: DSAR engine (G-004, in progress).**
+  - New `DSARManager` (`web/private_html/compliance/`) tracks a data-subject
+    request (access / portability / erasure / rectification / …) through a
+    guarded state machine, with SHA-256-hashed identity-verification tokens
+    (raw token never stored), an audited status timeline, and bounded admin
+    queue / compliance-report queries.
+  - Fulfilment **delegates** to the existing GDPR engine rather than
+    duplicating it: portability/access call `AccountManager::exportUserData()`,
+    erasure calls `AccountManager::requestAccountDeletion()` (the existing
+    grace-period cron performs the actual erasure). There is exactly one
+    export/delete implementation.
+  - Permanent erasure now **anonymises** (never deletes) the consent and DSAR
+    records — the *fact* of consent and of a fulfilled request survives for
+    regulator proof while the PII does not.
+  - `settings/privacy.php` gains a "Submit a Data Subject Request" form
+    (CSRF-protected, server-authoritative type allowlist, works without JS).
+- **Multi-jurisdiction compliance — Layer 1c: admin queue + public form (G-004). This completes Layer 1.**
+  - New admin DSAR queue at `/admin/compliance/dsar` (super-admin only) —
+    filter/sort/paginate requests, overdue highlighting, a detail view with the
+    full audit timeline, and fulfilment actions; every mutation is CSRF-checked,
+    POST-only, `X-Frame-Options: DENY`, and recorded in the admin audit log.
+  - New public "I can't log in" data-request form at `/legal/data-request`
+    (CAPTCHA + anti-bot + rate-limited) that emails an identity-verification
+    link. It **never reveals whether an email matches an account** — the
+    response is identical in either case (user-enumeration protection).
+  - Admin fulfilment of export/erasure never bypasses the account owner's
+    password — those actions remain completable only by the data subject
+    themselves; the queue tracks and routes them.
+  - **Layer 1 (consent trail + DSAR engine + admin queue + public form) is now
+    complete and usable.**
+- **Multi-jurisdiction compliance — Layer 2: consent-management surface (G-004).**
+  - The cookie banner is now **server-persisted and granular** — visitors accept
+    or decline per category (necessary / functional / analytics / marketing;
+    "necessary" can't be switched off), and the choice is stored server-side (the
+    source of truth), not just in the browser. Categories are data-driven from a
+    new table, and the banner **works with JavaScript disabled** (native form
+    submit + a full-page fallback at `/legal/consent`).
+  - **"Do Not Sell or Share My Personal Information"** — a new toggle on the
+    privacy page plus a public `/legal/do-not-sell` page, and automatic honoring
+    of the browser **Global Privacy Control (`Sec-GPC`)** signal (opt-out recorded
+    once per session, never duplicated).
+  - **Versioned re-consent** — when the current terms/privacy policy version
+    changes, users can be prompted to re-accept on next login. This is
+    **off by default** and enabled via a setting when the operator is ready.
+  - No policy text is shipped — the new policy-version table carries version
+    anchors only; wording remains the operator's/counsel's to provide.
+- **Multi-jurisdiction compliance — Layer 3 core: data-driven regime model (G-004).**
+  - New regime tables let every jurisdiction-specific value — a right, an SLA in
+    days, an age threshold, a breach-notification window — live in **configuration,
+    not code**. Adding a new jurisdiction is a data change; no PHP edits.
+  - **19 jurisdictions are pre-seeded as drafts** (GDPR, UK GDPR, CCPA/CPRA, VCDPA,
+    CPA, CTDPA, UCPA, HIPAA, COPPA, LGPD, PIPEDA, APPI, PIPA, POPIA, DPDP, PIPL, and
+    the Australia/New Zealand Privacy Acts) — **inactive, with their legal values
+    left blank** for the operator/counsel to fill and activate. Well-known public
+    reference numbers are included only as clearly-labelled "confirm with legal"
+    notes, never as live values.
+  - A new resolver stamps each data-subject request and consent record with its
+    governing regime and SLA, always falling back to the **most-protective default**
+    when nothing is configured (it never fails open). With the shipped (all-draft)
+    seed this is a no-op — existing behaviour is unchanged until a regime is
+    activated.
+  - A **super-admin regime-management console** (`/admin/compliance/regimes`) lets
+    the operator fill each regime's legal values, rights, disclosures and
+    resolution rules and then activate it. A regime **cannot be activated until its
+    SLA, minimum age and breach-notification window are all filled in** (enforced
+    server-side, re-reading the stored values), so a jurisdiction can never go live
+    with blank legal values. Every change is CSRF-protected and audit-logged.
+- **Multi-jurisdiction compliance — Layer 4a: retention + the compliance cron (G-004).**
+  - A new **token-secured compliance cron** (`/cron/compliance.php`, run by your
+    external scheduler) now runs the previously-dormant scheduled work: it executes
+    due account deletions, cleans up expired data-export files, expires stale
+    data-request verification tokens, and applies retention policies. Enable it by
+    setting `compliance.cron.secret_token` (a strong random value) and pointing your
+    cron at the endpoint.
+  - **Data-retention policies** (`tblRetentionPolicies`) let you age out old data by
+    table on a schedule (anonymise or delete). This ships **completely inert and
+    safe**: retention purging is **disabled** and in **dry-run** mode by default, and
+    the seeded policies are inactive — nothing is ever purged until you explicitly
+    fill in a policy, activate it, and turn purging on. Purges are batch-capped and
+    restricted to a hardcoded table/column allowlist.
+- **Multi-jurisdiction compliance — Layer 4b: breach notifications, RoPA register,
+  COPPA age-gate (G-004). Completes the epic — all four layers are now BUILT.**
+  - A new **breach-notification log and admin workflow** (`/admin/compliance/breaches`,
+    `tblBreachIncidents` + `tblBreachNotifications`) lets an operator open an
+    incident and **compute** its per-regime notification deadlines — every deadline
+    is `detectedAt + RegimeResolver::breachWindowHours(regime)`, never a hardcoded
+    window. A regime with no configured window degrades gracefully to a `NULL` due
+    date and an explanatory note rather than guessing or crashing. This tool
+    **computes deadlines and tracks status only** — it never auto-files with a
+    regulator and never writes notification copy for you.
+  - A new **Records of Processing Activities (RoPA) register**
+    (`/admin/compliance/ropa`, `tblProcessingActivities`) provides pure CRUD
+    structure for your processing-activity inventory. It ships with **zero seeded
+    rows** — every purpose, lawful basis, recipient list and retention period is
+    entered by you or your DPO; nothing is fabricated or pre-filled.
+  - A new **COPPA-style signup age gate** (`AgeGateService`), **OFF by default**
+    (`compliance.age_gate.enabled = '0'`) — with the setting off, registration is
+    byte-for-byte unchanged from before this release. When an operator enables it,
+    the minimum age comes from `RegimeResolver::minAgeFor()` (never a hardcoded
+    number), and an under-age signup routes to a **parental-consent email-link
+    scaffold** (`tblParentalConsents`) rather than being silently allowed or
+    silently blocked. The verification token is stored **only as its SHA-256
+    hash** — the same pattern already used for DSAR identity verification —
+    never the raw value.
+
+### Fixed
+
+- **Scheduled account deletions and export cleanup now actually run.** The
+  grace-period account-erasure and expired-export-cleanup routines existed but
+  nothing ever invoked them, so a confirmed account-deletion request was never
+  carried out and old export files were never removed. The new compliance cron
+  wires both in (you must set its secret token and schedule it).
+- **GDPR data-export and account-deletion were broken and now work.** The
+  `AccountManager` export/erasure engine had four latent defects (activity-log
+  calls using parameters that don't exist, a malformed prepared-statement type
+  string, and three queries referencing columns that don't exist), so the
+  "Export My Data" and "Delete Account" actions on the privacy page failed on
+  every use. All four are fixed and verified against the live database schema.
+
 ### Planned
 
 - Mobile apps (iOS, Android)
 - Advanced analytics and reporting dashboard
+- SIGNula as IdP — SAML 2.0 / OIDC provider (G-001, **provider + iHymns integration shipped**; SAML later)
+- Recurring billing engine with dunning (G-002, **built — TEST-MODE only**; go-live is the owner's #70 step)
+- JWT bearer-auth for API (G-003, **shipped in v2.8.0-beta** — see below)
+- Multi-jurisdiction compliance tooling — consent log, DSAR engine, regime model, breach/RoPA/retention (G-004, **BUILT — all four layers shipped**: L1 DSAR + consent, L2 consent-management surface, L3 data-driven regime model, L4a retention + compliance cron, L4b breach notifications + RoPA register + COPPA age-gate)
+
+---
+
+## [2.7.0-beta] — 2026-07-01
+
+> **Version note:** The `VERSION` file currently reads `2.6.0-beta`; all feature entries since the credential-reset phase have been logged under `2.7.0-beta`. The current working version is treated as **2.7.0-beta** pending a formal tag.
+
+### Fixed — Foundation Hardening (autopilot/2026-06-30, cycles 3-12)
+
+The automated hardening run on branch `autopilot/2026-06-30` discovered that several core subsystems were silently non-functional despite the unit-test suite (which stubs the database) reporting green. The following fixes were applied before the feature campaign could proceed.
+
+#### Core Flow Fixes
+
+- **User registration broken** — `tblUsers.organizationID` column was missing; registration INSERT failed for every new user. Fixed by migration `025_registration_fix.sql`.
+- **Email queue non-functional** — `EmailService::queueEmail()` had a bind-parameter count mismatch; every call silently failed. Fixed — email queuing now works end-to-end.
+- **Backup-code MFA broken** — ENUM value mismatch on backup-code verification path prevented successful MFA login via recovery codes.
+- **Error logging broken at 61 call sites** — `ErrorLogger::log()` was called at ~61 locations but the method was undefined; all server-side error logging was silently swallowed. Fixed.
+- **`Database::getAffectedRows()` always returned -1** — the accessor read `affected_rows` after `$stmt->close()` (mysqlnd returns -1 post-close). Fixed in `database.php` by capturing the value while the statement is still open. This repaired 12 silently-broken callers across WebAuthn, UsageTracker, PasswordlessLogin, WebhookService, and NotificationService.
+- **MFA and notification activity logging wrote garbage** — `MFA.php` (15 sites) and `NotificationService` (5 sites) had misordered `log()` arguments, writing the human-readable description into the `activityCategory` ENUM column. This caused data-truncation errors and corrupt audit entries. Fixed; `activityCategory` ENUM widened in migration `029_enum_widening.sql` to match all valid values written by the codebase.
+
+#### WebAuthn
+
+- **Registration non-functional** — `Database::insert()` method was missing entirely; WebAuthn credential saves and 6 other callers (PasswordlessLogin, AccountManager, 4 email-related) all failed silently. Added `Database::insert()` and `Database::insertId()` (cycle 5).
+- **Auth-bypass closed (FG-013 / security — see Security section below)** — challenge-consumption TOCTOU hardened with atomic compare-and-set (B-030).
+
+#### Fresh-install / Database
+
+- **Consolidated installer had 74 SQL errors** — INT/BIGINT FK type drift across 96 columns, `tblMigrations`/`tblSettings` schema drift, duplicate WebAuthn table definitions, missing FK targets. All resolved; installer now applies with **0 errors**. Migrations 025/026 added missing registration and MFA columns (cycle 7). Migrations 028 adds the 6 multi-org tables that `Organization.php` requires (cycle 11).
+- **Installer excluded from git** — `_database/*.sql` was in `.gitignore`, meaning the installer file was absent from a clean checkout. Unignored and committed (cycle 9).
+- **Install-wizard idempotency** — the wizard re-applied migrations 001-014 on every re-run because `tblMigrations` was seeded with only 3 filenames. Fixed by seeding all 17 baked migration filenames as `completed` (cycle 11).
+- **`setup_test_db.sh` silently skipped migration 014** — its 5 security tables were absent from the test DB; fixed so the test database now reflects the full 98-table schema (cycle 11).
+
+#### Integration Test Gate
+
+- **Suite was unreliable (B-037 flake)** — `ActivityLogger::log()` writes outside the test transaction on the shared DB singleton; tests used hard-coded `userID=1` which a prior test truncated, causing FK failures. Fixed with committed-test-user hermeticity and `AuthLoginTest` truncating `tblRateLimits` before each run. Integration gate is now deterministically green (5/5 independent runs + 20/20 builder runs, cycle 12).
+- **`session_start` warning flake** — root-caused and fixed; suite now runs with **0 warnings** across 30+ consecutive runs (cycle 8).
+
+#### Tooling
+
+- Fixed `composer analyze` / `check-style` invocations — paths to `private_html` were unresolved from repo root (B-001/B-002, cycle 3).
+- Added `SIGNULA_INIT` guard to 5 source files that were reachable without the bootstrap constant (cycle 3).
+
+### Added
+
+- Migrations `025_registration_fix.sql`, `026_mfa_columns.sql`, `027_credential_reset_indexes.sql` (composite indexes on credential-reset tables, cycle 8), `028_multi_org_tables.sql` (6 org tables, cycle 11), `029_enum_widening.sql` (activityCategory ENUM expansion, cycle 12).
+- `Database::insert()` and `Database::insertId()` methods.
+- `Database::getAffectedRows()` now returns the correct row count for prepared UPDATEs.
+
+### Security
+
+- **WebAuthn auth-bypass closed (FG-013)** — WebAuthn `auth-verify` previously accepted assertions without verifying the authenticator signature. Replaced with real CBOR/COSE decoding, PEM extraction, and `openssl_verify()`. Sign-count clone-detection added. Red-team verified across 7 attack vectors (cycle 6). Tracked by issue #73 (addressed on branch, not yet pushed).
+- **CORS `*` + credentials** — API CORS headers previously sent `Access-Control-Allow-Origin: *` combined with `Access-Control-Allow-Credentials: true` (invalid per spec; browsers may allow in some modes). Fixed: origin is now checked against an allowlist (`api.cors.allowed_origins` setting). Default: same-origin only (B-024, cycle 8).
+- **X-Frame-Options / CSP frame-ancestors / X-Content-Type-Options** — added to all API responses (issue #29, cycle 8).
+- **Admin CSRF — two holes** — primary admin CSRF fix applied; a second CSRF hole on the rate-limits unblock endpoint was found and also closed during cycle 8.
+- **13 deferred MEDIUM issues (#22-#34)** resolved (cycle 8):
+  - Email recipient validation before send (#22)
+  - AMP sender allowlist enforced (#23)
+  - SMTP encryption-before-AUTH enforced (no plain-text credential submission) (#24/#25)
+  - `email.xmailer` setting suppressed when blank (#26)
+  - Credential-reset authorisation tightened (non-super-admin paths blocked) (#27)
+  - Credential-reset pagination result-set bounded (#28)
+  - Credential-reset DB indexes added (migration 027) (#29 duplicate numbering — see B-030 above; tracked in backlog)
+  - Token URL-encoding applied at 4 sites where hex tokens appeared in URLs (defensive; B-039, cycle 12)
+- **WebAuthn challenge consumption hardened** — atomic compare-and-set prevents TOCTOU race on challenge records (B-030/B-031, cycle 8).
+
+### Tests
+
+- +48 characterisation tests added (cycles 3-4, 342 → 390 total).
+- Integration suite made reliable and runnable end-to-end (cycle 7); now 71 green / 0 failures (cycle 10).
+- Unit suite: 407 green / 0 warnings (cycle 8 onwards).
+
+---
+
+### Added - JWT Bearer Authentication for REST API (v2.8.0-beta, G-003)
+
+**JWT Bearer Authentication — RS256, JWKS, rotating refresh tokens, revocation (closes #41)**
+
+- `web/private_html/security/Jwt.php` — RS256 sign/verify facade over vendored `firebase/php-jwt` v6.x. Algorithm pinned to RS256 on both sign and verify; `alg:none` and RS256→HS256 confusion attacks are rejected by design (the `Key` object ties key and algorithm together before signature verification). `kid` emitted in the JWT header; denylist checker injectable for unit-test isolation. Single swap point for the underlying library.
+- `web/private_html/security/KeyManager.php` — RSA keypair lifecycle (`generateKey`, `rotateKey`, `retireKey`, `getActiveKey`, `getPublicKey`, `getJwks`). Private PEM stored AES-256-CBC encrypted (`isSensitive=1`) in `tblSettings`, with a `_private/keys/jwt/<kid>.key` (0600) file fallback. Public JWK stored unencrypted in `tblSettings` for cheap JWKS reads. `kid` validated against a strict charset before any filesystem use (path-traversal defence). In-memory storage override for unit tests (no DB required).
+- `web/private_html/security/TokenService.php` — Stateful token lifecycle: `issueTokens()` (new family), `refresh()` (single-use rotation + **reuse detection** — replaying a spent or revoked refresh token revokes the entire family and raises a `TYPE_SESSION_HIJACK` HIGH security alert), `revokeAccessJti()` (self-expiring denylist entry), `revokeFamily()`, `revokeAllForUser()` (bumps `tblUsers.tokensInvalidBefore`), `verifyAccessToken()` (wires denylist + `tokensInvalidBefore` cutoff). Refresh-token plaintext is returned once and never stored — only the SHA-256 hash persists (mirrors `tblAPIKeys.keyHash` / C5).
+- `web/private_html/api/controllers/JwtAuthController.php` — HTTP surface: `POST /api/v1/auth/token` (session bootstrap or email+password grant; MFA gate; per-IP + per-identifier rate limiting), `POST /api/v1/auth/refresh` (rotation; per-IP rate limiting), `POST /api/v1/auth/revoke` (RFC 7009 shape; idempotent 200). `userID` is **always** resolved from a server-verified identity — no client-supplied `sub` ever reaches token issuance. `Cache-Control: no-store` on all token responses.
+- `web/public_html/.well-known/jwks.json/index.php` — JWKS public-key document. Unauthenticated; `Cache-Control: public, max-age=3600`. Strips any private JWK component (`d`, `p`, `q`, `dp`, `dq`, `qi`) as a defence-in-depth measure before output. Shared contract for G-001 relying parties.
+- `web/_lib/jwt/src/` — Vendored `firebase/php-jwt` v6.x source (MIT licence, zero runtime Composer deps). Version pinned in `web/_lib/jwt/VERSION`; loaded via `require_once` with `file_exists()` guards per house style.
+- `_database/migrations/030_jwt_authentication.sql` — New tables `tblRefreshTokens` (rotating, family-based; SHA-256 hashed) and `tblRevokedTokens` (self-expiring `jti` denylist). New column `tblUsers.tokensInvalidBefore` (mass-revocation lever). 14 `jwt.*` policy settings seeded via `INSERT IGNORE`. Daily `cleanup_jwt_tokens` MySQL EVENT purges expired denylist rows.
+- `BaseController::getUserByToken()` stub replaced with full implementation: `Jwt::verify()` + `sub` user load + `accountStatus` + `tokensInvalidBefore` check. Sets `auth_method='jwt'`, `scope`, and `jti` on `currentUser`. API-key and session auth paths unchanged (regression-safe).
+- OpenAPI spec (`web/public_html/api/docs/openapi.yaml`) updated with `POST /auth/token`, updated `POST /auth/refresh`, `POST /auth/revoke`, `GET /.well-known/jwks.json`, and new schemas (`JwtTokenRequest`, `JwtTokenResponse`, `JwtRefreshRequest`, `JwtRefreshResponse`, `JwtRevokeRequest`, `JwksResponse`, `JwksKey`).
+
+**Security — red-team hardening (G-003 §7, closes #41)**
+
+- Algorithm pinned (`alg:none` rejected; RS256→HS256 confusion rejected) — highest-priority defence per CVE class.
+- `kid` injection blocked — `kid` from JWT header used only to select from our own JWKS set; `isValidKid()` rejects non-path-safe values before any filesystem concatenation.
+- Refresh-token reuse detection — family-wide revocation on replay; raises `SecurityAlertManager::TYPE_SESSION_HIJACK` HIGH alert.
+- `jti` denylist with self-expiring rows — bounded table size (access TTL ≤ 15 min).
+- `tokensInvalidBefore` mass-revocation lever on `tblUsers` — "log out everywhere" without enumerating jtis.
+- No token material (access tokens, refresh tokens, signing keys, `Authorization` header) in any log output.
+- Windowed rate limiting on `/auth/token` (per-IP + per-identifier) and `/auth/refresh` (per-IP) using existing `SecurityUtils::checkRateLimit()`.
+
+---
 
 ### Added - Tier Expansion, Custom Tiers, Usage Export & Installation Wizard (v2.7.0-beta)
 

@@ -64,6 +64,29 @@ class ActivityLoggerTest extends DatabaseTestCase
      */
     protected array $truncateTables = ['tblActivityLog'];
 
+    /**
+     * 🆔 ID of the committed test user this suite logs against.
+     *
+     * 🔧 B-043 (hermeticity): ActivityLogger::log() writes via the Database
+     *    SINGLETON connection, NOT the connection DatabaseTestCase wraps in a
+     *    rolled-back transaction — and tblActivityLog.userID has a FOREIGN KEY
+     *    to tblUsers.userID. The tests that pass a non-NULL userID previously
+     *    hard-coded '1', assuming a user #1 always exists. Under PHPUnit random
+     *    order, a prior test (e.g. AuthLoginTest, which truncates tblUsers)
+     *    could leave tblUsers without id 1, so the singleton's INSERT hit the FK
+     *    constraint → log() returned false → these tests failed order-dependently
+     *    (deterministically reproducible with --random-order-seed=1782905012).
+     *
+     *    Fix: create a real user ON THE SINGLETON CONNECTION in setUp (so it is
+     *    committed and therefore visible to the singleton's FK check — a user
+     *    inserted on the test's uncommitted transaction connection would NOT be
+     *    visible cross-connection) and log against that guaranteed-present ID.
+     *    tearDown removes it (CASCADE also clears any rows it authored).
+     *
+     * @var int
+     */
+    protected int $testUserID = 0;
+
     // ========================================================================
     // 🔧 TEST LIFECYCLE
     // ========================================================================
@@ -88,6 +111,76 @@ class ActivityLoggerTest extends DatabaseTestCase
         // these values to exercise specific capture behaviour.
         $_SERVER['REMOTE_ADDR']     = '127.0.0.1';
         $_SERVER['HTTP_USER_AGENT'] = 'PHPUnit/TestAgent';
+
+        // 👤 Create a committed test user on the SINGLETON connection so the
+        //    tblActivityLog.userID foreign key is satisfiable for the non-NULL
+        //    userID tests, regardless of what other tests did to tblUsers.
+        $this->testUserID = $this->createSingletonTestUser();
+    }
+
+    /**
+     * 🧹 Tear down per-test state
+     *
+     * Removes the committed test user created in setUp (its writes live on the
+     * singleton connection outside the rolled-back transaction, so they must be
+     * cleaned up explicitly). ON DELETE CASCADE on the tblActivityLog FK also
+     * clears any activity rows authored by this user. Then defers to the parent
+     * tearDown (transaction rollback + output-buffer housekeeping).
+     *
+     * @return void
+     */
+    protected function tearDown(): void
+    {
+        if ($this->testUserID > 0) {
+            // 🗑️ Delete via the singleton connection (same one that created it).
+            \Database::query(
+                'DELETE FROM tblUsers WHERE userID = ?',
+                [$this->testUserID],
+                'i'
+            );
+            $this->testUserID = 0;
+        }
+
+        parent::tearDown();
+    }
+
+    /**
+     * 👤 Create a minimal, committed test user via the Database SINGLETON.
+     *
+     * ActivityLogger::log() uses the Database singleton connection, so any user
+     * referenced by its INSERT must exist and be COMMITTED on a connection the
+     * singleton can see. Creating the user with Database::query() (autocommit,
+     * not inside DatabaseTestCase's rolled-back transaction) guarantees that.
+     *
+     * @return int The new user's auto-increment ID.
+     */
+    private function createSingletonTestUser(): int
+    {
+        // 🆔 tblUsers requires userUUID + username (NOT NULL, UNIQUE, no default).
+        $suffix   = bin2hex(random_bytes(4));
+        $uuid     = self::generateTestUuid();
+        $username = 'activitylog_test_' . $suffix;
+        $email    = 'activitylog_' . $suffix . '@example.test';
+
+        // 🏠 Database::insert() is the house idiom — runs the prepared INSERT
+        //    via the singleton and returns the new auto-increment id.
+        return \Database::insert(
+            'INSERT INTO tblUsers
+                (userUUID, username, email, passwordHash, displayName,
+                 accountStatus, emailVerified, mfaEnabled, createdAt)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())',
+            [
+                $uuid,
+                $username,
+                $email,
+                password_hash('password123', PASSWORD_ARGON2ID),
+                'ActivityLogger Test User',
+                'active',
+                1,
+                0,
+            ],
+            'ssssssii'
+        );
     }
 
     // ========================================================================
@@ -109,10 +202,10 @@ class ActivityLoggerTest extends DatabaseTestCase
         // 🚀 Act – call the method under test
         // ----------------------------------------------------------------
         \ActivityLogger::log(
-            1,              // userID
-            'test_action',  // activityType
-            'auth',         // category
-            'info',         // severity
+            $this->testUserID, // userID (committed test user — FK-safe)
+            'test_action',     // activityType
+            'auth',            // category
+            'info',            // severity
             'Test description' // description
         );
 
@@ -122,7 +215,7 @@ class ActivityLoggerTest extends DatabaseTestCase
         $this->assertDatabaseHas(
             'tblActivityLog',
             [
-                'userID'           => '1',
+                'userID'           => (string) $this->testUserID,
                 'activityType'     => 'test_action',
                 'activityCategory' => 'auth',
                 'severity'         => 'info',
@@ -236,7 +329,7 @@ class ActivityLoggerTest extends DatabaseTestCase
         // 🚀 Act
         // ----------------------------------------------------------------
         \ActivityLogger::log(
-            1,
+            $this->testUserID, // committed test user — FK-safe
             'metadata_test',
             'other',
             'info',
@@ -328,7 +421,7 @@ class ActivityLoggerTest extends DatabaseTestCase
         // 🚀 Act – capture the return value
         // ----------------------------------------------------------------
         $result = \ActivityLogger::log(
-            1,
+            $this->testUserID, // committed test user — FK-safe
             'return_value_test',
             'auth',
             'info',
@@ -341,6 +434,95 @@ class ActivityLoggerTest extends DatabaseTestCase
         $this->assertTrue(
             $result,
             'ActivityLogger::log() should return (bool) true on a successful database insert'
+        );
+    }
+
+    // ========================================================================
+    // 🐛 B-067 REGRESSION — named-arg call shapes used by settings/mfa.php
+    //    and settings/notifications.php
+    // ========================================================================
+
+    /**
+     * B-067: settings/mfa.php used to call
+     * `ActivityLogger::log(userID: ..., activityType: ..., activityResult:
+     * 'success', activityDetails: '...')` — but ActivityLogger::log()'s real
+     * signature has NO $activityResult/$activityDetails parameters. PHP 8
+     * matches named arguments strictly by declared parameter name, so that
+     * call threw `Error: Unknown named parameter $activityResult` — a fatal
+     * that happened AFTER the MFA-disable/backup-code-regeneration DB write
+     * already succeeded, corrupting the POST response.
+     *
+     * This test drives the exact named-argument shape mfa.php now uses
+     * (userID/activityType/category/description) end-to-end against the real
+     * database, proving it is valid PHP against the real signature, does not
+     * fatal, and persists the expected row.
+     *
+     * @return void
+     */
+    public function testLogAcceptsMfaPhpNamedArgumentShape(): void
+    {
+        // 🚀 Act — identical named-argument shape to settings/mfa.php's
+        //    disable_mfa branch after the B-067 fix.
+        $result = \ActivityLogger::log(
+            userID: $this->testUserID,
+            activityType: 'mfa_disabled',
+            category: 'security',
+            description: 'Two-factor authentication disabled'
+        );
+
+        // ✅ Assert — no fatal, returns true, row persisted with the mapped
+        //    values ($category → 'security', $description → the free-text
+        //    detail that used to live in the non-existent $activityDetails).
+        $this->assertTrue($result, 'ActivityLogger::log() must accept the mfa.php named-argument shape without an "Unknown named parameter" fatal');
+
+        $this->assertDatabaseHas(
+            'tblActivityLog',
+            [
+                'userID'           => (string) $this->testUserID,
+                'activityType'     => 'mfa_disabled',
+                'activityCategory' => 'security',
+                'description'      => 'Two-factor authentication disabled',
+            ],
+            'The mfa.php-shaped call should persist activityCategory=security and the mapped description'
+        );
+    }
+
+    /**
+     * B-067: settings/notifications.php's notification-preferences POST
+     * handler had the identical $activityResult/$activityDetails fatal as
+     * mfa.php (see testLogAcceptsMfaPhpNamedArgumentShape() above). This
+     * proves the fixed shape — userID/activityType/description only, relying
+     * on the $category/$severity defaults ('other'/'info'), matching the
+     * profile.php/privacy.php/connected-accounts.php B-066 convention — is
+     * likewise valid and persists correctly.
+     *
+     * @return void
+     */
+    public function testLogAcceptsNotificationsPhpNamedArgumentShape(): void
+    {
+        // 🚀 Act — identical named-argument shape to settings/notifications.php
+        //    after the B-067 fix.
+        $result = \ActivityLogger::log(
+            userID: $this->testUserID,
+            activityType: 'notification_preferences_updated',
+            description: 'Notification preferences updated'
+        );
+
+        // ✅ Assert — no fatal, returns true, row persisted with the default
+        //    category/severity ('other'/'info') since notifications.php does
+        //    not override them.
+        $this->assertTrue($result, 'ActivityLogger::log() must accept the notifications.php named-argument shape without an "Unknown named parameter" fatal');
+
+        $this->assertDatabaseHas(
+            'tblActivityLog',
+            [
+                'userID'           => (string) $this->testUserID,
+                'activityType'     => 'notification_preferences_updated',
+                'activityCategory' => 'other',
+                'severity'         => 'info',
+                'description'      => 'Notification preferences updated',
+            ],
+            'The notifications.php-shaped call should persist the default category/severity and the mapped description'
         );
     }
 }

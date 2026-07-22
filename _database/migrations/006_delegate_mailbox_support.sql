@@ -47,8 +47,8 @@ ADD INDEX `idx_send_as` (`sendAsEmail`);
 -- This table stores per-user OAuth tokens for delegated permissions
 -- (Microsoft Graph, Gmail API with user-level access)
 CREATE TABLE IF NOT EXISTS `tblUserOAuthTokens` (
-    `tokenID` INT UNSIGNED NOT NULL AUTO_INCREMENT,
-    `userID` INT UNSIGNED NOT NULL,
+    `tokenID` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `userID` BIGINT UNSIGNED NOT NULL,
     `provider` VARCHAR(50) NOT NULL COMMENT 'Provider: microsoft_graph, gmail_api',
 
     -- 🔑 OAuth Token Data
@@ -99,7 +99,7 @@ COMMENT='User OAuth tokens for delegate mailbox sending';
 -- ============================================================================
 
 -- Insert default settings for delegate mailbox features
-INSERT INTO `tblSettings` (`settingKey`, `settingValue`, `isSensitive`, `description`, `category`)
+INSERT INTO `tblSettings` (`settingKey`, `settingValue`, `isSensitive`, `description`, `settingCategory`)
 VALUES
     -- Microsoft Graph Delegated Permissions
     (
@@ -150,7 +150,7 @@ VALUES
     )
 ON DUPLICATE KEY UPDATE
     `description` = VALUES(`description`),
-    `category` = VALUES(`category`);
+    `settingCategory` = VALUES(`settingCategory`);
 
 -- ============================================================================
 -- 📊 Update Activity Log for Delegate Sending

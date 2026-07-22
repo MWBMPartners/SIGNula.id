@@ -14,7 +14,7 @@
 -- Settings are loaded by the I18n class during initialisation.
 -- @see web/private_html/i18n/I18n.php
 
-INSERT INTO tblSettings (settingKey, settingValue, settingType, category, description, isPublic) VALUES
+INSERT INTO tblSettings (settingKey, settingValue, settingType, settingCategory, description, isEditable) VALUES
 ('i18n.default_locale', 'en', 'string', 'i18n', 'Default application locale', 0),
 ('i18n.fallback_locale', 'en', 'string', 'i18n', 'Fallback locale when translation missing', 0),
 ('i18n.available_locales', 'en', 'string', 'i18n', 'Comma-separated list of available locales', 0),

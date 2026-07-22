@@ -49,6 +49,24 @@ require_once PRIVATE_DIR . '/api/APIKeyMiddleware.php';
 
 // 📦 Load controllers
 require_once INCLUDES_DIR . DIRECTORY_SEPARATOR . 'api' . DIRECTORY_SEPARATOR . 'controllers' . DIRECTORY_SEPARATOR . 'AuthController.php';
+// 🎫 JWT bearer-auth controller (G-003): /auth/token, /auth/refresh, /auth/revoke.
+//    Loaded with a resilient path lookup: the deploy maps _private/_includes onto
+//    private_html, but we also try the in-repo private_html path and finally rely
+//    on the spl autoloader (which now scans api/controllers/) so `new
+//    JwtAuthController()` resolves regardless of layout.
+(function (): void {
+    $candidates = [
+        PRIVATE_DIR . DIRECTORY_SEPARATOR . 'api' . DIRECTORY_SEPARATOR . 'controllers' . DIRECTORY_SEPARATOR . 'JwtAuthController.php',
+        ROOT_DIR . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'api' . DIRECTORY_SEPARATOR . 'controllers' . DIRECTORY_SEPARATOR . 'JwtAuthController.php',
+    ];
+    foreach ($candidates as $file) {
+        if (is_file($file)) {
+            require_once $file;
+            return;
+        }
+    }
+    // Not found via explicit path — the autoloader will resolve it on first use.
+})();
 require_once INCLUDES_DIR . DIRECTORY_SEPARATOR . 'api' . DIRECTORY_SEPARATOR . 'controllers' . DIRECTORY_SEPARATOR . 'UserController.php';
 require_once INCLUDES_DIR . DIRECTORY_SEPARATOR . 'api' . DIRECTORY_SEPARATOR . 'controllers' . DIRECTORY_SEPARATOR . 'MFAController.php';
 require_once INCLUDES_DIR . DIRECTORY_SEPARATOR . 'api' . DIRECTORY_SEPARATOR . 'controllers' . DIRECTORY_SEPARATOR . 'OAuthController.php';
@@ -84,7 +102,17 @@ $router->group('/api/v1/auth', function($router) {
     $router->post('/register', 'AuthController@register');
     $router->post('/login', 'AuthController@login');
     $router->post('/logout', 'AuthController@logout');
-    $router->post('/refresh', 'AuthController@refresh');
+
+    // 🎫 JWT bearer-token endpoints (G-003).
+    //    /token  — issue an access + refresh pair after a PRIMARY credential
+    //              (email/password via Auth, OR an authenticated session) is
+    //              verified. The userID NEVER comes from client input.
+    //    /refresh — single-use rotation + reuse-detection (repoints the former
+    //              session-refresh stub AuthController@refresh to the JWT flow).
+    //    /revoke — RFC 7009 idempotent revocation (denylist jti / revoke family).
+    $router->post('/token', 'JwtAuthController@issueToken');
+    $router->post('/refresh', 'JwtAuthController@refreshToken');
+    $router->post('/revoke', 'JwtAuthController@revokeToken');
 
     // Email verification
     $router->post('/verify-email', 'AuthController@verifyEmail');

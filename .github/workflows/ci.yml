@@ -1,0 +1,121 @@
+# =============================================================================
+# 🧪 SIGNula.id — Continuous Integration
+# -----------------------------------------------------------------------------
+# Runs on pushes to the three-tier branches (main ▸ beta ▸ alpha) and on every
+# pull request targeting them. Two classes of check:
+#
+#   1. lint            — `php -l` syntax check on ALL PHP files, on both the
+#                        current (8.3) and target (8.4) runtimes. This is a
+#                        HARD/BLOCKING gate: a syntax error must never merge.
+#   2. static-analysis — PHPStan (level 6, see phpstan.neon) + PHP_CodeSniffer
+#                        (PSR-12, see phpcs.xml). Introduced in ADVISORY mode
+#                        (continue-on-error) because the existing codebase has
+#                        not yet been fully baselined. Annotations surface in
+#                        the PR without blocking the merge.
+#
+# 🔒 Ratcheting plan: once a PHPStan baseline is committed and the style debt
+#    is cleared, flip `continue-on-error` to false to make these blocking.
+#    Tracked in a dedicated GitHub issue.
+#
+# Docs: https://docs.github.com/actions
+# =============================================================================
+name: CI
+
+on:
+  push:
+    branches: [main, beta, alpha]
+  pull_request:
+    branches: [main, beta, alpha]
+
+# 🔐 Least-privilege token: CI only needs to read the repository contents.
+permissions:
+  contents: read
+
+# 🧵 Cancel superseded runs on the same ref to save minutes.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 1️⃣  PHP syntax lint — BLOCKING. Matrix over the current + target runtimes.
+  # ---------------------------------------------------------------------------
+  lint:
+    name: PHP Lint (php -l, ${{ matrix.php }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.3', '8.4']
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP ${{ matrix.php }}
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+          tools: none
+
+      - name: Lint every PHP file
+        shell: bash
+        run: |
+          set -uo pipefail
+          # 📁 Lint all *.php files, skipping dependency/build output dirs.
+          status=0
+          while IFS= read -r -d '' file; do
+            if ! out="$(php -l "$file" 2>&1)"; then
+              echo "::error file=${file}::${out}"
+              status=1
+            fi
+          done < <(find . \
+                     -path './vendor' -prune -o \
+                     -path './node_modules' -prune -o \
+                     -path './.git' -prune -o \
+                     -name '*.php' -print0)
+          if [ "$status" -ne 0 ]; then
+            echo "❌ One or more PHP files failed syntax linting."
+            exit 1
+          fi
+          echo "✅ All PHP files passed php -l on PHP ${{ matrix.php }}."
+
+  # ---------------------------------------------------------------------------
+  # 2️⃣  Static analysis + code style — ADVISORY (does not block merges yet).
+  # ---------------------------------------------------------------------------
+  static-analysis:
+    name: Static Analysis (PHPStan + PHPCS, advisory)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP 8.4
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+          tools: composer:v2
+
+      # 🧩 Install dev tooling (phpstan, php_codesniffer, strict-rules). The
+      #    runtime app has no third-party composer runtime deps, so this is fast.
+      - name: Install dev dependencies
+        run: composer install --no-interaction --no-progress --prefer-dist || true
+
+      - name: PHPStan (advisory)
+        continue-on-error: true
+        run: |
+          if [ -x vendor/bin/phpstan ]; then
+            vendor/bin/phpstan analyze --no-progress --memory-limit=1G --error-format=github
+          else
+            echo "⚠️ phpstan not installed; skipping (advisory)."
+          fi
+
+      - name: PHP_CodeSniffer / PSR-12 (advisory)
+        continue-on-error: true
+        run: |
+          if [ -x vendor/bin/phpcs ]; then
+            vendor/bin/phpcs -q --report=full || true
+          else
+            echo "⚠️ phpcs not installed; skipping (advisory)."
+          fi

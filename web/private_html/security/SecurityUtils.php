@@ -555,14 +555,36 @@ class SecurityUtils
             $now = new DateTime();
             $windowStart = (clone $now)->modify("-{$windowSeconds} seconds");
 
-            // Check current rate in database
+            // 🔧 B-049 FIX — WINDOWED count, not a single row.
+            //    updateRateLimit() keys each row on a 1-second `windowStart`
+            //    (the UNIQUE key is identifier+identifierType+endpoint+windowStart),
+            //    so requests paced > 1/sec each land in a DISTINCT second and mint
+            //    a FRESH row with requestCount = 1. The previous single-row read
+            //    (SELECT requestCount ... LIMIT 1) therefore NEVER saw more than 1,
+            //    letting an attacker sit just under 1 req/sec and spray forever
+            //    (cross-account password spraying from one IP) without ever
+            //    tripping the limit.
+            //
+            //    Fix: SUM the counts across ALL rows whose window is still open
+            //    within the last `windowSeconds`. This turns the per-second rows
+            //    into a proper sliding-ish fixed window: the count now accumulates
+            //    across paced requests exactly as it does across bursty ones. The
+            //    insert path (updateRateLimit) is unchanged and the SUM is served
+            //    by the existing composite index on (identifier, identifierType).
+            //
+            // 🔧 B-043/B-037: identifierType is ENUM('ip','user','api_key')
+            //    (see _database/migrations/007_rate_limiting.sql). The former
+            //    literal 'ip_address' was NOT a member of that ENUM, so under
+            //    STRICT_ALL_TABLES MySQL truncated it to '' and warned. The
+            //    canonical value is 'ip' (matches RateLimiter::checkLimit and
+            //    the tblRateLimitConfig seed rows).
             $query = "
-                SELECT requestCount
+                SELECT COALESCE(SUM(requestCount), 0) AS totalCount
                 FROM tblRateLimits
                 WHERE identifier = ?
-                AND identifierType = 'ip_address'
+                AND identifierType = 'ip'
                 AND endpoint = ?
-                AND windowEnd > ?
+                AND windowStart > ?
             ";
 
             $result = Database::fetchOne(
@@ -571,8 +593,9 @@ class SecurityUtils
                 'sss'
             );
 
-            if ($result && $result['requestCount'] >= $maxRequests) {
-                return false; // Rate limit exceeded
+            $currentCount = (int) ($result['totalCount'] ?? 0);
+            if ($currentCount >= $maxRequests) {
+                return false; // Rate limit exceeded (windowed total already at/over max)
             }
 
             // Update or insert rate limit record
@@ -601,10 +624,14 @@ class SecurityUtils
             $now = new DateTime();
             $windowEnd = (clone $now)->modify("+{$windowSeconds} seconds");
 
+            // 🔧 B-043/B-037: was 'ip_address' — not a valid ENUM member of
+            //    identifierType ENUM('ip','user','api_key'); truncated to ''
+            //    under STRICT_ALL_TABLES. Canonical value is 'ip' (kept in sync
+            //    with the matching SELECT in checkRateLimit() above).
             $query = "
                 INSERT INTO tblRateLimits
                 (identifier, identifierType, endpoint, requestCount, windowStart, windowEnd)
-                VALUES (?, 'ip_address', ?, 1, ?, ?)
+                VALUES (?, 'ip', ?, 1, ?, ?)
                 ON DUPLICATE KEY UPDATE
                 requestCount = requestCount + 1,
                 updatedAt = CURRENT_TIMESTAMP

@@ -137,13 +137,20 @@ abstract class DatabaseTestCase extends TestCase
      */
     protected function createTestUser(array $overrides = []): array
     {
+        // 🆔 tblUsers requires userUUID + username (both NOT NULL, no DB default,
+        //    UNIQUE). Generate unique values so each created test user is valid
+        //    and collision-free across a test run.
+        $uniqueSuffix = bin2hex(random_bytes(4));
+
         $defaults = [
+            'userUUID' => self::generateTestUuid(),
+            'username' => 'testuser_' . $uniqueSuffix,
             'email' => random_email('test'),
             'passwordHash' => password_hash('password123', PASSWORD_ARGON2ID),
             'displayName' => 'Test User',
             'firstName' => 'Test',
             'lastName' => 'User',
-            'accountStatus' => 'Active',
+            'accountStatus' => 'active', // 🔧 B-028: ENUM canonical case ('active', not 'Active')
             'emailVerified' => 1,
             'mfaEnabled' => 0,
             'createdAt' => date('Y-m-d H:i:s')
@@ -152,8 +159,27 @@ abstract class DatabaseTestCase extends TestCase
         $data = array_merge($defaults, $overrides);
         $userID = $this->insertRecord('tblUsers', $data);
         $data['userID'] = $userID;
-        
+
         return $data;
+    }
+
+    /**
+     * Generate an RFC 4122 version-4 UUID for test fixtures
+     *
+     * tblUsers.userUUID is CHAR(36) NOT NULL UNIQUE with no DB default — the
+     * application generates the UUID in PHP (Auth::generateUUID()), so fixtures
+     * must supply one too.
+     *
+     * @return string A 36-character UUIDv4
+     */
+    protected static function generateTestUuid(): string
+    {
+        $bytes = random_bytes(16);
+        // Set version (4) and variant (RFC 4122) bits.
+        $bytes[6] = chr((ord($bytes[6]) & 0x0f) | 0x40);
+        $bytes[8] = chr((ord($bytes[8]) & 0x3f) | 0x80);
+
+        return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($bytes), 4));
     }
 
     /**

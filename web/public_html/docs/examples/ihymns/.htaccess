@@ -1,0 +1,36 @@
+# ============================================================================
+# 📎 iHymns × SIGNula.id reference integration — COPY-READY EXAMPLE FILES
+# ============================================================================
+# The .php/.js/.sql files in this directory are a REFERENCE the iHymns team
+# copies into THEIR app — they are NOT live SIGNula routes and must NEVER be
+# executed here. This .htaccess:
+#   1. turns OFF the site-root clean-URL rewrite for this dir (so a request to
+#      /docs/examples/ihymns/callback does NOT get rewritten to callback.php),
+#   2. serves the example source as plain text so it can be READ in a browser
+#      (helpful for copy-paste) rather than run,
+#   3. defensively disables the PHP engine here on mod_php hosts.
+# README.md / button-embed.html / native-notes.md render normally.
+# ============================================================================
+
+# 1️⃣ No clean-URL rewriting inside this reference directory.
+<IfModule mod_rewrite.c>
+    RewriteEngine Off
+</IfModule>
+
+# 2️⃣ Serve the executable-looking reference files as viewable SOURCE, never run.
+<FilesMatch "\.(php|phtml|phps|js|sql)$">
+    ForceType text/plain
+    SetHandler none
+</FilesMatch>
+
+# 3️⃣ Belt-and-braces: kill the PHP engine here on mod_php (guarded so a host
+#     without the module doesn't 500 on an unknown directive).
+<IfModule mod_php.c>
+    php_admin_flag engine off
+</IfModule>
+<IfModule mod_php7.c>
+    php_admin_flag engine off
+</IfModule>
+<IfModule mod_php8.c>
+    php_admin_flag engine off
+</IfModule>

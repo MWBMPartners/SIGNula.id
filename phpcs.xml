@@ -15,8 +15,11 @@
     <description>SIGNula PHP Coding Standards</description>
 
     <!-- Files to check -->
-    <file>private_html</file>
-    <file>public_html</file>
+    <!-- 📁 Real source roots live under web/ (not the repo root) -->
+    <file>web/private_html</file>
+    <file>web/public_html</file>
+    <file>web/_config</file>
+    <file>web/_includes</file>
 
     <!-- Exclude patterns -->
     <exclude-pattern>*/vendor/*</exclude-pattern>

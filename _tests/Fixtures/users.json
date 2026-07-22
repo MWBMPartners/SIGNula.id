@@ -5,7 +5,7 @@
       "displayName": "Admin User",
       "firstName": "Admin",
       "lastName": "User",
-      "accountStatus": "Active",
+      "accountStatus": "active",
       "emailVerified": true,
       "mfaEnabled": true,
       "isGlobalAdmin": true
@@ -15,7 +15,7 @@
       "displayName": "Regular User 1",
       "firstName": "Regular",
       "lastName": "User1",
-      "accountStatus": "Active",
+      "accountStatus": "active",
       "emailVerified": true,
       "mfaEnabled": false,
       "isGlobalAdmin": false
@@ -25,7 +25,7 @@
       "displayName": "Regular User 2",
       "firstName": "Regular",
       "lastName": "User2",
-      "accountStatus": "Active",
+      "accountStatus": "active",
       "emailVerified": false,
       "mfaEnabled": false,
       "isGlobalAdmin": false
@@ -35,7 +35,7 @@
       "displayName": "Suspended User",
       "firstName": "Suspended",
       "lastName": "User",
-      "accountStatus": "Suspended",
+      "accountStatus": "suspended",
       "emailVerified": true,
       "mfaEnabled": false,
       "isGlobalAdmin": false

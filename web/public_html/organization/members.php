@@ -179,22 +179,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isAdmin) {
 
                         Database::query(
                             "UPDATE tblOrganizationInvitations
-                             SET token = ?, expiresAt = DATE_ADD(NOW(), INTERVAL 7 DAY), updatedAt = NOW()
+                             SET invitationToken = ?, expiresAt = DATE_ADD(NOW(), INTERVAL 7 DAY), updatedAt = NOW()
                              WHERE invitationID = ?",
                             [$newToken, $invitationID],
                             'si'
                         );
 
-                        // TODO: Resend invitation email
-                        EmailService::queueEmail(
-                            $invitation['email'],
-                            'organization_invitation',
-                            [
-                                'organization_name' => $organization['name'],
-                                'invitation_link' => SITE_URL . '/organization/accept-invite?token=' . $newToken,
-                                'role' => $invitation['role']
-                            ]
-                        );
+                        // 📧 Resend invitation email
+                        $baseURL = getSetting('url.base', 'https://signula.id');
+                        $acceptUrl = "{$baseURL}/organization/accept-invitation?token={$newToken}";
+                        $inviterName = trim($user['firstName'] . ' ' . $user['lastName']);
+
+                        $emailVariables = [
+                            'organizationName' => $organization['organizationName'],
+                            'inviterName' => $inviterName,
+                            'personalMessage' => $invitation['message'] ?? '',
+                            'role' => ucfirst($invitation['role']),
+                            'acceptUrl' => $acceptUrl,
+                            'expiryDays' => 7
+                        ];
+
+                        EmailService::sendTemplateEmail($invitation['email'], 'org_invitation', $emailVariables, null, 3);
 
                         $success = 'Invitation resent successfully.';
                         $activeTab = 'invitations';

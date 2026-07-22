@@ -23,12 +23,15 @@ class UserRegistrationTest extends DatabaseTestCase
     public function testSuccessfulUserRegistration(): void
     {
         $userData = [
+            // 🆔 tblUsers requires userUUID + username (NOT NULL, UNIQUE, no DB default)
+            'userUUID' => self::generateTestUuid(),
+            'username' => 'newuser_' . bin2hex(random_bytes(4)),
             'email' => 'newuser@example.com',
             'passwordHash' => password_hash('Password123', PASSWORD_ARGON2ID),
             'displayName' => 'New User',
             'firstName' => 'New',
             'lastName' => 'User',
-            'accountStatus' => 'Active',
+            'accountStatus' => 'active', // 🔧 B-028: canonical ENUM case
             'emailVerified' => 0,
             'createdAt' => date('Y-m-d H:i:s')
         ];
@@ -112,9 +115,9 @@ class UserRegistrationTest extends DatabaseTestCase
         $user = $this->createTestUser();
 
         $this->assertEquals(
-            'Active',
+            'active', // 🔧 B-028: canonical ENUM case (matches createTestUser default)
             $user['accountStatus'],
-            'Default account status should be Active'
+            'Default account status should be active (canonical ENUM case)'
         );
     }
 
@@ -124,10 +127,13 @@ class UserRegistrationTest extends DatabaseTestCase
     public function testEmailVerificationDefaultsToFalse(): void
     {
         $userID = $this->insertRecord('tblUsers', [
+            // 🆔 tblUsers requires userUUID + username (NOT NULL, UNIQUE, no DB default)
+            'userUUID' => self::generateTestUuid(),
+            'username' => 'unverified_' . bin2hex(random_bytes(4)),
             'email' => 'unverified@example.com',
             'passwordHash' => password_hash('test', PASSWORD_ARGON2ID),
             'displayName' => 'Test User',
-            'accountStatus' => 'Active',
+            'accountStatus' => 'active', // 🔧 B-028: canonical ENUM case
             'createdAt' => date('Y-m-d H:i:s')
         ]);
 

@@ -1,9 +1,24 @@
-
-
 <?php
 /**
  * ============================================================================
  * 📁 SIGNula Universal Login System - Database Connection
+ *
+ * 🐛 B-060 (found while smoke-testing requireLogin()): this file previously
+ * started with TWO blank lines BEFORE the opening `<?php` tag. Those two
+ * newline bytes are literal output — emitted the instant this file is
+ * require_once'd (very first thing web/_config/config.php does after
+ * defining path constants) — which flips headers_sent() to TRUE for the
+ * REST of the request, on every single page. That silently defeated:
+ *   - Every `if (!headers_sent()) { header(...); }` security header in
+ *     config.php (X-Frame-Options, CSP, HSTS, Referrer-Policy, …never sent).
+ *   - `redirect()` (web/_config/config.php), which no-ops instead of
+ *     redirecting whenever headers_sent() is true — meaning requireLogin()
+ *     (Auth::requireAuth() -> redirect('/login?...')) silently failed to
+ *     bounce unauthenticated users away from gated pages; execution fell
+ *     through into the page body with no authenticated user.
+ * Removing the stray leading whitespace is the entire fix — no other line
+ * in this file changed.
+ * ============================================================================
  * ============================================================================
  *
  * Purpose: Secure database connection using MySQLi with prepared statements
@@ -29,6 +44,104 @@ if (!defined('SIGNULA_INIT')) {
 }
 
 /**
+ * ============================================================================
+ * 🔌 DatabaseConnection — thin instance adapter around the shared mysqli link
+ * ============================================================================
+ *
+ * 🐛 B-054 fix. 74 pages under web/public_html do:
+ *
+ *     $db = Database::getInstance();
+ *     $sessionManager = new SessionManager($db);
+ *     ...
+ *     $stmt = $db->prepare("SELECT ..."); $stmt->bind_param(...); $stmt->execute();
+ *
+ * i.e. they expect an OBJECT with an instance-style `prepare()`/`query()`/etc,
+ * exactly like a raw mysqli link — NOT the static `Database` class above
+ * (whose API is `Database::query()`, `Database::fetchOne()`, ... — no
+ * `getInstance()`, and none of it is callable through `->`). This class is
+ * the shape that closes that gap.
+ *
+ * Rather than re-implement every mysqli method, this is a minimal PROXY:
+ * it holds the one shared mysqli connection (see Database::getConnection())
+ * and forwards any method call / property read straight through to it via
+ * PHP's magic __call()/__get(). That keeps a single real connection per
+ * request (no second connection pool to manage) while giving callers the
+ * exact `$db->prepare(...)`, `$db->insert_id`, `$db->getConnection()`,
+ * `$db->rollback()`, `$db->commit()`, `$db->begin_transaction()`, `$db->ping()`,
+ * `$db->error` surface verified in use across web/public_html.
+ *
+ * @see https://www.php.net/manual/en/book.mysqli.php
+ * @see https://www.php.net/manual/en/language.oop5.overloading.php#object.call
+ * @see https://www.php.net/manual/en/language.oop5.overloading.php#object.get
+ */
+if (!class_exists('DatabaseConnection')) {
+    final class DatabaseConnection
+    {
+        /**
+         * 🏗️ Constructor
+         *
+         * @param mysqli $mysqli The shared connection returned by
+         *                       Database::getConnection(). Stored via a
+         *                       PHP 8 constructor property promotion
+         *                       (readonly-by-convention — never reassigned).
+         * @see https://www.php.net/manual/en/language.oop5.decon.php#language.oop5.decon.constructor.promotion
+         */
+        public function __construct(private readonly \mysqli $mysqli)
+        {
+        }
+
+        /**
+         * 🔗 Get Underlying mysqli Connection
+         *
+         * Explicit accessor for the 3 verified `$db->getConnection()` call
+         * sites — returns the exact same connection object every other
+         * $db-> call in this class proxies to (not a copy/clone).
+         *
+         * @return \mysqli The wrapped mysqli connection
+         */
+        public function getConnection(): \mysqli
+        {
+            return $this->mysqli;
+        }
+
+        /**
+         * 🪄 Magic Method Proxy
+         *
+         * Forwards any method call not explicitly defined above (prepare,
+         * query, rollback, commit, begin_transaction, ping, real_escape_string,
+         * close, ...) straight through to the wrapped mysqli connection, so
+         * `$db->prepare(...)` behaves exactly like `$mysqli->prepare(...)`.
+         *
+         * @param string $name Method name being called
+         * @param array<int, mixed> $args Positional arguments to forward
+         * @return mixed Whatever the underlying mysqli method returns
+         * @see https://www.php.net/manual/en/mysqli-stmt.bind-param.php
+         */
+        public function __call(string $name, array $args): mixed
+        {
+            return $this->mysqli->{$name}(...$args);
+        }
+
+        /**
+         * 🪄 Magic Property Proxy
+         *
+         * Forwards any property READ not explicitly defined above
+         * (insert_id, error, errno, affected_rows, ...) straight through to
+         * the wrapped mysqli connection, so `$db->insert_id` after an
+         * `INSERT` reads the real mysqli::$insert_id.
+         *
+         * @param string $name Property name being read
+         * @return mixed Whatever the underlying mysqli property holds
+         * @see https://www.php.net/manual/en/mysqli.insert-id.php
+         */
+        public function __get(string $name): mixed
+        {
+            return $this->mysqli->{$name};
+        }
+    }
+}
+
+/**
  * 🗄️ Database Connection Class
  *
  * Manages database connections using MySQLi with singleton pattern
@@ -46,6 +159,21 @@ class Database
 
     /** @var bool Connection status */
     private static bool $connected = false;
+
+    /**
+     * @var int Rows affected by the most recent query().
+     *
+     * 🐛 B-040 fix: query() closes the mysqli_stmt (line ~247) before any caller
+     * can inspect it. Under mysqlnd, reading $connection->affected_rows AFTER a
+     * prepared statement is closed returns -1, NOT the real count — so any
+     * getAffectedRows() call (e.g. verifyChallenge()'s atomic 0→1 compare-and-set,
+     * B-030) saw -1 and treated a perfectly valid single-row UPDATE as "0 rows /
+     * failed". We therefore capture $stmt->affected_rows INSIDE query() while the
+     * statement is still open and surface it via getAffectedRows().
+     *
+     * @see https://www.php.net/manual/en/mysqli-stmt.affected-rows.php
+     */
+    private static int $lastAffectedRows = 0;
 
     /** @var array Connection statistics */
     private static array $stats = [
@@ -125,6 +253,41 @@ class Database
         }
 
         return self::$connection;
+    }
+
+    /**
+     * 🏭 Get Instance-Style Database Handle
+     *
+     * 🐛 B-054 fix. 74 pages under web/public_html do
+     * `$db = Database::getInstance(); new SessionManager($db);` and then call
+     * instance-style methods on $db (`$db->prepare(...)`, `$db->insert_id`,
+     * `$db->getConnection()`, ...) — but this class (Database) is 100% STATIC
+     * and had no `getInstance()` at all, so every one of those pages fataled
+     * with "Call to undefined method Database::getInstance()".
+     *
+     * Returns a lightweight {@see DatabaseConnection} adapter wrapping the
+     * SAME shared mysqli connection self::getConnection() already manages —
+     * this does NOT open a second connection; it is just an instance-shaped
+     * proxy in front of the one connection this class maintains. A fresh
+     * adapter object is handed back on every call (cheap — it holds only a
+     * reference), but every adapter proxies to the identical underlying
+     * mysqli link, so `Database::getInstance()->getConnection() === Database::getInstance()->getConnection()`
+     * is always true within one request.
+     *
+     * If the connection is not yet configured/reachable, this surfaces the
+     * exact same RuntimeException self::getConnection()/self::connect()
+     * would throw for any other caller — no new error-swallowing is
+     * introduced here.
+     *
+     * @return DatabaseConnection Instance-style handle proxying to the
+     *                            shared mysqli connection
+     * @throws RuntimeException If the underlying connection cannot be
+     *                          established (propagated from self::connect())
+     * @see DatabaseConnection
+     */
+    public static function getInstance(): DatabaseConnection
+    {
+        return new DatabaseConnection(self::getConnection());
     }
 
     /**
@@ -240,6 +403,12 @@ class Database
             // 📊 Get result
             $result = $stmt->get_result();
 
+            // 📊 Capture affected rows WHILE the statement is still open. After
+            //    $stmt->close() the connection's affected_rows reads back as -1
+            //    under mysqlnd, so getAffectedRows() must return this snapshot,
+            //    not $connection->affected_rows. (B-040 — see $lastAffectedRows.)
+            self::$lastAffectedRows = $stmt->affected_rows;
+
             // 📈 Update statistics
             self::$stats['queries']++;
             self::$stats['execution_time'] += (microtime(true) - $startTime);
@@ -341,6 +510,62 @@ class Database
     }
 
     /**
+     * 🆔 Get Last Insert ID (alias)
+     *
+     * Convenience alias for {@see self::getLastInsertId()}. Provided because a
+     * number of call sites (e.g. AccountManager::queueDataExport) call
+     * Database::insertId() directly. Keeping it as a thin alias avoids
+     * duplicating the accessor logic.
+     *
+     * @return int Last insert ID
+     */
+    public static function insertId(): int
+    {
+        return self::getLastInsertId();
+    }
+
+    /**
+     * ➕ Execute INSERT and Return New Row ID
+     *
+     * Runs a prepared INSERT statement (via {@see self::query()}) and returns
+     * the auto-generated primary key produced by it. This is the house idiom
+     * for inserts — several classes (WebAuthnHandler, PasswordlessLoginHandler,
+     * EmailScheduler, EmailABTesting, EmailDripCampaign, EmailTemplateManager)
+     * call Database::insert() and expect the new id back.
+     *
+     * Because {@see self::query()} throws on failure (it converts MySQLi errors
+     * into a RuntimeException), a returned value here always reflects a
+     * successful INSERT. The new id is read immediately after execution from the
+     * same connection, so it is the id created by THIS statement.
+     *
+     * @param string $query INSERT statement with ? placeholders
+     * @param array  $params Parameters to bind
+     * @param string $types  Optional MySQLi type string (auto-detected if empty)
+     * @return int Auto-generated insert id (0 for tables without AUTO_INCREMENT)
+     * @throws RuntimeException If the INSERT fails (propagated from query())
+     *
+     * @see https://www.php.net/manual/en/mysqli.insert-id.php
+     *
+     * @example
+     * ```php
+     * $newId = Database::insert(
+     *     "INSERT INTO tblExample (name, createdAt) VALUES (?, NOW())",
+     *     ['Widget'],
+     *     's'
+     * );
+     * ```
+     */
+    public static function insert(string $query, array $params = [], string $types = ''): int
+    {
+        // ▶️ Execute the INSERT; query() throws (RuntimeException) on any failure,
+        //    so reaching the next line means the row was written successfully.
+        self::query($query, $params, $types);
+
+        // 🔢 Return the id generated by this INSERT on the same connection.
+        return self::getLastInsertId();
+    }
+
+    /**
      * 📊 Get Affected Rows
      *
      * Returns number of rows affected by last UPDATE/DELETE query.
@@ -349,7 +574,10 @@ class Database
      */
     public static function getAffectedRows(): int
     {
-        return self::getConnection()->affected_rows;
+        // 🐛 B-040: return the count captured inside query() BEFORE the statement
+        //    was closed. Reading $connection->affected_rows here would return -1
+        //    for the (now-closed) prepared statement under mysqlnd.
+        return self::$lastAffectedRows;
     }
 
     /**

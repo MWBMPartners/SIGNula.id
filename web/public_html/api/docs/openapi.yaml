@@ -132,6 +132,58 @@ tags:
     description: |
       Webhook event reference and signature verification guide.
       Partners can configure webhook endpoints via the dashboard or Partner API.
+  - name: JWT Auth
+    description: |
+      RS256 JWT bearer-token issuance, rotation, and revocation for SPA and mobile
+      clients (G-003). Endpoints issue short-lived RS256 access tokens (15 min, typ
+      `at+jwt`) and long-lived opaque rotating refresh tokens (30 days, single-use
+      with automatic reuse detection).
+
+      **Key properties:**
+      - Algorithm pinned to RS256; `alg:none` and RS256→HS256 confusion attacks rejected.
+      - Refresh-token rotation is single-use: replaying a spent or revoked refresh token
+        revokes the entire token family and triggers a security alert.
+      - Access-token revocation via a self-expiring `jti` denylist (`tblRevokedTokens`).
+      - Public signing keys published at `GET /.well-known/jwks.json` (shared contract
+        with G-001 relying parties).
+
+      **Client token storage guidance:**
+      - Access token: keep in memory; do not persist to `localStorage`.
+      - Refresh token: store in an `httpOnly; Secure; SameSite=Strict` cookie or
+        OS-level secure storage. Never `localStorage`.
+      - Transmit over HTTPS only.
+  - name: OIDC Provider
+    description: |
+      SIGNula acting as an OAuth 2.0 / OpenID Connect **Provider** — "Sign in
+      with SIGNula.id" (G-001). Lets a registered Relying-Party (RP)
+      application delegate its own login to a user's SIGNula ID via the
+      standard Authorization Code flow with **mandatory PKCE (S256)**.
+
+      **Distinct from "OAuth Account Linking" above** — that group is SIGNula
+      acting as a Relying Party CONSUMING Google/Microsoft/etc. This group is
+      the OPPOSITE direction: SIGNula issuing tokens as the Identity Provider
+      to a third-party RP.
+
+      **Base path — read carefully:** unlike every other group in this
+      document, these endpoints are **NOT** under `/api/v1`. They live at the
+      SIGNula root, e.g. `https://signula.id/oauth/authorize-idp` (mirrors how
+      `GET /.well-known/jwks.json` above is already documented outside
+      `/api/v1`).
+
+      **Register a client first:** obtain a `client_id` (and, for confidential
+      clients, a `client_secret`, shown once) from the partner-admin OAuth
+      Clients page (`/partners/admin/oauth-clients`) before calling any of
+      these endpoints.
+
+      **Master switch:** the entire provider surface returns `404` on every
+      endpoint until an operator sets `oidc.enabled = 1` in `tblSettings`
+      (ships **OFF** by default) — see the OIDC Provider section of
+      `SECURITY_SETUP.md`.
+
+      **Pairwise subjects:** by default, a NEW client registration gets
+      `subjectType = pairwise` — the `sub` claim is a per-client opaque,
+      salted, one-way hash, not the user's raw internal ID, so two RPs cannot
+      correlate the same user via a shared identifier.
 
 # ============================================================================
 # Security Schemes
@@ -180,6 +232,44 @@ components:
         ```
         GET /api/v1/health?api_key=sk_live_abc123xyz789
         ```
+
+    OidcAuthorizationCode:
+      type: oauth2
+      description: |
+        SIGNula acting as an OIDC **Provider** (G-001) — the flow a Relying
+        Party (RP) uses to let a user sign in with their SIGNula ID.
+
+        **PKCE (RFC 7636, S256) is REQUIRED** on every code exchange — always
+        for public clients (SPA/native/mobile; no usable client_secret), and
+        for confidential clients too whenever the `oidc.require_pkce` policy
+        is on (the default). `code_challenge_method=plain` is rejected unless
+        an operator has explicitly enabled `oidc.allow_plain_pkce` (default
+        off — not recommended).
+      flows:
+        authorizationCode:
+          authorizationUrl: https://signula.id/oauth/authorize-idp
+          tokenUrl: https://signula.id/oauth/token
+          refreshUrl: https://signula.id/oauth/token
+          scopes:
+            openid: "Confirm it's really you — required on every request"
+            email: "Your email address and its verified status"
+            profile: "Your name and basic profile information"
+            offline_access: "Issue a refresh token for continued access when you're not actively using the app"
+
+    OidcClientSecretBasic:
+      type: http
+      scheme: basic
+      description: |
+        RFC 6749 §2.3.1 `client_secret_basic` — send
+        `Authorization: Basic base64(client_id:client_secret)`. Required for
+        **confidential** clients on `/oauth/token` and `/oauth/revoke`.
+
+        **Public** clients (PKCE-only, no usable secret) omit this header
+        entirely and instead authenticate via `client_id` in the request body
+        with no `client_secret` (`token_endpoint_auth_methods_supported`
+        includes `"none"`). A body-supplied `client_secret_post` pair
+        (`client_id` + `client_secret` fields, no Basic header) is also
+        accepted for confidential clients.
 
   # --------------------------------------------------------------------------
   # Reusable Schemas
@@ -1193,6 +1283,525 @@ components:
         meta:
           $ref: "#/components/schemas/Meta"
 
+    # -- JWT Auth schemas (G-003) ---------------------------------------------
+
+    JwtTokenRequest:
+      type: object
+      description: |
+        Request body for `POST /auth/token`. Two grants are accepted (in precedence order):
+
+        1. **Session grant** — no body needed; an existing authenticated browser session
+           bootstraps a JWT pair.
+        2. **Password grant** — supply `email` (or `username`) and `password`. On MFA-required
+           a `401` with `mfa_required: true` is returned; complete MFA before retrying.
+      properties:
+        email:
+          type: string
+          format: email
+          description: User email address (password grant). Accepts `username` as an alias.
+          example: "john@example.com"
+        username:
+          type: string
+          description: Username alias for `email` (password grant).
+          example: "johndoe"
+        password:
+          type: string
+          format: password
+          description: User password (password grant). Never logged.
+          example: "SecurePass123!"
+        scope:
+          type: string
+          description: >
+            Space-delimited requested scope subset. Silently restricted to
+            `user:read user:write`. Omit to receive the full default set.
+          example: "user:read user:write"
+
+    JwtTokenResponse:
+      type: object
+      description: Successful token issuance response from `POST /auth/token` or `POST /auth/refresh`.
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "Token issued"
+        data:
+          type: object
+          required:
+            - access_token
+            - token_type
+            - expires_in
+            - refresh_token
+            - scope
+          properties:
+            access_token:
+              type: string
+              description: >
+                RS256 JWT access token. Header carries `typ: at+jwt` (RFC 9068) and `kid`.
+                Lifetime controlled by `jwt.access_ttl` setting (default 900 s / 15 min).
+              example: "eyJhbGciOiJSUzI1NiIsInR5cCI6ImF0K2p3dCIsImtpZCI6IjIwMjYwNy0xYTJiM2M0ZCJ9..."
+            token_type:
+              type: string
+              enum: [Bearer]
+              example: "Bearer"
+            expires_in:
+              type: integer
+              description: Access-token lifetime in seconds.
+              example: 900
+            refresh_token:
+              type: string
+              description: >
+                Opaque, high-entropy (256-bit) refresh token. Single-use: consumed on
+                the next `POST /auth/refresh`, which issues a new pair. Never log or
+                store in localStorage.
+              example: "a3f8c2d1e4b5..."
+            scope:
+              type: string
+              description: Space-delimited scopes granted.
+              example: "user:read user:write"
+        meta:
+          $ref: "#/components/schemas/Meta"
+
+    JwtMfaRequiredResponse:
+      type: object
+      description: >
+        Returned by `POST /auth/token` when the supplied credentials are correct but
+        MFA verification is required before tokens are issued. Complete the MFA step
+        via the existing MFA endpoints, then retry `POST /auth/token`.
+      properties:
+        success:
+          type: boolean
+          example: false
+        message:
+          type: string
+          example: "MFA verification required"
+        data:
+          type: object
+          properties:
+            mfa_required:
+              type: boolean
+              example: true
+        meta:
+          $ref: "#/components/schemas/Meta"
+
+    JwtRefreshRequest:
+      type: object
+      required:
+        - refresh_token
+      description: Request body for `POST /auth/refresh`.
+      properties:
+        refresh_token:
+          type: string
+          description: >
+            The opaque refresh token received from the most recent `POST /auth/token`
+            or `POST /auth/refresh`. Single-use: the presented token is invalidated and
+            a new pair is returned. Replaying a spent token revokes the entire family.
+          example: "a3f8c2d1e4b5..."
+
+    JwtRevokeRequest:
+      type: object
+      description: >
+        RFC 7009 revocation request. Supply a `token` in the body, or omit it to revoke
+        the caller's own Bearer access token from the Authorization header.
+      properties:
+        token:
+          type: string
+          description: The token to revoke (access JWT or opaque refresh token).
+          example: "eyJhbGciOiJSUzI1NiIs..."
+        token_type_hint:
+          type: string
+          enum: [access_token, refresh_token]
+          description: >
+            Optional hint for faster processing. If omitted, the server infers the type
+            from the token shape (three dot-delimited segments = access; 64 lowercase
+            hex chars = refresh).
+          example: "access_token"
+
+    JwksKey:
+      type: object
+      description: A single RSA public JWK entry in the JWKS document.
+      required:
+        - kty
+        - use
+        - alg
+        - kid
+        - "n"
+        - e
+      properties:
+        kty:
+          type: string
+          enum: [RSA]
+          example: "RSA"
+        use:
+          type: string
+          enum: [sig]
+          description: Key use — always `sig` (signature verification).
+          example: "sig"
+        alg:
+          type: string
+          enum: [RS256]
+          description: Algorithm — always RS256.
+          example: "RS256"
+        kid:
+          type: string
+          description: Key ID. Matches the `kid` header in access-token JWTs.
+          example: "202607-1a2b3c4d5e6f"
+        "n":
+          type: string
+          description: RSA modulus, base64url-encoded (RFC 7518 §6.3.1).
+          example: "0vx7agoebGcQSuuPiLJXZp..."
+        e:
+          type: string
+          description: RSA public exponent, base64url-encoded.
+          example: "AQAB"
+
+    JwksResponse:
+      type: object
+      description: >
+        JSON Web Key Set (RFC 7517). Published at `GET /.well-known/jwks.json`.
+        Contains all currently-valid RS256 public keys (active plus recently-retired keys
+        still covering live tokens). Used by verifiers to validate SIGNula JWT signatures
+        without holding a shared secret. No private key material is ever included.
+      required:
+        - keys
+      properties:
+        keys:
+          type: array
+          items:
+            $ref: "#/components/schemas/JwksKey"
+          example:
+            - kty: "RSA"
+              use: "sig"
+              alg: "RS256"
+              kid: "202607-1a2b3c4d5e6f"
+              n: "0vx7agoebGcQSuuPiLJXZp..."
+              e: "AQAB"
+
+    # -- OIDC Provider schemas (G-001) -----------------------------------------
+    # NOTE: unlike the rest of this document, the OIDC Provider endpoints do
+    # NOT use the {success,message,data,meta} house envelope — their shapes
+    # are dictated by RFC 6749 / RFC 7009 / OIDC Core, not this codebase's
+    # convention. See the "OIDC Provider" tag description above.
+
+    OAuthErrorResponse:
+      type: object
+      description: >
+        Raw RFC 6749 §5.2 / RFC 6750 §3 error body used by every OIDC Provider
+        endpoint (`/oauth/authorize-idp` redirect errors, `/oauth/token`,
+        `/oauth/userinfo`, `/oauth/revoke`).
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: >
+            An RFC 6749/6750 error code. Seen from these endpoints:
+            `invalid_request`, `invalid_client`, `invalid_grant`,
+            `invalid_scope`, `invalid_token`, `unsupported_grant_type`,
+            `unsupported_response_type`, `access_denied`, `rate_limited`,
+            `temporarily_unavailable`, `not_found`.
+          example: "invalid_grant"
+        error_description:
+          type: string
+          description: >
+            Human-readable detail. Deliberately generic on grant/token
+            failures (e.g. an expired code, a replayed code, and a
+            wrong-client code all return the SAME message) so the response
+            never discloses which specific check failed.
+          example: "The authorization code is invalid or has already been used."
+
+    OidcAuthorizeConsentRequest:
+      type: object
+      description: >
+        `POST /oauth/authorize-idp` — submits the user's Allow/Deny decision
+        from the consent screen. Every field mirrors the original GET
+        request's (already-validated) parameters, carried forward as hidden
+        form fields and RE-VALIDATED in full on submit — nothing from an
+        earlier GET is trusted as-is.
+      required:
+        - csrf_token
+        - client_id
+        - redirect_uri
+        - response_type
+        - scope
+        - decision
+      properties:
+        csrf_token:
+          type: string
+          description: CSRF token from the rendered consent screen.
+        client_id:
+          type: string
+          example: "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6"
+        redirect_uri:
+          type: string
+          format: uri
+          example: "https://app.example.com/auth/callback"
+        response_type:
+          type: string
+          enum: [code]
+        scope:
+          type: string
+          example: "openid profile email"
+        state:
+          type: string
+        code_challenge:
+          type: string
+        code_challenge_method:
+          type: string
+          enum: [S256, plain]
+        nonce:
+          type: string
+        decision:
+          type: string
+          enum: [approve, deny]
+          description: >
+            ANY value other than exactly `approve` (including a missing or
+            tampered field) is treated as a denial — a code is never issued
+            unless the user explicitly clicked Allow.
+          example: "approve"
+
+    OidcTokenRequest:
+      type: object
+      description: |
+        `POST /oauth/token` request body (`application/x-www-form-urlencoded`,
+        RFC 6749 §4.1.3 / §6). Two grants are accepted:
+
+        1. **`authorization_code`** — exchange a Stage-A2 code for tokens.
+           Requires `code` and `redirect_uri` (byte-exact match to the
+           original authorization request); `code_verifier` is required
+           whenever the code carries a `code_challenge` (i.e. always, for
+           PKCE-mandatory clients).
+        2. **`refresh_token`** — rotate a refresh token. Requires
+           `refresh_token`. The presented token must belong to the
+           AUTHENTICATED client — a token minted for a different client (or a
+           first-party token) is rejected with `invalid_grant`.
+
+        **Client authentication** (RFC 6749 §2.3): HTTP Basic
+        (`client_secret_basic`, see the `OidcClientSecretBasic` security
+        scheme) is tried first; `client_id`/`client_secret` body fields
+        (`client_secret_post`) are the fallback. Public clients present
+        `client_id` only (`none`).
+      required:
+        - grant_type
+      properties:
+        grant_type:
+          type: string
+          enum: [authorization_code, refresh_token]
+        code:
+          type: string
+          description: Required for `authorization_code`. Single-use — a replay revokes the token family it originally minted.
+        redirect_uri:
+          type: string
+          format: uri
+          description: Required for `authorization_code`. Must byte-exact match the value sent to `/oauth/authorize-idp` — no normalisation.
+        code_verifier:
+          type: string
+          description: PKCE verifier (RFC 7636 §4.1). Required whenever the code carries a `code_challenge`.
+        refresh_token:
+          type: string
+          description: Required for `refresh_token`. Opaque, single-use rotating token.
+        client_id:
+          type: string
+          description: Required unless supplied via HTTP Basic.
+        client_secret:
+          type: string
+          description: Confidential clients only; omit for public (PKCE-only) clients.
+
+    OidcTokenResponse:
+      type: object
+      description: >
+        Successful `POST /oauth/token` response (RFC 6749 §5.1 / OIDC Core
+        §3.1.3.3). `Cache-Control: no-store` and `Pragma: no-cache` are always
+        set on this response.
+      required:
+        - access_token
+        - token_type
+        - expires_in
+        - scope
+      properties:
+        access_token:
+          type: string
+          description: >
+            RS256 JWT access token (`typ: at+jwt`). Its `sub` is the OIDC
+            pairwise (or public, per client policy) subject — never the raw
+            userID. Lifetime controlled by `oidc.access_ttl` (default 900 s).
+          example: "eyJhbGciOiJSUzI1NiIsInR5cCI6ImF0K2p3dCIsImtpZCI6IjIwMjYwNy0xYTJiM2M0ZCJ9..."
+        token_type:
+          type: string
+          enum: [Bearer]
+          example: "Bearer"
+        expires_in:
+          type: integer
+          description: Access-token lifetime in seconds.
+          example: 900
+        scope:
+          type: string
+          description: Space-delimited scopes actually granted.
+          example: "openid email profile offline_access"
+        id_token:
+          type: string
+          description: >
+            OIDC id_token (RS256 JWT: `iss`, `sub`, `aud=client_id`, `exp`,
+            `iat`, `nbf`, `auth_time`, the echoed `nonce` if one was supplied,
+            plus profile/email claims gated by the granted scope — never a
+            `scope` claim). Present on the `authorization_code` grant;
+            OMITTED from `refresh_token` grant responses (OIDC Core §12.2
+            does not require re-minting it on refresh).
+          example: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+        refresh_token:
+          type: string
+          description: >
+            Opaque, single-use rotating refresh token. Present ONLY when the
+            `offline_access` scope was granted (`oidc.refresh_enabled` must
+            also be on). Always re-issued on a `refresh_token` grant response.
+          example: "a3f8c2d1e4b5..."
+
+    OidcRevokeRequest:
+      type: object
+      description: >
+        `POST /oauth/revoke` request body (`application/x-www-form-urlencoded`,
+        RFC 7009 §2.1). Client authentication is identical to `/oauth/token`.
+      required:
+        - token
+      properties:
+        token:
+          type: string
+          description: The refresh token OR access token (compact JWT) to revoke.
+        token_type_hint:
+          type: string
+          enum: [refresh_token, access_token]
+          description: >
+            Optional hint only — an incorrect or absent hint still works (the
+            shape of the token itself is checked).
+        client_id:
+          type: string
+        client_secret:
+          type: string
+
+    OidcUserInfoResponse:
+      type: object
+      description: >
+        `GET`/`POST /oauth/userinfo` response (OIDC Core §5.3.2). Claims are
+        STRICTLY gated by the presented access token's GRANTED scope: `sub` is
+        always present; `email`/`email_verified` require the `email` scope;
+        `name`/`given_name`/`family_name`/`preferred_username`/`picture`
+        require the `profile` scope. A token minted with `openid` alone
+        returns `sub` and nothing else.
+      required:
+        - sub
+      properties:
+        sub:
+          type: string
+          description: >
+            OIDC pairwise (or public, per client policy) subject — the SAME
+            opaque value the id_token carried for this user+client.
+          example: "3f9b1c8e2a7d4f6b0c1e5a8d9f2b3c4e5d6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c"
+        email:
+          type: string
+          format: email
+          example: "john@example.com"
+        email_verified:
+          type: boolean
+          example: true
+        name:
+          type: string
+          example: "John Doe"
+        given_name:
+          type: string
+          example: "John"
+        family_name:
+          type: string
+          example: "Doe"
+        preferred_username:
+          type: string
+          example: "johndoe"
+        picture:
+          type: string
+          format: uri
+          example: "https://signula.id/avatar/3f9b1c8e2a7d/256"
+
+    OidcDiscoveryResponse:
+      type: object
+      description: >
+        OpenID Provider Metadata (OpenID Connect Discovery 1.0 §3), published
+        at `GET /.well-known/openid-configuration`. Every endpoint URL is
+        derived from the `oidc.issuer` setting — never hardcoded.
+      required:
+        - issuer
+        - authorization_endpoint
+        - token_endpoint
+        - userinfo_endpoint
+        - jwks_uri
+        - revocation_endpoint
+        - response_types_supported
+        - grant_types_supported
+        - subject_types_supported
+        - id_token_signing_alg_values_supported
+        - scopes_supported
+        - token_endpoint_auth_methods_supported
+        - code_challenge_methods_supported
+        - claims_supported
+      properties:
+        issuer:
+          type: string
+          example: "https://signula.id"
+        authorization_endpoint:
+          type: string
+          example: "https://signula.id/oauth/authorize-idp"
+        token_endpoint:
+          type: string
+          example: "https://signula.id/oauth/token"
+        userinfo_endpoint:
+          type: string
+          example: "https://signula.id/oauth/userinfo"
+        jwks_uri:
+          type: string
+          example: "https://signula.id/.well-known/jwks.json"
+        revocation_endpoint:
+          type: string
+          example: "https://signula.id/oauth/revoke"
+        response_types_supported:
+          type: array
+          items:
+            type: string
+          example: ["code"]
+        grant_types_supported:
+          type: array
+          items:
+            type: string
+          example: ["authorization_code", "refresh_token"]
+        subject_types_supported:
+          type: array
+          items:
+            type: string
+          example: ["pairwise", "public"]
+        id_token_signing_alg_values_supported:
+          type: array
+          items:
+            type: string
+          example: ["RS256"]
+        scopes_supported:
+          type: array
+          items:
+            type: string
+          example: ["openid", "email", "profile", "offline_access"]
+        token_endpoint_auth_methods_supported:
+          type: array
+          items:
+            type: string
+          example: ["client_secret_basic", "client_secret_post", "none"]
+        code_challenge_methods_supported:
+          type: array
+          items:
+            type: string
+          example: ["S256"]
+        claims_supported:
+          type: array
+          items:
+            type: string
+          example: ["sub", "iss", "aud", "exp", "iat", "auth_time", "nonce", "email", "email_verified", "name", "given_name", "family_name", "preferred_username", "picture"]
+
   # --------------------------------------------------------------------------
   # Reusable Parameters
   # --------------------------------------------------------------------------
@@ -1304,6 +1913,24 @@ components:
           example:
             success: false
             message: "An unexpected error occurred"
+
+    OidcRateLimited:
+      description: >
+        Rate limit exceeded (B-059). Per-IP and, when a client_id was
+        presented, per-client — reuses the `jwt.rate_limit.*` settings (G-003)
+        under endpoint-specific bucket names.
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+          description: Seconds to wait before retrying (mirrors `jwt.rate_limit.window_seconds`).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/OAuthErrorResponse"
+          example:
+            error: "rate_limited"
+            error_description: "Too many requests. Please try again later."
 
 # ============================================================================
 # Paths (Endpoints)
@@ -1531,33 +2158,193 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /auth/token:
+    post:
+      tags: [JWT Auth]
+      operationId: issueJwtToken
+      summary: Issue JWT bearer tokens
+      description: |
+        Issue a short-lived RS256 access token and a long-lived opaque refresh token.
+
+        Two grants are accepted (in precedence order):
+
+        1. **Session grant** — an existing authenticated browser session (cookie). No
+           body required. The SPA calls this to bootstrap a token from its session.
+        2. **Password grant** — `email` (or `username`) + `password`. Internally
+           verified via `Auth::login()` — lockout, account-status, and MFA gate all
+           apply. On MFA-required, a `401` with `mfa_required: true` is returned;
+           complete MFA, then retry.
+
+        The token `sub` (userID) is **always** resolved from a server-verified identity.
+        No client-supplied `sub` or `userID` ever reaches token issuance.
+
+        **Token properties:**
+        - Access token: RS256 JWT, `typ: at+jwt` (RFC 9068), `kid` header, default
+          15-min lifetime (`jwt.access_ttl`), `scope` claim.
+        - Refresh token: 256-bit opaque string, single-use rotating, 30-day default
+          lifetime (`jwt.refresh_ttl`). Only its SHA-256 hash is stored server-side.
+
+        **Security headers on response:** `Cache-Control: no-store`, `Pragma: no-cache`.
+
+        **Rate limits:**
+        - Per IP: `jwt.rate_limit.token_per_ip` / `jwt.rate_limit.window_seconds`
+          (default 30 / 15 min).
+        - Per identifier: `jwt.rate_limit.token_per_identifier` / window
+          (default 10 / 15 min). Credential-stuffing guard.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JwtTokenRequest"
+            examples:
+              password_grant:
+                summary: Email + password
+                value:
+                  email: "john@example.com"
+                  password: "SecurePass123!"
+                  scope: "user:read user:write"
+              session_grant:
+                summary: Session bootstrap (no body needed)
+                value: {}
+      responses:
+        "200":
+          description: Tokens issued successfully
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: "no-store"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JwtTokenResponse"
+        "401":
+          description: |
+            Invalid credentials, account locked/suspended, or MFA required.
+            When MFA is required, `data.mfa_required` is `true`.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - $ref: "#/components/schemas/JwtMfaRequiredResponse"
+              examples:
+                invalid_credentials:
+                  summary: Wrong email or password
+                  value:
+                    success: false
+                    message: "Invalid credentials"
+                mfa_required:
+                  summary: MFA verification required
+                  value:
+                    success: false
+                    message: "MFA verification required"
+                    data:
+                      mfa_required: true
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /auth/revoke:
+    post:
+      tags: [JWT Auth]
+      operationId: revokeJwtToken
+      summary: Revoke access or refresh token (RFC 7009)
+      description: |
+        Revoke an access token (adds its `jti` to the self-expiring denylist) and/or
+        revoke a refresh token family.
+
+        **RFC 7009 semantics:** always returns `200` — revocation is idempotent and
+        must not leak whether the token was valid.
+
+        **What gets revoked:**
+        - Body `token` with `token_type_hint: access_token` (or JWT shape) → access-token
+          `jti` denylisted until the token's original `exp`.
+        - Body `token` with `token_type_hint: refresh_token` (or 64-char hex shape) →
+          entire refresh-token family revoked.
+        - No body token → the caller's own Bearer access token (from `Authorization`
+          header) is denylisted.
+
+        Only tokens the caller presents are revoked — there is no cross-user revocation
+        on this endpoint.
+      security:
+        - BearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JwtRevokeRequest"
+            examples:
+              revoke_access:
+                summary: Revoke an access token
+                value:
+                  token: "eyJhbGciOiJSUzI1NiIs..."
+                  token_type_hint: "access_token"
+              revoke_refresh:
+                summary: Revoke a refresh token family
+                value:
+                  token: "a3f8c2d1e4b5..."
+                  token_type_hint: "refresh_token"
+      responses:
+        "200":
+          description: Revocation accepted (always — per RFC 7009 §2.2)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessMessage"
+              example:
+                success: true
+                message: "Token revoked"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
   /auth/refresh:
     post:
-      tags: [Authentication]
+      tags: [Authentication, JWT Auth]
       operationId: refreshToken
-      summary: Refresh access token
+      summary: Rotate refresh token (JWT)
       description: |
-        Exchange a valid refresh token for a new access token.
-        The refresh token itself is not rotated on each call.
+        Exchange a valid opaque refresh token for a new RS256 access token + refresh
+        token pair. **Single-use rotation** — the presented refresh token is invalidated
+        atomically and a new pair (same rotation family) is returned.
+
+        **Reuse detection:** replaying an already-spent or revoked refresh token revokes
+        the entire token family, raises a HIGH security alert, and returns `401`. Both
+        the attacker and the legitimate client are logged out.
+
+        **Rate limit:** `jwt.rate_limit.refresh_per_ip` requests per
+        `jwt.rate_limit.window_seconds` per IP (default 60 / 15 min).
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/RefreshRequest"
+              $ref: "#/components/schemas/JwtRefreshRequest"
       responses:
         "200":
-          description: Token refreshed
+          description: New access + refresh token pair issued
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/RefreshResponse"
-        "401":
-          description: Invalid or expired refresh token
+                $ref: "#/components/schemas/JwtTokenResponse"
+        "400":
+          description: Missing `refresh_token` field
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: >
+            Invalid, expired, or reused refresh token. Reason is not disclosed
+            (no validity signal per RFC 7009 principles). On reuse, the entire
+            token family is revoked server-side.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          $ref: "#/components/responses/RateLimited"
 
   /auth/verify-email:
     get:
@@ -3129,6 +3916,560 @@ paths:
   # ==========================================================================
   # Webhook endpoints are configured via the partner dashboard.
   # This section documents the event types and payload format.
+
+  # ==========================================================================
+  # JWT AUTH — JWKS (public signing keys, well-known path)
+  # ==========================================================================
+
+  /.well-known/jwks.json:
+    get:
+      tags: [JWT Auth]
+      operationId: getJwks
+      summary: JSON Web Key Set (public signing keys)
+      description: |
+        Returns the public JWK Set (RFC 7517) for SIGNula's JWT signing keys.
+        Use this endpoint to fetch the RS256 public key(s) needed to **verify**
+        SIGNula access tokens without holding any shared secret.
+
+        **Key properties:**
+        - Contains all currently-valid public keys: the active key plus any recently
+          rotated key still within the maximum access-token TTL window.
+        - Only public RSA components (`kty`, `use`, `alg`, `kid`, `n`, `e`) are
+          published. Private key material is never included.
+        - No authentication required — public verifiability is the design intent.
+        - Cacheable: `Cache-Control: public, max-age=3600`. Verifiers should refetch
+          on encountering an unknown `kid` in a token header.
+
+        **Shared contract with G-001:** this endpoint is the foundation for future
+        OIDC/OAuth 2.0 relying-party integrations. The JWK structure is stable.
+
+        **Verifying a token (example with `firebase/php-jwt`):**
+        ```php
+        $jwks = json_decode(file_get_contents('https://signulo.id/.well-known/jwks.json'), true);
+        $keySet = Firebase\JWT\JWK::parseKeySet($jwks);
+        $claims = Firebase\JWT\JWT::decode($accessToken, $keySet);
+        ```
+      security: []
+      responses:
+        "200":
+          description: Public JWKS document
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: "public, max-age=3600"
+            X-Content-Type-Options:
+              schema:
+                type: string
+                example: "nosniff"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JwksResponse"
+              example:
+                keys:
+                  - kty: "RSA"
+                    use: "sig"
+                    alg: "RS256"
+                    kid: "202607-1a2b3c4d5e6f"
+                    n: "0vx7agoebGcQSuuPiLJXZp..."
+                    e: "AQAB"
+        "405":
+          description: Method not allowed (only GET and HEAD are accepted)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ==========================================================================
+  # OIDC PROVIDER — "Sign in with SIGNula.id" (G-001)
+  # ==========================================================================
+  # ⚠️ NOT under /api/v1 — these 5 paths resolve against the SIGNula root
+  # (e.g. https://signula.id/oauth/authorize-idp), exactly like
+  # /.well-known/jwks.json above. See the "OIDC Provider" tag description.
+  # All 5 endpoints refuse with 404 (`{"error":"not_found"}`) while the
+  # `oidc.enabled` master switch is off (ships OFF by default).
+  # ==========================================================================
+
+  /oauth/authorize-idp:
+    get:
+      tags: [OIDC Provider]
+      operationId: oidcAuthorize
+      summary: Authorization endpoint (RFC 6749 §4.1.1, OIDC Core §3.1.2.1)
+      description: |
+        Validates an authorization request from a Relying Party (RP) and
+        either auto-issues a code (a covering, non-revoked consent already
+        exists and `prompt=consent` was not forced), or renders an HTML
+        consent screen for the user to Allow/Deny.
+
+        **Not a JSON endpoint** — this is a browser-navigated page. Success
+        and redirectable errors both end in a `302` back to `redirect_uri`;
+        a "fatal" validation failure (unknown/inactive `client_id`, or a
+        `redirect_uri` that failed the exact-match allowlist check) renders a
+        LOCAL, non-redirectable HTML error page instead — no proven-safe
+        redirect target exists yet, so it is never safe to redirect an
+        unknown client anywhere (open-redirect defence).
+
+        **`redirect_uri` matching is EXACT (byte-for-byte)** — no substring
+        match, no trailing-slash or scheme normalisation. It must be
+        byte-identical to one of the client's registered URIs.
+
+        **PKCE is mandatory** for public clients, for any client with
+        `pkceRequired=1`, and globally whenever `oidc.require_pkce` is on
+        (the default) — `code_challenge` + `code_challenge_method=S256` are
+        then required. `scope` must include `openid`.
+
+        **Unauthenticated caller:** redirected to `/login?redirect=...` and
+        returned here after sign-in (MFA included).
+      security: []
+      parameters:
+        - name: client_id
+          in: query
+          required: true
+          schema:
+            type: string
+          example: "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6"
+        - name: redirect_uri
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uri
+          description: Must byte-exact match a URI registered for this client.
+          example: "https://app.example.com/auth/callback"
+        - name: response_type
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [code]
+        - name: scope
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Space-delimited; must include `openid`.
+          example: "openid profile email offline_access"
+        - name: state
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Opaque RP value, echoed back verbatim.
+        - name: code_challenge
+          in: query
+          required: false
+          schema:
+            type: string
+          description: >
+            PKCE challenge (RFC 7636). REQUIRED for public/`pkceRequired`
+            clients or when `oidc.require_pkce` is on (default).
+        - name: code_challenge_method
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [S256, plain]
+          description: >
+            Required whenever `code_challenge` is present — no implicit
+            "plain" fallback. `plain` is only accepted when
+            `oidc.allow_plain_pkce` is explicitly on.
+        - name: nonce
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Echoed verbatim into the resulting `id_token`.
+        - name: prompt
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [consent]
+          description: Forces the consent screen even if a covering consent already exists.
+      responses:
+        "302":
+          description: >
+            Either a code was auto-issued/approved (`?code=...&state=...`), or
+            a redirectable error was safely returned to `redirect_uri`
+            (`?error=...&error_description=...&state=...` — e.g.
+            `access_denied` if the user later denies on the consent screen,
+            `invalid_scope`, `unsupported_response_type`).
+          headers:
+            Location:
+              schema:
+                type: string
+                format: uri
+        "200":
+          description: HTML consent screen (Allow/Deny) rendered for the signed-in user.
+          content:
+            text/html:
+              schema:
+                type: string
+        "400":
+          description: >
+            LOCAL, non-redirectable HTML error page — unknown/inactive
+            `client_id`, or `redirect_uri` failed the exact-match allowlist.
+            Never a redirect (open-redirect defence).
+          content:
+            text/html:
+              schema:
+                type: string
+        "404":
+          description: The OIDC provider is disabled (`oidc.enabled = 0`) — a LOCAL HTML error page, so a disabled provider does not even confirm this endpoint exists.
+          content:
+            text/html:
+              schema:
+                type: string
+    post:
+      tags: [OIDC Provider]
+      operationId: oidcAuthorizeSubmit
+      summary: Submit the user's consent decision (Allow / Deny)
+      description: |
+        Submits the Allow/Deny decision from the consent screen rendered by
+        `GET /oauth/authorize-idp`. Every field is RE-VALIDATED in full on
+        this POST — nothing carried over from an earlier GET is trusted as-is.
+        CSRF-protected. ANY `decision` value other than exactly `approve`
+        (including a tampered or missing field) is treated as a denial —
+        fail-closed.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: "#/components/schemas/OidcAuthorizeConsentRequest"
+      responses:
+        "302":
+          description: >
+            `302` to `redirect_uri` — `?code=...&state=...` on `decision=approve`,
+            or `?error=access_denied&error_description=...&state=...` otherwise.
+          headers:
+            Location:
+              schema:
+                type: string
+                format: uri
+        "400":
+          description: LOCAL HTML error page — invalid/expired CSRF token, or a fatal validation failure (see the GET operation).
+          content:
+            text/html:
+              schema:
+                type: string
+        "404":
+          description: The OIDC provider is disabled (`oidc.enabled = 0`).
+          content:
+            text/html:
+              schema:
+                type: string
+
+  /oauth/token:
+    post:
+      tags: [OIDC Provider]
+      operationId: oidcToken
+      summary: Token endpoint (RFC 6749 §4.1.3 / §6, OIDC Core §3.1.3)
+      description: |
+        Exchanges a Stage-A2 authorization code for an access token + OIDC
+        `id_token` (+ refresh token, when `offline_access` was granted), or
+        rotates a refresh token. See `OidcTokenRequest` for the two grants.
+
+        **Not part of the `/api/v1` JSON envelope** — this is a raw RFC 6749
+        JSON API called by RP backends (or, for a public client, the RP's own
+        front-end). Response headers always include
+        `Cache-Control: no-store`, `Pragma: no-cache`,
+        `X-Content-Type-Options: nosniff`.
+
+        **Client authentication FIRST** — an unauthenticated/unknown client
+        learns nothing about a code's or refresh token's existence or
+        validity before its own credentials are checked.
+
+        **Single-use code consumption:** the code is atomically consumed
+        (`consumedAt`) bound to the AUTHENTICATED client; a REPLAY of an
+        already-consumed code revokes the exact token family that code's
+        first legitimate exchange minted and raises a HIGH security alert.
+
+        **PKCE S256 verification** uses a constant-time comparison.
+        `redirect_uri` must be byte-exact identical to the value recorded at
+        `/oauth/authorize-idp` time.
+
+        **Rate limiting (B-059):** per-IP AND, when a `client_id` was
+        presented, per-client — separate buckets from `/auth/token`'s own
+        (reuses the `jwt.rate_limit.*` settings, G-003).
+      security:
+        - OidcClientSecretBasic: []
+        - {}
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: "#/components/schemas/OidcTokenRequest"
+            examples:
+              authorization_code:
+                summary: Exchange a code (confidential client, HTTP Basic)
+                value:
+                  grant_type: "authorization_code"
+                  code: "9f8e7d6c5b4a..."
+                  redirect_uri: "https://app.example.com/auth/callback"
+                  code_verifier: "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+              refresh_token:
+                summary: Rotate a refresh token
+                value:
+                  grant_type: "refresh_token"
+                  refresh_token: "a3f8c2d1e4b5..."
+      responses:
+        "200":
+          description: Tokens issued/rotated successfully.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: "no-store"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OidcTokenResponse"
+        "400":
+          description: >
+            `invalid_request` (missing/malformed parameter),
+            `invalid_grant` (code/refresh token invalid, expired, reused, or
+            not owned by this client — reason never disclosed), or
+            `unsupported_grant_type`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OAuthErrorResponse"
+        "401":
+          description: Client authentication failed (`invalid_client`).
+          headers:
+            WWW-Authenticate:
+              schema:
+                type: string
+                example: 'Basic realm="SIGNula"'
+              description: Present only when the client attempted HTTP Basic authentication.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OAuthErrorResponse"
+        "404":
+          description: The OIDC provider is disabled (`oidc.enabled = 0`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OAuthErrorResponse"
+              example:
+                error: "not_found"
+        "405":
+          description: Method not allowed (POST only).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OAuthErrorResponse"
+        "429":
+          $ref: "#/components/responses/OidcRateLimited"
+
+  /oauth/userinfo:
+    get:
+      tags: [OIDC Provider]
+      operationId: oidcUserInfoGet
+      summary: UserInfo endpoint (OIDC Core §5.3)
+      description: |
+        Returns identity claims for the user the presented access token was
+        issued to, STRICTLY gated by that token's GRANTED scope — see
+        `OidcUserInfoResponse`. `Authorization: Bearer <access_token>` is
+        primary; a body/query `access_token` parameter is accepted as a
+        fallback (RFC 6750 §2.2/§2.3), but the header always wins.
+
+        A first-party (non-RP) access token is correctly refused here —
+        this endpoint is an RP-facing OIDC surface, not a general
+        resource-server endpoint.
+      security:
+        - OidcAuthorizationCode: [openid]
+      responses:
+        "200":
+          description: Identity claims for the token's subject.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: "no-store"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OidcUserInfoResponse"
+        "401":
+          description: Missing, malformed, expired, or otherwise invalid access token.
+          headers:
+            WWW-Authenticate:
+              schema:
+                type: string
+                example: 'Bearer error="invalid_token"'
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OAuthErrorResponse"
+              example:
+                error: "invalid_token"
+        "404":
+          description: The OIDC provider is disabled (`oidc.enabled = 0`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OAuthErrorResponse"
+        "405":
+          description: Method not allowed (GET and POST only).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OAuthErrorResponse"
+    post:
+      tags: [OIDC Provider]
+      operationId: oidcUserInfoPost
+      summary: UserInfo endpoint (POST form, OIDC Core §5.3.1)
+      description: Identical to the GET operation — OIDC Core §5.3.1 permits either method. Useful when the Bearer token is supplied as a form field instead of the `Authorization` header.
+      security:
+        - OidcAuthorizationCode: [openid]
+      responses:
+        "200":
+          description: Identity claims for the token's subject.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OidcUserInfoResponse"
+        "401":
+          description: Missing, malformed, expired, or otherwise invalid access token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OAuthErrorResponse"
+        "404":
+          description: The OIDC provider is disabled (`oidc.enabled = 0`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OAuthErrorResponse"
+
+  /oauth/revoke:
+    post:
+      tags: [OIDC Provider]
+      operationId: oidcRevoke
+      summary: Revocation endpoint (RFC 7009)
+      description: |
+        Lets an authenticated RP proactively revoke a refresh token's whole
+        rotation family, or denylist a still-live access token's `jti`,
+        before its natural expiry (e.g. because the RP's own user logged out).
+
+        **No cross-client revoke:** a token is revoked ONLY if it belongs to
+        the client that just authenticated — Client A can never use this to
+        kill Client B's (or SIGNula's first-party) tokens.
+
+        **No validity oracle (RFC 7009 §2.2):** once the CLIENT itself
+        authenticates successfully, this ALWAYS returns `200` with an empty
+        body — an unknown token, an already-revoked token, and someone else's
+        token (silently refused per the rule above) are all indistinguishable.
+        Only a client-authentication failure gets a different (`401`) response.
+
+        **Rate limiting (B-059):** per-IP and, when a `client_id` was
+        presented, per-client — separate buckets from `/oauth/token`'s own.
+      security:
+        - OidcClientSecretBasic: []
+        - {}
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: "#/components/schemas/OidcRevokeRequest"
+            examples:
+              revoke_refresh:
+                summary: Revoke a refresh token family
+                value:
+                  token: "a3f8c2d1e4b5..."
+                  token_type_hint: "refresh_token"
+              revoke_access:
+                summary: Denylist an access token's jti
+                value:
+                  token: "eyJhbGciOiJSUzI1NiIs..."
+                  token_type_hint: "access_token"
+      responses:
+        "200":
+          description: >
+            Revocation accepted — ALWAYS returned once the client itself
+            authenticates, per RFC 7009 §2.2 (no validity oracle). Body is
+            intentionally empty (not even `{}`).
+        "401":
+          description: Client authentication failed (`invalid_client`).
+          headers:
+            WWW-Authenticate:
+              schema:
+                type: string
+                example: 'Basic realm="SIGNula"'
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OAuthErrorResponse"
+        "404":
+          description: The OIDC provider is disabled (`oidc.enabled = 0`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OAuthErrorResponse"
+        "405":
+          description: Method not allowed (POST only).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OAuthErrorResponse"
+        "429":
+          $ref: "#/components/responses/OidcRateLimited"
+
+  /.well-known/openid-configuration:
+    get:
+      tags: [OIDC Provider]
+      operationId: getOidcDiscovery
+      summary: OpenID Provider Metadata (OIDC Discovery 1.0 §3)
+      description: |
+        Publishes SIGNula's OIDC Provider metadata so any standard
+        OIDC-compliant RP client library can auto-configure itself —
+        discover the authorize/token/userinfo/revocation endpoints, the JWKS
+        location, and the supported scopes/algorithms/PKCE methods — from
+        this one well-known URL. No authentication required.
+
+        Served from `web/public_html/.well-known/openid-configuration/index.php`
+        (a directory literally named `openid-configuration`), exactly the
+        same convention `/.well-known/jwks.json` above already uses.
+      security: []
+      responses:
+        "200":
+          description: OIDC discovery document.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: "public, max-age=3600"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OidcDiscoveryResponse"
+        "404":
+          description: The OIDC provider is disabled (`oidc.enabled = 0`) — no endpoints are worth discovering.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "not_found"
+        "405":
+          description: Method not allowed (GET and HEAD only).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "method_not_allowed"
 
 # ============================================================================
 # Webhook Event Catalogue (x-webhooks extension for documentation)

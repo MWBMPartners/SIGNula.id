@@ -34,7 +34,7 @@
         "test:unit": "phpunit --testsuite='Unit Tests'",
         "test:integration": "phpunit --testsuite='Integration Tests'",
         "test:coverage": "phpunit --coverage-html _coverage/html",
-        "analyze": "phpstan analyze",
+        "analyze": "phpstan analyze --memory-limit=1G",
         "check-style": "phpcs",
         "fix-style": "phpcbf",
         "quality": [
