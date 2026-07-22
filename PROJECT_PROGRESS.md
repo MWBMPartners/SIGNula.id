@@ -1,7 +1,7 @@
 # SIGNula.ID Development Progress
 
 **Last Updated:** 2026-07-01
-**Current Version:** 2.7.0-beta (on branch `autopilot/2026-06-30`)
+**Current Version:** 2.8.0-beta (on `main`, post-consolidation PR #91 — 2026-07-22). All four epics G-001..G-004 are **built and merged** (G-002 billing is TEST-MODE; G-004 jurisdiction values pending legal review).
 **Project Status:** 🟢 Active Development — Foundation hardened; feature campaign next
 
 ---
