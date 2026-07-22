@@ -103,7 +103,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $ticketResult = $ticketStmt->get_result();
             $ticket = $ticketResult->fetch_assoc();
 
-            // TODO: Send email notification to user and support team
+            // 📧 Send email notifications
+            $baseURL = getSetting('url.base', 'https://signula.id');
+            $ticketUrl = "{$baseURL}/support/ticket/{$ticket['ticketNumber']}";
+
+            // Send to user
+            $userEmailVariables = [
+                'displayName' => $user['displayName'],
+                'ticketNumber' => $ticket['ticketNumber'],
+                'subject' => $subject,
+                'priority' => ucfirst($priority),
+                'category' => ucfirst($category),
+                'message' => $description,
+                'ticketUrl' => $ticketUrl
+            ];
+            EmailService::sendTemplateEmail($user['email'], 'support_ticket_user', $userEmailVariables, $_SESSION['user_id'], 3);
+
+            // Send to support team
+            $supportEmail = getSetting('support.email_address', 'support@signula.id');
+            $priorityColors = ['low' => '#28a745', 'medium' => '#ffc107', 'high' => '#fd7e14', 'critical' => '#dc3545'];
+
+            $teamEmailVariables = [
+                'displayName' => $user['displayName'],
+                'email' => $user['email'],
+                'ticketNumber' => $ticket['ticketNumber'],
+                'subject' => $subject,
+                'priority' => ucfirst($priority),
+                'priorityColor' => $priorityColors[$priority] ?? '#6c757d',
+                'category' => ucfirst($category),
+                'message' => $description,
+                'ticketUrl' => $ticketUrl
+            ];
+            EmailService::sendTemplateEmail($supportEmail, 'support_ticket_team', $teamEmailVariables, null, 2);
 
             $_SESSION['success_message'] = 'Ticket submitted successfully! Your ticket number is ' . $ticket['ticketNumber'];
             header('Location: /support/my-tickets');
