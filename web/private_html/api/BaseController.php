@@ -134,6 +134,12 @@ abstract class BaseController
      * Validates that user is authenticated
      * Exits with 401 if not authenticated
      *
+     * 🛡️ CAP-API Bucket B (#4): also enforces CSRF protection for MUTATING
+     * requests that authenticated via a cookie/session — see
+     * enforceSessionCsrf() below for the full rationale and rollout notes.
+     * Bearer-JWT and partner-API-key callers are NEVER subject to this check
+     * (no ambient browser credential to forge in the first place).
+     *
      * @return array Current user data
      */
     protected function requireAuth(): array
@@ -144,6 +150,10 @@ abstract class BaseController
             if ($this->currentUser === null) {
                 Response::unauthorized('Authentication required');
             }
+
+            // 🛡️ Only runs once per request (this branch only executes the
+            // FIRST time requireAuth() resolves a user) — see enforceSessionCsrf().
+            $this->enforceSessionCsrf();
         }
 
         return $this->currentUser;
@@ -152,13 +162,27 @@ abstract class BaseController
     /**
      * 👤 Get current authenticated user
      *
+     * 🏷️ Tags the resolved user with `auth_method` ('session'|'jwt'|
+     * 'api_key') so downstream code — specifically enforceSessionCsrf()
+     * below — can tell a cookie/session-backed request apart from a Bearer
+     * JWT or partner API key. The JWT path already did this (G-003); the
+     * session and API-key paths are tagged the SAME way here for CAP-API
+     * Bucket B item #4. Adding this key is additive/safe: nothing in this
+     * codebase spreads or iterates the raw $user array into a response body
+     * or a SQL statement (verified — see CAP-API Bucket B implementation
+     * notes), so no existing caller is affected by the new array key.
+     *
      * @return array|null User data or null
      */
     protected function getCurrentUser(): ?array
     {
         // Check session-based auth
         if (isset($_SESSION['user_id'])) {
-            return $this->getUserById($_SESSION['user_id']);
+            $user = $this->getUserById($_SESSION['user_id']);
+            if ($user !== null) {
+                $user['auth_method'] = 'session';
+            }
+            return $user;
         }
 
         // Check JWT token (if implemented)
@@ -170,10 +194,108 @@ abstract class BaseController
         // Check API key (if implemented)
         $apiKey = $this->getApiKey();
         if ($apiKey) {
-            return $this->getUserByApiKey($apiKey);
+            $user = $this->getUserByApiKey($apiKey);
+            if ($user !== null) {
+                $user['auth_method'] = 'api_key';
+            }
+            return $user;
         }
 
         return null;
+    }
+
+    /**
+     * 🛡️ Enforce CSRF protection for cookie/session-authenticated MUTATING
+     * requests (CAP-API Bucket B, item #4).
+     *
+     * Scope — deliberately narrow, per the audit's own risk assessment:
+     *   - Only applies to state-changing HTTP verbs (POST/PUT/PATCH/DELETE).
+     *     GET/HEAD/OPTIONS are exempt (nothing to forge).
+     *   - Only applies when `getCurrentUser()` resolved the caller via a
+     *     COOKIE SESSION (`auth_method === 'session'`). A Bearer JWT or a
+     *     partner X-API-Key is never sent automatically by a browser, so
+     *     neither carries any ambient credential a third-party site could
+     *     "ride" — classic CSRF does not apply to them, and requiring a
+     *     token from a server-to-server/native-app caller would just break
+     *     working integrations for no security benefit.
+     *
+     * Reuses the EXACT SAME mechanism every other cookie-authenticated
+     * SIGNula surface already uses (SecurityUtils::verifyCSRFToken() —
+     * see partner/admin/notification/consent/export AJAX handlers), via
+     * either the `X-CSRF-Token` header or a `csrf_token` body field (same
+     * dual-source convention as web/public_html/api/notification-actions.php).
+     *
+     * 🚧 STAGED ROLLOUT — gated OFF by default. As of this change, NO
+     * first-party JavaScript anywhere in this repository calls `/api/v1/*`
+     * at all (confirmed by search), so there is currently no session-based
+     * REST caller anywhere that has ever been issued a CSRF token to send
+     * here — turning this on unconditionally would immediately reject every
+     * future cookie-session REST client until someone wires up the token,
+     * with no way to migrate first. This mirrors the SAME dormant-rollout
+     * pattern already established in this codebase for exactly this reason
+     * (see Entitlements::isSettingEnforcementEnabled() — "deploying this
+     * class changes NO current behaviour whatsoever until a human
+     * deliberately flips the switch"). Flip
+     * `api.security.csrf_enforce_session_mutations` to '1'/'true' in
+     * tblSettings once a session-based REST caller actually threads
+     * SecurityUtils::generateCSRFToken() through to its requests (e.g. via
+     * a `<meta name="csrf-token">` tag the page already renders, forwarded
+     * as the `X-CSRF-Token` header on every mutating fetch()).
+     *
+     * @return void (exits via Response::forbidden() on failure, once enabled)
+     *
+     * @see web/private_html/security/SecurityUtils.php — generateCSRFToken()/verifyCSRFToken()
+     * @see web/public_html/api/notification-actions.php — the header+body dual-source convention
+     */
+    protected function enforceSessionCsrf(): void
+    {
+        // 🌐 Only mutating verbs can change state.
+        $method = strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET');
+        if (!in_array($method, ['POST', 'PUT', 'PATCH', 'DELETE'], true)) {
+            return;
+        }
+
+        // 🍪 Only cookie/session-authenticated callers are in scope — a
+        // Bearer JWT or partner API key is exempt (see doc-block above).
+        if (($this->currentUser['auth_method'] ?? 'session') !== 'session') {
+            return;
+        }
+
+        // 🚧 Staged rollout gate — see doc-block above. Defaults OFF.
+        $enforceRaw = function_exists('getSetting')
+            ? getSetting('api.security.csrf_enforce_session_mutations', false)
+            : false;
+        $enforce = is_bool($enforceRaw)
+            ? $enforceRaw
+            : in_array(strtolower(trim((string) $enforceRaw)), ['1', 'true', 'on', 'yes'], true);
+
+        if (!$enforce) {
+            return;
+        }
+
+        // 🔑 Accept the token via header (preferred) OR request body, same
+        // dual-source convention as notification-actions.php.
+        $token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? null;
+        if ($token === null) {
+            $body = $this->input();
+            $token = is_array($body) ? ($body['csrf_token'] ?? null) : null;
+        }
+
+        $valid = class_exists('SecurityUtils') && SecurityUtils::verifyCSRFToken(is_string($token) ? $token : null);
+
+        if (!$valid) {
+            if (class_exists('ActivityLogger')) {
+                ActivityLogger::log(
+                    $this->currentUser['userID'] ?? null,
+                    'csrf_check_failed',
+                    'security',
+                    'warning',
+                    'REST API mutating request rejected: missing or invalid CSRF token'
+                );
+            }
+
+            Response::forbidden('A valid CSRF token is required for this request');
+        }
     }
 
     /**

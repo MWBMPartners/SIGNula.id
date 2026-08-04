@@ -957,6 +957,18 @@ function sanitizeRedirectUrl(string $url, string $fallback = '/dashboard'): stri
 /**
  * ✅ JSON response helper
  *
+ * 🛡️ CAP-API Bucket B (#1) — Error-envelope convergence (audit #35).
+ * The legacy shape below (`success`/`message`/`data`/`timestamp`) is left
+ * completely UNCHANGED for every caller and consumer — including SUCCESS
+ * responses, which are explicitly out of scope for this convergence. For
+ * ERROR responses ONLY (`$success === false`), we additionally emit the
+ * canonical top-level keys documented in
+ * web/private_html/api/Response.php's doc-block (`errors[]` + `meta{}`) as
+ * a pure superset, so a client written against the standard `Response`
+ * envelope can parse this response the same way it parses `/api/v1/*`
+ * errors — without breaking any existing caller that only reads
+ * `success`/`message`/`data`.
+ *
  * @param bool $success Success status
  * @param string $message Response message
  * @param mixed $data Additional data
@@ -967,12 +979,29 @@ function jsonResponse(bool $success, string $message, mixed $data = null, int $s
     http_response_code($statusCode);
     header('Content-Type: application/json; charset=utf-8');
 
-    echo json_encode([
+    // 🏗️ Legacy shape — UNCHANGED.
+    $response = [
         'success' => $success,
         'message' => $message,
         'data' => $data,
-        'timestamp' => time()
-    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        'timestamp' => time(),
+    ];
+
+    // ✅ Canonical top-level keys — ADDITIVE, error responses only.
+    if ($success === false) {
+        // 📝 Prefer a genuine list of error detail strings when $data already
+        // looks like one (a non-empty array); otherwise fall back to a
+        // single-element array wrapping the human-readable $message.
+        $response['errors'] = (is_array($data) && !empty($data)) ? $data : [$message];
+
+        $response['meta'] = [
+            'timestamp'  => gmdate('c'), // ISO 8601 — matches Response::send()
+            'version'    => 'v1',
+            'request_id' => bin2hex(random_bytes(16)),
+        ];
+    }
+
+    echo json_encode($response, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
     exit;
 }

@@ -75,8 +75,10 @@ class UsageController extends BaseController
      */
     public function recordUsage(array $params): void
     {
-        // 🔑 Require API key authentication — only partners can submit usage
-        $this->requireApiKeyAuth();
+        // 🔑 Require API key authentication — only partners can submit usage.
+        // Returns the AUTHENTICATED PARTNER's own partnerID (never trust the
+        // request body for this) — see requireApiKeyAuth() below.
+        $partnerID = $this->requireApiKeyAuth();
 
         // ✅ Validate the incoming request body
         $data = $this->validate([
@@ -84,6 +86,34 @@ class UsageController extends BaseController
             'metric_code' => 'required|string|min:1|max:100',
             'quantity'    => 'required|numeric|min:0',
         ]);
+
+        $userID = (int) $data['user_id'];
+
+        // 🛡️ CAP-API Bucket B (#2) — cross-tenant write guard (HIGH).
+        // A valid API key only proves WHICH partner is calling — it says
+        // NOTHING about whether that partner is entitled to bill/record
+        // usage against the caller-supplied `user_id`. Without this check,
+        // any partner's API key could submit usage events (and therefore
+        // pollute billing) for ANY SIGNula user, not just their own.
+        // This mirrors the SAME ownership check changeBillingMode() already
+        // performs (~line 582) — there it verifies the SESSION user owns the
+        // subscription; here we verify the AUTHENTICATED PARTNER owns (i.e.
+        // has a tblSubscriptions relationship with) the target user.
+        // @see self::verifyPartnerOwnsUser()
+        // @see https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/05-Authorization_Testing/04-Testing_for_Insecure_Direct_Object_References
+        if (!$this->verifyPartnerOwnsUser($partnerID, $userID)) {
+            // 📊 Log the unauthorised attempt for security auditing
+            ActivityLogger::log(
+                $userID,
+                'usage_record_denied',
+                'failed',
+                'Partner #' . $partnerID . ' attempted to record usage for user #' . $userID
+                    . ' without an entitlement relationship'
+            );
+
+            $this->forbidden('This API key is not entitled to record usage for the specified user');
+            return;
+        }
 
         // 📦 Extract optional metadata from raw input (validate doesn't handle object type natively)
         $rawInput = json_decode(file_get_contents('php://input'), true);
@@ -100,10 +130,21 @@ class UsageController extends BaseController
 
         try {
             // 💾 Record the usage event via UsageTracker
+            // 🐛 Fixed alongside the Bucket B ownership check: UsageTracker::
+            // recordUsage()'s 4th positional parameter is `?int $partnerID`,
+            // NOT metadata (that's the 5th) — the previous call here passed
+            // $metadata into the $partnerID slot, which would throw a
+            // TypeError for any request that actually supplied metadata (an
+            // array is not an int|null) and, when metadata was omitted,
+            // silently recorded every event as partnerID=null (no partner
+            // attribution at all). Passing the authenticated $partnerID here
+            // both fixes the type mismatch and correctly attributes the
+            // usage record to the submitting partner for billing/reporting.
             $recordId = UsageTracker::recordUsage(
-                (int) $data['user_id'],
+                $userID,
                 $data['metric_code'],
                 (float) $data['quantity'],
+                $partnerID,
                 $metadata
             );
 
@@ -162,14 +203,38 @@ class UsageController extends BaseController
      */
     public function recordBatchUsage(array $params): void
     {
-        // 🔑 Require API key authentication — only partners can submit usage
-        $this->requireApiKeyAuth();
+        // 🔑 Require API key authentication — only partners can submit usage.
+        // Returns the AUTHENTICATED PARTNER's own partnerID (never trust the
+        // request body for this) — see requireApiKeyAuth() below.
+        $partnerID = $this->requireApiKeyAuth();
 
         // ✅ Validate top-level fields
         $data = $this->validate([
             'user_id' => 'required|integer',
             'items'   => 'required|array',
         ]);
+
+        $userID = (int) $data['user_id'];
+
+        // 🛡️ CAP-API Bucket B (#2) — cross-tenant write guard (HIGH).
+        // Same rationale as recordUsage() above: a valid API key only
+        // proves WHICH partner is calling, not that the partner is
+        // entitled to record usage against this particular user. Mirrors
+        // the ownership check changeBillingMode() already performs (~line
+        // 582) — see verifyPartnerOwnsUser() for the query.
+        if (!$this->verifyPartnerOwnsUser($partnerID, $userID)) {
+            // 📊 Log the unauthorised attempt for security auditing
+            ActivityLogger::log(
+                $userID,
+                'usage_batch_record_denied',
+                'failed',
+                'Partner #' . $partnerID . ' attempted to record batch usage for user #' . $userID
+                    . ' without an entitlement relationship'
+            );
+
+            $this->forbidden('This API key is not entitled to record usage for the specified user');
+            return;
+        }
 
         // 📋 Parse raw input to get the full items array with metadata
         $rawInput = json_decode(file_get_contents('php://input'), true);
@@ -234,14 +299,19 @@ class UsageController extends BaseController
 
         try {
             // 💾 Record the batch via UsageTracker
+            // 🐛 Also pass the authenticated $partnerID (previously omitted
+            // entirely, defaulting to null) so every record in the batch is
+            // correctly attributed to the submitting partner for
+            // billing/reporting — same fix as recordUsage() above.
             $result = UsageTracker::recordBatchUsage(
-                (int) $data['user_id'],
-                $validatedItems
+                $userID,
+                $validatedItems,
+                $partnerID
             );
 
             // 📊 Log the batch activity
             ActivityLogger::log(
-                (int) $data['user_id'],
+                $userID,
                 'usage_batch_recorded',
                 'success',
                 'Batch usage recorded via API: ' . count($validatedItems) . ' items'
@@ -249,7 +319,7 @@ class UsageController extends BaseController
 
             // ✅ Return summary of the batch operation
             $this->created([
-                'user_id'        => (int) $data['user_id'],
+                'user_id'        => $userID,
                 'items_recorded' => count($validatedItems),
                 'result'         => $result,
             ], 'Batch usage recorded successfully');
@@ -632,11 +702,18 @@ class UsageController extends BaseController
      * the X-API-Key header or api_key query parameter.
      * Exits with 401 Unauthorized if no valid key is found.
      *
-     * @return void (exits via Response on failure)
+     * 🛡️ CAP-API Bucket B (#2): now RETURNS the authenticated partner's
+     * partnerID (resolved server-side from the validated key — never from
+     * client input) so callers can perform the partner↔user entitlement
+     * check before trusting a caller-supplied `user_id`.
+     * @see self::verifyPartnerOwnsUser()
+     *
+     * @return int The authenticated partner's partnerID
+     *             (exits via Response before returning on any failure)
      *
      * @see https://www.php.net/manual/en/function.getallheaders.php
      */
-    private function requireApiKeyAuth(): void
+    private function requireApiKeyAuth(): int
     {
         // 🔍 Check for API key in request headers first (preferred method)
         $headers = getallheaders();
@@ -650,7 +727,7 @@ class UsageController extends BaseController
         // ❌ No API key provided at all
         if ($apiKey === null || trim($apiKey) === '') {
             $this->unauthorized('API key is required for this endpoint');
-            return;
+            return 0; // ⛔ Unreachable — unauthorized() exits via Response::send().
         }
 
         // 🔒 Validate the API key against the database
@@ -679,13 +756,62 @@ class UsageController extends BaseController
                 );
 
                 $this->unauthorized('Invalid or expired API key');
-                return;
+                return 0; // ⛔ Unreachable — unauthorized() exits via Response::send().
             }
+
+            // ✅ Return the AUTHENTICATED partner's own ID — this is the ONLY
+            // trustworthy source of "which partner is calling"; it is NEVER
+            // taken from request input.
+            return (int) $keyData['partnerID'];
 
         } catch (Exception $e) {
             // 🚨 Log the error but don't expose internals
             ErrorLogger::log($e);
             $this->error('Authentication service unavailable', Response::HTTP_INTERNAL_ERROR);
+            return 0; // ⛔ Unreachable — error() exits via Response::send().
+        }
+    }
+
+    /**
+     * 🛡️ Verify a partner is entitled to record/bill usage for a user (CAP-API Bucket B, #2)
+     *
+     * A partner is considered entitled to a user when a tblSubscriptions row
+     * links that userID to that partnerID — the SAME userID/partnerID
+     * relationship Entitlements::resolveActiveSubscription() and
+     * UsageTracker's own billing-period lookups already treat as the
+     * canonical partner↔user linkage in this schema (tblSubscriptions.userID
+     * = "account owner", tblSubscriptions.partnerID = "partner organisation,
+     * if applicable" — see _database/signula_complete_install_v2.5.0.sql).
+     *
+     * Deliberately fail-CLOSED (returns false on any error) — unlike the
+     * dormant, fail-OPEN Entitlements resolver, this is a hard security
+     * boundary: an ambiguous/errored lookup must NEVER be treated as
+     * "entitled", or a DB hiccup would silently reopen the cross-tenant
+     * write hole this check exists to close.
+     *
+     * @param int $partnerID The AUTHENTICATED partner's ID (from requireApiKeyAuth())
+     * @param int $userID    The target SIGNula user ID from the request body
+     * @return bool True if this partner has a subscription relationship with this user
+     */
+    private function verifyPartnerOwnsUser(int $partnerID, int $userID): bool
+    {
+        try {
+            $query = "
+                SELECT COUNT(*) AS relationshipCount
+                FROM tblSubscriptions
+                WHERE userID = ?
+                  AND partnerID = ?
+            ";
+
+            $result = Database::query($query, [$userID, $partnerID], 'ii');
+            $row = $result ? $result->fetch_assoc() : null;
+
+            return $row !== null && (int) $row['relationshipCount'] > 0;
+
+        } catch (Exception $e) {
+            // 🚨 Fail CLOSED — log the error but treat it as "not entitled".
+            ErrorLogger::log($e);
+            return false;
         }
     }
 

@@ -30,6 +30,48 @@
  *   "pagination": {...}
  * }
  *
+ * ============================================================================
+ * 📐 CANONICAL ENVELOPE STANDARD (CAP-API audit #35 / Bucket B, item #1)
+ * ============================================================================
+ * This is THE standard response envelope for every SIGNula HTTP JSON
+ * endpoint going forward — REST (`/api/v1/*`), legacy AJAX action handlers,
+ * and standalone entry points alike. Every ERROR response, wherever it is
+ * produced, MUST include at minimum these top-level keys:
+ *
+ *   - `success` (bool, always false for an error)
+ *   - `message` (string, human-readable summary)
+ *   - `errors`  (array<string>, one or more detail strings — may just be
+ *                `[$message]` when there is nothing more granular to report)
+ *   - `meta.timestamp` / `meta.version` / `meta.request_id`
+ *
+ * A handler MAY keep additional legacy/bespoke keys alongside the canonical
+ * ones (e.g. a nested `error: {code, message, ...}` object, a flat
+ * `timestamp`, a `rate_limit` block) — the rule is ADDITIVE ONLY: never
+ * remove or rename a key an existing client already parses. This "superset"
+ * approach is how the following known offenders were converged without a
+ * breaking version bump:
+ *
+ *   - {@see RateLimitMiddleware::respondRateLimitExceeded()} — kept its
+ *     nested `error{code,message,retry_after,...}` and `rate_limit{}`
+ *     blocks, ADDED top-level `message`/`errors`/`meta.version`.
+ *   - {@see APIKeyMiddleware::respondUnauthorized()} and
+ *     {@see APIKeyMiddleware::respondForbidden()} — same treatment.
+ *   - `jsonResponse()` (web/_config/config.php) — kept its flat `data` and
+ *     `timestamp` (unix seconds) keys, ADDED `errors`/`meta` for error
+ *     responses only (success payloads are untouched).
+ *   - The standalone WebAuthn / OAuth-disconnect / export entry points under
+ *     `web/public_html/api/**` — kept their hand-rolled `error` string key,
+ *     ADDED `message`/`errors`/`meta`.
+ *
+ * SUCCESS payload shapes are explicitly OUT of scope for this convergence —
+ * only the error envelope is being standardised (success bodies differ
+ * legitimately by endpoint and changing them is a real contract break).
+ *
+ * New code should simply use this `Response` class directly, which already
+ * emits the canonical shape natively (see send() below) — no superset
+ * shimming needed for anything that already extends BaseController.
+ * ============================================================================
+ *
  * @package    SIGNula
  * @subpackage API
  * @version    1.0.0

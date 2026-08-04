@@ -55,6 +55,50 @@ require_once dirname(__DIR__, 4) . DIRECTORY_SEPARATOR . '_config' . DIRECTORY_S
 header('Content-Type: application/json; charset=utf-8');
 
 // ============================================================================
+// 🛡️ RATE LIMITING (CAP-API Bucket B, item #3)
+// ============================================================================
+// Apply the SAME central rate limiter the /api/v1 router enforces to this
+// standalone endpoint (previously bypassed entirely). Fails OPEN on any
+// internal limiter error; a genuine over-limit request still gets HTTP 429
+// exactly like a router-handled endpoint.
+// @see web/private_html/api/RateLimitMiddleware.php::enforceStandalone()
+if (!class_exists('RateLimitMiddleware')) {
+    require_once ROOT_DIR . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'api'
+        . DIRECTORY_SEPARATOR . 'RateLimitMiddleware.php';
+}
+RateLimitMiddleware::enforceStandalone();
+
+/**
+ * 🔀 Emit a JSON error response in the canonical superset shape (CAP-API
+ * Bucket B, item #1) — keeps the pre-existing `error` string key AND adds
+ * `message`/`errors`/`meta`, then exits.
+ *
+ * @param int         $statusCode  HTTP status code
+ * @param string      $message     Human-readable error message
+ * @param string|null $allowHeader Optional `Allow:` header value (405 responses)
+ * @return never
+ */
+function emitCloudExportError(int $statusCode, string $message, ?string $allowHeader = null): never
+{
+    http_response_code($statusCode);
+    if ($allowHeader !== null) {
+        header('Allow: ' . $allowHeader);
+    }
+    echo json_encode([
+        'success' => false,
+        'error'   => $message,
+        'message' => $message,
+        'errors'  => [$message],
+        'meta'    => [
+            'timestamp'  => gmdate('c'),
+            'version'    => 'v1',
+            'request_id' => bin2hex(random_bytes(16)),
+        ],
+    ], JSON_UNESCAPED_SLASHES);
+    exit;
+}
+
+// ============================================================================
 // 🔒 METHOD VALIDATION
 // ============================================================================
 
@@ -64,13 +108,7 @@ try {
     // which triggers a GET request to this endpoint.
     // @see https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods/GET
     if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
-        http_response_code(405);
-        header('Allow: GET');
-        echo json_encode([
-            'success' => false,
-            'error'   => 'Method not allowed. Use GET to initiate cloud export.'
-        ], JSON_UNESCAPED_SLASHES);
-        exit;
+        emitCloudExportError(405, 'Method not allowed. Use GET to initiate cloud export.', 'GET');
     }
 
     // ============================================================================
@@ -83,12 +121,7 @@ try {
     // @see web/private_html/auth/Auth.php — Auth::isAuthenticated()
 
     if (!Auth::isAuthenticated()) {
-        http_response_code(401);
-        echo json_encode([
-            'success' => false,
-            'error'   => 'Authentication required. Please log in to use cloud export.'
-        ], JSON_UNESCAPED_SLASHES);
-        exit;
+        emitCloudExportError(401, 'Authentication required. Please log in to use cloud export.');
     }
 
     $userID = Auth::getCurrentUserID();
@@ -104,12 +137,7 @@ try {
     $allowedFormats = ['google_sheets', 'excel_online'];
 
     if (empty($format) || !in_array($format, $allowedFormats, true)) {
-        http_response_code(400);
-        echo json_encode([
-            'success' => false,
-            'error'   => 'Invalid or missing "format" parameter. Allowed values: google_sheets, excel_online.'
-        ], JSON_UNESCAPED_SLASHES);
-        exit;
+        emitCloudExportError(400, 'Invalid or missing "format" parameter. Allowed values: google_sheets, excel_online.');
     }
 
     // 🏷️ Type: export type label (e.g. "users", "activity-log")
@@ -158,12 +186,7 @@ try {
             . DIRECTORY_SEPARATOR . 'ExportService.php';
 
         if (!file_exists($exportServicePath)) {
-            http_response_code(500);
-            echo json_encode([
-                'success' => false,
-                'error'   => 'Export service is not available. Please contact the administrator.'
-            ], JSON_UNESCAPED_SLASHES);
-            exit;
+            emitCloudExportError(500, 'Export service is not available. Please contact the administrator.');
         }
 
         require_once $exportServicePath;
@@ -220,12 +243,21 @@ try {
         } catch (\RuntimeException $e) {
             // ⚠️ Google Sheets client_id not configured in database settings
             http_response_code(503);
+            $cloudExportDebug = (defined('ENVIRONMENT') && ENVIRONMENT === 'development') ? $e->getMessage() : null;
+            $cloudExportMsg = 'Google Sheets export is not configured. Please contact the administrator.';
             echo json_encode([
                 'success' => false,
-                'error'   => 'Google Sheets export is not configured. Please contact the administrator.',
-                'debug'   => (defined('ENVIRONMENT') && ENVIRONMENT === 'development')
-                    ? $e->getMessage()
-                    : null
+                'error'   => $cloudExportMsg,
+                'debug'   => $cloudExportDebug,
+                // 🛡️ CAP-API Bucket B (#1): canonical keys ADDED alongside
+                // the pre-existing `error`/`debug` keys.
+                'message' => $cloudExportMsg,
+                'errors'  => [$cloudExportMsg],
+                'meta'    => [
+                    'timestamp'  => gmdate('c'),
+                    'version'    => 'v1',
+                    'request_id' => bin2hex(random_bytes(16)),
+                ],
             ], JSON_UNESCAPED_SLASHES);
             exit;
         }
@@ -243,12 +275,21 @@ try {
         } catch (\RuntimeException $e) {
             // ⚠️ Excel Online client_id/tenant_id not configured in database settings
             http_response_code(503);
+            $cloudExportDebug = (defined('ENVIRONMENT') && ENVIRONMENT === 'development') ? $e->getMessage() : null;
+            $cloudExportMsg = 'Excel Online export is not configured. Please contact the administrator.';
             echo json_encode([
                 'success' => false,
-                'error'   => 'Excel Online export is not configured. Please contact the administrator.',
-                'debug'   => (defined('ENVIRONMENT') && ENVIRONMENT === 'development')
-                    ? $e->getMessage()
-                    : null
+                'error'   => $cloudExportMsg,
+                'debug'   => $cloudExportDebug,
+                // 🛡️ CAP-API Bucket B (#1): canonical keys ADDED alongside
+                // the pre-existing `error`/`debug` keys.
+                'message' => $cloudExportMsg,
+                'errors'  => [$cloudExportMsg],
+                'meta'    => [
+                    'timestamp'  => gmdate('c'),
+                    'version'    => 'v1',
+                    'request_id' => bin2hex(random_bytes(16)),
+                ],
             ], JSON_UNESCAPED_SLASHES);
             exit;
         }
@@ -256,22 +297,27 @@ try {
 
     // ✅ Validate we got a non-empty auth URL before redirecting
     if (empty($authUrl)) {
-        http_response_code(500);
-        echo json_encode([
-            'success' => false,
-            'error'   => 'Failed to generate authorization URL for ' . $format . '.'
-        ], JSON_UNESCAPED_SLASHES);
-        exit;
+        emitCloudExportError(500, 'Failed to generate authorization URL for ' . $format . '.');
     }
 
     // 📝 Log the cloud export initiation for audit trail
     // @see web/private_html/utils/ActivityLogger.php
+    //
+    // 🐛 CAP-API Bucket B prerequisite fix: ActivityLogger::log()'s real
+    // signature has NO `$activityResult`/`$activityDetails` named
+    // parameters (only `$category`/`$severity`/`$description`) — the
+    // previous named-argument call here would fatal with "Unknown named
+    // parameter" on EVERY successful cloud-export initiation, immediately
+    // after the auth URL was built but before the redirect. Corrected to
+    // the real parameter names (mirrors the identical fix applied to
+    // web/public_html/api/oauth/disconnect.php in the same pass).
     if (class_exists('ActivityLogger')) {
         ActivityLogger::log(
             userID: $userID,
             activityType: 'cloud_export_initiated',
-            activityResult: 'pending',
-            activityDetails: 'Initiated ' . $format . ' export for "' . $title . '" (type: ' . $type . ')'
+            category: 'other',
+            severity: 'info',
+            description: 'Initiated ' . $format . ' export for "' . $title . '" (type: ' . $type . ')'
         );
     }
 
@@ -296,13 +342,23 @@ try {
     }
 
     http_response_code(500);
+    $cloudExportUnexpectedMsg = 'An unexpected error occurred while initiating cloud export.';
     echo json_encode([
         'success' => false,
-        'error'   => 'An unexpected error occurred while initiating cloud export.',
+        'error'   => $cloudExportUnexpectedMsg,
         // 🐛 Include debug info only in development environment
         'debug'   => (defined('ENVIRONMENT') && ENVIRONMENT === 'development')
             ? $e->getMessage()
-            : null
+            : null,
+        // 🛡️ CAP-API Bucket B (#1): canonical keys ADDED alongside the
+        // pre-existing `error`/`debug` keys.
+        'message' => $cloudExportUnexpectedMsg,
+        'errors'  => [$cloudExportUnexpectedMsg],
+        'meta'    => [
+            'timestamp'  => gmdate('c'),
+            'version'    => 'v1',
+            'request_id' => bin2hex(random_bytes(16)),
+        ],
     ], JSON_UNESCAPED_SLASHES);
     exit;
 }
