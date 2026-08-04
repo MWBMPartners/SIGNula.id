@@ -106,6 +106,40 @@ $providers = [
         'description' => 'WordPress.com account login',
         'fields' => ['client_id', 'client_secret', 'redirect_uri'],
         'docsUrl' => 'https://developer.wordpress.com/docs/oauth2/'
+    ],
+    // 🔌 FG-008 (issue #99) — generic, config-driven OpenID Connect
+    // connector. Unlike every card above (which hardcode ONE provider's
+    // fixed endpoints), this one only needs an `issuer` URL — the
+    // authorization/token/userinfo/JWKS endpoints are all resolved at
+    // runtime via OIDC Discovery. Works with ANY compliant IdP: Okta,
+    // Keycloak, Auth0, Azure AD B2C, a corporate SSO tenant, ...
+    // @see web/private_html/auth/providers/GenericOidcProvider.php
+    'oidc' => [
+        'name' => 'Generic OpenID Connect',
+        'icon' => 'fab fa-openid',
+        'color' => '#F78C40',
+        'description' => 'Connect ANY standards-compliant OpenID Connect identity provider via OIDC Discovery (Okta, Keycloak, Auth0, Azure AD B2C, a corporate SSO tenant, ...)',
+        'fields' => ['issuer', 'client_id', 'client_secret', 'redirect_uri', 'scopes'],
+        'docsUrl' => 'https://openid.net/specs/openid-connect-discovery-1_0.html'
+    ],
+    // 🗝️ DISABLED-by-default template (seeded blank by migration 049).
+    // LastPass has NO consumer OAuth/OIDC login API — its SSO is SAML 2.0,
+    // for Business/Enterprise accounts only, with LastPass itself acting as
+    // the SAML Identity Provider for OTHER apps (see the docs link below).
+    // This card exists purely as a documented starting point: it stays
+    // "Not Configured" (and therefore hidden from the login page and
+    // Connected Accounts) unless an organisation fronts LastPass Enterprise
+    // SSO with an OIDC-compatible bridge and an admin fills these fields in
+    // — or SIGNula's own SAML Identity Provider (issue #100) is used
+    // instead. There is deliberately NO bespoke "LastpassOAuth.php" class;
+    // this reuses the exact same generic connector as the 'oidc' card above.
+    'lastpass' => [
+        'name' => 'LastPass (SSO template)',
+        'icon' => 'fab fa-lastpass',
+        'color' => '#D32D2D',
+        'description' => 'LastPass has no consumer OAuth/OIDC API (SAML-only, enterprise). Disabled starting-point template — only configure this if you front LastPass Enterprise SSO with an OIDC-compatible bridge.',
+        'fields' => ['issuer', 'client_id', 'client_secret', 'redirect_uri', 'scopes'],
+        'docsUrl' => 'https://support.lastpass.com/help/lastpass-admin-toolkit-using-single-sign-on-sso'
     ]
 ];
 
@@ -423,7 +457,9 @@ foreach ($providers as $key => $provider) {
                 'key_id': 'Key ID',
                 'private_key': 'Private Key',
                 'mode': 'Mode (sandbox/live)',
-                'enabled': 'Enabled'
+                'enabled': 'Enabled',
+                // 🔌 FG-008 — generic OIDC connector's discovery seed.
+                'issuer': 'Issuer URL (e.g. https://accounts.example-idp.com)'
             };
             return labels[fieldName] || fieldName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
         }

@@ -322,6 +322,27 @@ $pageTitle = 'Sign In - SIGNula';
                     'bg' => '#21759b', 'color' => 'white', 'border' => '#21759b',
                     'hover_bg' => '#1a5d7c',
                 ],
+                // 🔌 FG-008 (issue #99) — generic OpenID Connect connector.
+                // @see web/private_html/auth/providers/GenericOidcProvider.php
+                'oidc' => [
+                    'name' => 'OpenID Connect',
+                    'icon' => '<i class="fab fa-openid" style="font-size: 20px; margin-right: 0.75rem;"></i>',
+                    'bg' => '#f78c40', 'color' => 'white', 'border' => '#f78c40',
+                    'hover_bg' => '#e07a2f',
+                ],
+                // 🗝️ DISABLED-by-default template (migration 049): LastPass
+                // has no consumer OAuth/OIDC login API (SAML-only, enterprise
+                // SSO) — see GenericOidcProvider.php's file-level docblock.
+                // This button only ever appears once an admin has configured
+                // oauth.lastpass.issuer/client_id/client_secret against a
+                // real OIDC-compatible bridge in front of an enterprise SSO
+                // setup; the `client_id` filter below keeps it hidden until then.
+                'lastpass' => [
+                    'name' => 'LastPass',
+                    'icon' => '<i class="fab fa-lastpass" style="font-size: 20px; margin-right: 0.75rem;"></i>',
+                    'bg' => '#d32d2d', 'color' => 'white', 'border' => '#d32d2d',
+                    'hover_bg' => '#a82222',
+                ],
             ];
 
             // 🔍 Filter to only show providers that have client_id configured

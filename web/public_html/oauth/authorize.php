@@ -140,29 +140,48 @@ if ($purpose === 'email') {
         $provider = strtolower(SecurityUtils::sanitizeString($provider));
 
         // ✅ Validate provider
-        $allowedProviders = ['google', 'microsoft', 'facebook', 'apple'];
+        // 🔌 FG-008: 'oidc' (generic OpenID Connect) added — see the
+        // "Provider class resolution" fallback below. 'lastpass' is ALSO
+        // allowed here so a DISABLED settings template (migration 049) can
+        // become a working named generic-OIDC instance the moment an admin
+        // fills in its issuer/client_id/client_secret, with no further code
+        // change — see GenericOidcProvider.php's file-level docblock.
+        $allowedProviders = ['google', 'microsoft', 'facebook', 'apple', 'oidc', 'lastpass'];
 
         if (!in_array($provider, $allowedProviders, true)) {
             throw new RuntimeException('Invalid provider: ' . $provider);
         }
 
-        // 🔌 Load provider class
+        // 🔌 Provider class resolution
+        // Convention: provider key 'foo' -> class 'FooOAuth' in
+        // providers/FooOAuth.php (GoogleOAuth, MicrosoftOAuth, YahooOAuth, …).
+        // FG-008: when NO dedicated class file exists for the requested key,
+        // fall back to the config-driven generic OpenID Connect connector
+        // (GenericOidcProvider), constructed with the provider key itself so
+        // it reads its settings from oauth.{provider}.* — see that class's
+        // file-level "MULTIPLE NAMED INSTANCES" docblock section.
+        $providersDir = dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR .
+                       'auth' . DIRECTORY_SEPARATOR . 'providers' . DIRECTORY_SEPARATOR;
         $providerClass = ucfirst($provider) . 'OAuth';
-        $providerFile = dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR .
-                       'auth' . DIRECTORY_SEPARATOR . 'providers' . DIRECTORY_SEPARATOR . $providerClass . '.php';
+        $providerFile = $providersDir . $providerClass . '.php';
 
-        if (!file_exists($providerFile)) {
+        if (file_exists($providerFile)) {
+            require_once $providerFile;
+
+            if (!class_exists($providerClass)) {
+                throw new RuntimeException("Provider class not found: {$providerClass}");
+            }
+
+            // 🏗️ Instantiate dedicated provider
+            $oauth = new $providerClass();
+        } elseif (file_exists($providersDir . 'GenericOidcProvider.php')) {
+            require_once $providersDir . 'GenericOidcProvider.php';
+
+            // 🏗️ Instantiate generic OIDC connector for this provider key
+            $oauth = new GenericOidcProvider($provider);
+        } else {
             throw new RuntimeException("Provider not found: {$provider}");
         }
-
-        require_once $providerFile;
-
-        if (!class_exists($providerClass)) {
-            throw new RuntimeException("Provider class not found: {$providerClass}");
-        }
-
-        // 🏗️ Instantiate provider
-        $oauth = new $providerClass();
 
         // ✅ Check if provider is configured
         if (!$oauth->isConfigured()) {
