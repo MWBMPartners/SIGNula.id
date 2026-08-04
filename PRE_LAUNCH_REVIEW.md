@@ -32,10 +32,11 @@ _Last updated: 2026-07-22 (session: branch consolidation + launch prep)_
 
 | # | Item | Context / options |
 |---|------|-------------------|
-| Q-1 | **`alpha` and `beta` branches did not exist.** | The Dependabot request assumed a three-tier `alpha ▸ beta ▸ main` model, but only `main` existed on GitHub. Plan: **cut `alpha` and `beta` from the post-merge `main`.** Confirm this is the intended model, and confirm which environments each branch deploys to. |
+| Q-1 | **Four-tier branch model now in place** (`alpha ▸ beta ▸ release-candidate ▸ main`). | Only `main` existed originally; `alpha`, `beta`, and `release-candidate` are now cut from `main`. Dependabot version-updates target all four; security fixes fan out via the backport workflow (see Q-5). Confirm which environment each branch deploys to. |
 | Q-2 | **`main` is a protected branch.** | If branch protection requires an approving review from a non-author, the automation cannot self-merge the PR. May need the owner to approve/merge, or to grant the automation bypass. Will surface the exact blocker at merge time. |
 | Q-3 | **Self-hosted frontend libraries are unmonitored.** | Bootstrap / jQuery / FontAwesome are self-hosted (no build step on Dreamhost) and tracked by no manifest, so Dependabot cannot watch them. Options: add a `package.json` (dev-only, for version tracking) or a lightweight manifest + a checker. Tracked as a follow-up issue. |
 | Q-4 | **Enable the repository Dependency graph + Dependabot alerts/security updates** (owner-only repo setting). | At `Settings ▸ Code security` (https://github.com/MWBMPartners/SIGNula.id/settings/security_analysis). This is REQUIRED for: (a) the `Dependency Review` PR check to actually run (it's currently advisory and no-ops without it), and (b) Dependabot **security** update PRs on `main`. The committed `dependabot.yml` handles scheduled **version** updates regardless, but alerts/security-updates need this toggle. |
+| Q-5 | **(Optional) add a `BACKPORT_PAT` repo secret** to run CI on auto-backport PRs. | The security-fix backport workflow (`.github/workflows/backport.yml`) opens cherry-pick PRs onto alpha/beta/release-candidate. PRs opened with the default `GITHUB_TOKEN` do **not** trigger CI (GitHub loop-prevention), so backport PRs would merge without lint/audit unless a PAT is provided. Add a secret `BACKPORT_PAT` (classic PAT or fine-grained token with `contents:write` + `pull-requests:write`) to make backport PRs run CI. Without it, everything still works — the PRs just need a manual CI nudge. |
 
 ---
 

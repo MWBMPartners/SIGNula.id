@@ -1,0 +1,52 @@
+# =============================================================================
+# 🏷️ Auto-label Dependabot SECURITY update PRs
+# -----------------------------------------------------------------------------
+# GitHub only raises Dependabot *security* update PRs against the DEFAULT branch
+# (`main`). This workflow inspects every Dependabot PR to `main`; when the update
+# resolves a security advisory (a GHSA id is present in the Dependabot metadata),
+# it adds the `security` label. The backport workflow (backport.yml) then fans
+# that fix out to the alpha / beta / release-candidate tiers on merge.
+#
+# Routine (non-security) version bumps get NO `security` label, so they are NOT
+# backported — those branches receive their own version-update PRs directly
+# (see .github/dependabot.yml). This keeps backport traffic to security only.
+#
+# Docs: https://github.com/dependabot/fetch-metadata
+# =============================================================================
+name: Dependabot auto-label
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  label-security:
+    # Only Dependabot PRs, and only against the default branch (where security
+    # updates land). Skip everything else cheaply.
+    if: >
+      github.actor == 'dependabot[bot]' &&
+      github.event.pull_request.base.ref == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch Dependabot metadata
+        id: meta
+        uses: dependabot/fetch-metadata@v2
+
+      - name: Add `security` label when the update fixes an advisory
+        if: steps.meta.outputs.ghsa-id != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # 🏷️ Ensure the label exists (idempotent), then apply it.
+          gh label create security --repo "$REPO" \
+            --color B60205 --description "Security fix — backported to all release tiers" \
+            --force >/dev/null 2>&1 || true
+          gh pr edit "$PR" --repo "$REPO" --add-label security
+          echo "::notice::Labelled Dependabot security PR #$PR (GHSA ${{ steps.meta.outputs.ghsa-id }})."
