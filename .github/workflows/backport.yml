@@ -1,0 +1,110 @@
+# =============================================================================
+# 🍒 Backport security fixes from `main` to the lower release tiers
+# -----------------------------------------------------------------------------
+# WHY: Dependabot *security* updates (and GitHub security fixes generally) can
+# only land on the default branch (`main`). The alpha / beta / release-candidate
+# tiers may be deployed for testing, so they must receive those fixes too. When
+# a PR bearing `security` (auto-applied by dependabot-auto-label.yml) or a manual
+# `backport` label merges to `main`, this workflow cherry-picks it onto each tier
+# and opens a PR there. On conflict it leaves a breadcrumb on the source PR for a
+# human to backport by hand (never silently drops a security fix).
+#
+# 🔑 Token note: PRs opened with the default GITHUB_TOKEN do NOT trigger CI
+#    (GitHub loop-prevention). Add a repo/org secret `BACKPORT_PAT` (a PAT or
+#    fine-grained token with `contents:write` + `pull-requests:write`) to make
+#    the backport PRs run CI automatically. Falls back to GITHUB_TOKEN otherwise.
+#    (Documented in PRE_LAUNCH_REVIEW.md.)
+#
+# Docs: https://docs.github.com/actions/using-workflows/events-that-trigger-workflows#pull_request_target
+# =============================================================================
+name: Backport to release tiers
+
+on:
+  pull_request_target:
+    types: [closed]
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  backport:
+    # Only merged PRs carrying a security/backport label.
+    if: >
+      github.event.pull_request.merged == true &&
+      ( contains(github.event.pull_request.labels.*.name, 'security') ||
+        contains(github.event.pull_request.labels.*.name, 'backport') )
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [release-candidate, beta, alpha]
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.BACKPORT_PAT || secrets.GITHUB_TOKEN }}
+
+      - name: Cherry-pick onto ${{ matrix.target }}
+        env:
+          GH_TOKEN: ${{ secrets.BACKPORT_PAT || secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          TARGET: ${{ matrix.target }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+        run: |
+          set -euo pipefail
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # 🌿 Skip gracefully if the tier branch doesn't exist yet.
+          if ! git ls-remote --exit-code --heads origin "$TARGET" >/dev/null 2>&1; then
+            echo "::notice::Branch '$TARGET' does not exist; skipping."
+            exit 0
+          fi
+
+          BP_BRANCH="backport/pr-${PR_NUMBER}/${TARGET}"
+
+          # 🔁 Idempotent: don't recreate an existing backport branch.
+          if git ls-remote --exit-code --heads origin "$BP_BRANCH" >/dev/null 2>&1; then
+            echo "::notice::Backport branch '$BP_BRANCH' already exists; skipping."
+            exit 0
+          fi
+
+          # 🏷️ Ensure labels exist so `gh pr create --label` can't fail.
+          gh label create security --repo "$REPO" --color B60205 --description "Security fix" --force >/dev/null 2>&1 || true
+          gh label create backport --repo "$REPO" --color 5319E7 --description "Backport of a main fix to a release tier" --force >/dev/null 2>&1 || true
+
+          git fetch origin "$TARGET"
+          git checkout -B "$BP_BRANCH" "origin/$TARGET"
+
+          # 🍒 The source PR merged to `main`. If it produced a MERGE commit
+          #    (2 parents), take the PR's net diff with -m 1; a squash/rebase
+          #    merge is a single-parent commit → plain cherry-pick. -x records
+          #    the source SHA in the message for traceability.
+          if git rev-parse -q --verify "${MERGE_SHA}^2" >/dev/null 2>&1; then
+            PICK=(git cherry-pick -m 1 -x "$MERGE_SHA")
+          else
+            PICK=(git cherry-pick -x "$MERGE_SHA")
+          fi
+
+          if "${PICK[@]}"; then
+            git push origin "$BP_BRANCH"
+            BODY="$(printf '🔒 Automated backport of #%s onto the `%s` tier.\n\nCherry-picked `%s` (from the merged main PR #%s). Review and merge to keep the %s tier patched.' \
+                    "$PR_NUMBER" "$TARGET" "$MERGE_SHA" "$PR_NUMBER" "$TARGET")"
+            gh pr create --repo "$REPO" --base "$TARGET" --head "$BP_BRANCH" \
+              --title "[backport → ${TARGET}] ${PR_TITLE}" \
+              --body "$BODY" \
+              --label security --label backport
+            echo "::notice::Opened backport PR for ${TARGET}."
+          else
+            # ⚠️ Conflict — abort and leave a breadcrumb on the source PR.
+            git cherry-pick --abort || true
+            CBODY="$(printf '⚠️ **Backport to `%s` needs manual attention** — cherry-pick of `%s` conflicted. Please backport #%s to `%s` by hand so that tier stays patched.' \
+                     "$TARGET" "$MERGE_SHA" "$PR_NUMBER" "$TARGET")"
+            gh pr comment "$PR_NUMBER" --repo "$REPO" --body "$CBODY" || true
+            echo "::warning::Backport to ${TARGET} conflicted; commented on PR #${PR_NUMBER}."
+          fi

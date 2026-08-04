@@ -23,9 +23,9 @@ name: CI
 
 on:
   push:
-    branches: [main, beta, alpha]
+    branches: [main, release-candidate, beta, alpha]
   pull_request:
-    branches: [main, beta, alpha]
+    branches: [main, release-candidate, beta, alpha]
 
 # 🔐 Least-privilege token: CI only needs to read the repository contents.
 permissions:
