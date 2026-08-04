@@ -6,9 +6,9 @@
 > `.dev-team/` ledger (internal autopilot backlog: `FEATURES.md`, `PROJECT.md`,
 > `autopilot.json`).
 
-_Last updated: 2026-08-04 · `main` @ `2732ae6` · all work merged (tree clean)_
+_Last updated: 2026-08-04 · `main` @ `4dfbc5d` · all work merged (tree clean)_
 
-**Session progress — EIGHT PRs merged to `main`:** #91 (consolidation), #105 (pricing catalog + docs truth-pass), #106 (HIBP built, disabled), #107 (CAP-API Bucket A), #109 (gitignore worktrees), #114 (four-tier security-backport + `release-candidate` branch), #119 (HIBP **enabled** + pricing catalog **activated**/shadow), #120 (CAP-API Bucket B + critical latent-fatal fixes). **Four tiers** (`alpha ▸ beta ▸ release-candidate ▸ main`) all at `2732ae6`. Closed: #35, #80, #86, #95, #96, #104. **CAP-API (#86) DONE. HIBP live (fail-open). Pricing catalog active — enforcement staged in shadow mode, pending ONE human ops-toggle** (`tblFeatureToggles.entitlement_enforcement`). Security fixes now auto-backport main→all tiers.
+**Session progress — 14 PRs merged to `main`.** Consolidation + infra: #91, #105, #106, #107, #108, #109, #114 (four-tier security-backport + `release-candidate`), #119 (HIBP **enabled** + pricing **activated**/shadow), #120 (CAP-API Bucket B + critical fatal fixes), #121 (docs). **Feature grind:** #122 (#98 admin email-template designer), #123 (#99 generic OIDC connector — discovery/PKCE/JWKS, crypto-tested), #124 (#100 SAML 2.0 IdP **dormant** foundation — vendored xmlseclibs, `saml.enabled=0`). **Four tiers** (`alpha ▸ beta ▸ release-candidate ▸ main`) all at `4dfbc5d`. Closed: #35, #80, #86, #95, #96, #98, #99, #100, #104. **CAP-API done · HIBP live · pricing active (staged) · generic-OIDC + email-designer shipped · SAML dormant.** Security fixes auto-backport main→all tiers.
 
 ---
 
@@ -65,7 +65,8 @@ Plus: CI + Dependabot + `composer audit` across **all four tiers**; issue-tracke
 
 - [ ] **ONE human ops action**: flip `tblFeatureToggles.entitlement_enforcement` on (Settings ▸ Feature Toggles) to start the pricing entitlement **shadow-logging** week; later set `entitlements.log_only='false'` to enforce. Confirm pricing P-1…P-5 in `PRE_LAUNCH_REVIEW.md` first.
 - [ ] **#9 cross-project integration** (BLOCKED — `add_repo` for iHymns/CueRCode/etc. is rejected at the tool-permission prompt despite verbal approval; needs the prompt approved or an env-policy change). File "Sign in with SIGNula.id" issues + code in those repos.
-- [ ] Feature build-out: #99 generic OIDC + LastPass · #98 email template designer · #100 SAML 2.0 IdP · #94 regen install v2.8.0 (best validated in staging) · #101 track self-hosted frontend libs (CDN-only today — nothing to manifest yet).
+- [ ] Remaining feature tail: #94 regen install snapshot v2.8.0 (best validated in staging) · #101 supply-chain tracking — **now also covers the vendored `web/_lib/xmlseclibs` 3.1.5** (CDN frontend libs still un-manifested). ✅ done this cycle: #98 email designer, #99 generic OIDC, #100 SAML foundation.
+- [ ] **SAML (#100) enablement** is a human gate: needs staging interop with real SPs + an external red-team of the POST-binding signature-verification path BEFORE flipping `saml.enabled`. Ships dormant.
 - [ ] Ops/QA/legal (human): #70 billing go-live, #71 staging + suite, #73 pen-test, #76 WCAG, #77–79, #81 legal, #83–85 prod creds/cron, #102 enable Dependency graph (Q-4), optional `BACKPORT_PAT` (Q-5).
 
 ## 🧭 How to resume
