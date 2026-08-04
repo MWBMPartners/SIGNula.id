@@ -90,4 +90,32 @@ These are complete and safe (fail-open / dormant) but intentionally OFF so they 
 
 ---
 
+## 7. 🔴 SAML 2.0 Identity-Provider — dormant foundation, NOT production-ready (#100)
+
+Migration `050_saml_idp.sql` adds the full SAML 2.0 IdP data model
+(`tblSAMLServiceProviders`, `tblSAMLServiceProviderAcsUrls`,
+`tblSAMLAuthnRequests`, `tblSAMLAssertions`, `tblSAMLConsents`) plus a new
+manager/engine/facade stack (`SamlServiceProviderManager`, `SamlKeyManager`,
+`SamlMetadataService`, `SamlAuthnRequestService`, `SamlResponseBuilder`,
+`SamlLogoutService`, `SamlXmlSignature`, `SamlRedirectBinding`) and three thin
+controllers (`/saml/metadata`, `/saml/sso`, `/saml/slo`). It mirrors the
+already-shipped OIDC/OAuth2 provider table-for-table. **Unlike** the
+BUILT-BUT-DISABLED features in §6, this is **NOT simply "flip a switch before
+launch"** — it is explicitly **not production-ready** until the two human
+gates below are evidenced on issue #100:
+
+| # | Decision / gate | Status |
+|---|------------------|--------|
+| S-1 | **`saml.enabled` master switch** (mirrors `oidc.enabled`) | Seeded `'0'` (OFF) by migration 050. Every `/saml/*` controller checks `SamlMetadataService::isSamlEnabled()` FIRST and 404s while off. Every `tblSAMLServiceProviders` row additionally defaults `isActive=0` (double-dormant). |
+| S-2 | **xmlseclibs vendored** (`web/_lib/xmlseclibs/`, pinned `robrichards/xmlseclibs` 3.1.5, BSD-3-Clause) | ✅ Vendored — 4 files, openssl-only, no phpseclib/Composer dependency (verified against upstream's `main` branch, which now requires phpseclib — 3.1.x was deliberately pinned to avoid that). All XML-DSig sign/verify goes through the single `SamlXmlSignature` facade. |
+| S-3 | **Sign-side XML-DSig (C2/"B1")** — `<Assertion>`/`<Response>` signing | ✅ Built + unit-verified (real RSA-3072 keys, real xmlseclibs sign+verify round trip, including XSW-guard negative tests) — safe to ship dormant per the plan's risk-asymmetry argument: a sign-side bug is an interop failure (SP rejects login), never a forgery. |
+| S-4 | **Verify-side XML-DSig of POST-bound signed requests (C3/"B2")** | 🚧 **Deliberately NOT wired.** `SamlXmlSignature::verifyEnvelopedSignature()` is implemented (with the full XSW guard battery — single-signature, duplicate-ID, algorithm allowlist, reference-URI pinning) but is **not called by any controller/engine**. `SamlAuthnRequestService` policy-limits any SP with `wantAuthnRequestsSigned=1` to the HTTP-Redirect binding (C1 — plain `openssl_verify`, not XML parsing of attacker XML) until a dedicated, red-teamed stage lands. |
+| S-5 (Gate 2) | **Staging interop** — full SSO against ≥2 independent SP stacks (e.g. SimpleSAMLphp + samltest.id/mocksaml.com/an Entra ID or Okta dev tenant): signature acceptance, NameID formats, attribute mapping, SLO, key-rotation overlap. | ⏳ Not yet run — this environment cannot run a live SP interop matrix. **Required before enabling.** |
+| S-6 (Gate 3) | **Red-team pass** — XSW battery (wrapped/duplicated/detached signatures), XXE/DTD, DEFLATE-bomb, replayed handles/assertions, ACS-bypass attempts, SigAlg downgrade, RelayState XSS. | ⏳ Not yet run. Unit-level XSW/XXE/bomb/downgrade tests were written and pass in isolation (see the SAML IdP PR) — that is NOT a substitute for an adversarial red-team pass against the live, wired system. **Required before enabling.** |
+| S-7 | **Admin SP-registration UI** | 🚧 **Deferred as a follow-up** — `SamlServiceProviderManager` (the full CRUD/validation backend) shipped; a `partners/admin/saml-providers.php`-style page (mirroring `partners/admin/oauth-clients.php`) was intentionally left for a follow-up PR to keep this delivery's review surface manageable. SP registration is fully usable today via direct calls to the manager class (e.g. from a one-off script or the DB console) for staging-interop testing. |
+
+**Do not flip `saml.enabled` to `'1'` (or set any `tblSAMLServiceProviders.isActive=1`) until S-5 and S-6 are both evidenced on issue #100.**
+
+---
+
 _Append new decisions and open items above their section footer as work proceeds._

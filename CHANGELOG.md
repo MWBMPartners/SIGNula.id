@@ -11,6 +11,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **SAML 2.0 Identity-Provider — dormant foundation (G-001 Phase B, #100).**
+  Ships **OFF by default** and **not production-ready** until staging
+  interop + a red-team pass are evidenced (see `PRE_LAUNCH_REVIEW.md` §7) —
+  zero behaviour change with the gate off.
+  - New migration `050_saml_idp.sql`: `tblSAMLServiceProviders` +
+    `tblSAMLServiceProviderAcsUrls` (exact-match ACS allowlist, mirrors the
+    OIDC redirect-URI table), `tblSAMLAuthnRequests` (single-use pending
+    requests, survives the login/MFA redirect), `tblSAMLAssertions` (issued
+    ledger), `tblSAMLConsents` (attribute-release consent), and `saml.*`
+    settings including the `saml.enabled` master switch (seeded `'0'`).
+  - Vendored `robrichards/xmlseclibs` 3.1.5 (BSD-3-Clause, openssl-only, no
+    Composer/phpseclib dependency) under `web/_lib/xmlseclibs/`, loaded via
+    the new `SamlXmlLibLoader` (mirrors `JwtLibLoader`).
+  - New `SamlXmlSignature` facade — the single wrapper over xmlseclibs, with
+    an algorithm allowlist-of-one (exclusive C14N, RSA-SHA256, SHA-256
+    digest) and a full XSW (XML Signature Wrapping) guard battery on
+    `verifyEnvelopedSignature()` (single-signature, duplicate-ID, algorithm
+    pinning, reference-URI matching) — verified end-to-end with real RSA
+    keys and real sign/verify/tamper/XSW test cases.
+  - New `SamlKeyManager` — dedicated RSA-3072 keypair + self-signed X.509
+    certificate lifecycle (protocol-isolated from the G-003 JWT keys),
+    lazy-generated on first use, mirroring `KeyManager`'s encrypted-
+    `tblSettings` + `_private` key-file storage pattern.
+  - New `SamlRedirectBinding` — the HTTP-Redirect binding's DEFLATE codec
+    (with a verified DEFLATE-bomb hard cap) and detached-signature sign/verify
+    (C1: raw `openssl_sign`/`openssl_verify` over the query string, NOT
+    XML-DSig — the same primitive class as the existing WebAuthn verifier).
+  - New `SamlServiceProviderManager`, `SamlMetadataService`,
+    `SamlAuthnRequestService`, `SamlResponseBuilder`, `SamlLogoutService`
+    (`web/private_html/auth/`) — SP CRUD, IdP metadata document, hardened
+    XML intake (DOCTYPE rejection, `LIBXML_NONET`, inflate-size cap),
+    AuthnRequest/LogoutRequest parsing + fatal-vs-safe validation (mirrors
+    `OAuthAuthorizeService`), unsigned/signed Response+Assertion building,
+    and SP-initiated Single Logout — all gated behind
+    `SamlMetadataService::isSamlEnabled()`.
+  - New thin controllers `web/public_html/saml/{metadata,sso,slo}.php` —
+    each 404s/returns a clean "not enabled" response while `saml.enabled`
+    is off; otherwise delegates entirely to the engine classes above.
+  - POST-binding XML-DSig verification of signed AuthnRequests (C3) is
+    implemented in the facade but deliberately **not wired** into any
+    controller — it is its own dedicated, mandatory-red-team stage; v1
+    policy-limits `wantAuthnRequestsSigned=1` SPs to the Redirect binding.
+  - Admin SP-registration UI deferred as a follow-up (backend manager class
+    is complete and usable today).
+
 - **Multi-jurisdiction compliance — Layer 1a: consent foundation (G-004, in progress).**
   - New migration `040_consent_and_dsar.sql` creates the append-only consent
     audit trail (`tblConsentRecords`), the data-subject-request tracker

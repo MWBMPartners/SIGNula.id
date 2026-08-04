@@ -1,0 +1,59 @@
+robrichards/xmlseclibs 3.1.5
+=============================
+
+Vendored (source-only, no Composer runtime) from:
+  https://github.com/robrichards/xmlseclibs/releases/tag/3.1.5
+
+Vendored on: 2026-08-04
+Licence:     BSD-3-Clause (see LICENSE)
+PHP require: >= 5.4 (project runs 8.3+/8.4) -- depends ONLY on ext-dom and
+             ext-openssl (both present on Dreamhost shared hosting; no
+             Composer, no phpseclib). Verified by reading every `use` /
+             `require` statement in the 4 files below before vendoring --
+             none reference anything outside this package.
+
+⚠️ Pin rationale: 3.1.5 is the newest tag on the maintained 3.1.x line as of
+   vendoring date. The library's `main` branch has since moved to a 4.x
+   pre-release (4.0.0-beta1) that depends on phpseclib/phpseclib -- NOT
+   vendorable under this project's "no Composer / few plain PHP files"
+   Dreamhost-shared-hosting constraint -- so 3.1.x (openssl-only) is the
+   deliberate, permanent-for-now choice, not a temporary lag.
+
+Files vendored under src/ (4 files, ~2,540 lines total):
+  XMLSecurityKey.php   -- key material + sign()/verify()/encryptData()/decryptData()
+  XMLSecurityDSig.php  -- XML-DSig: SignedInfo/Reference/Signature construction,
+                          canonicalization, locateSignature()/verify() for inbound
+  XMLSecEnc.php        -- XML-Enc (NOT used in v1 -- SIGNula refuses SPs that set
+                          wantAssertionsEncrypted; vendored because it is part of
+                          the single upstream release and SamlXmlLibLoader loads
+                          the release as one unit, not because it is called)
+  Utils/XPath.php      -- small internal XPath-registration helper the two
+                          classes above both depend on
+
+⚠️ SECURITY MAINTENANCE: this is security-critical XML-signature crypto --
+   the exact class of library responsible for the 2012-2018 XML Signature
+   Wrapping (XSW) vulnerability wave across SAML implementations (Somorovsky
+   et al., "On Breaking SAML: Be Whoever You Want to Be"; CVE-2019-3465 was a
+   real xmlseclibs advisory, fixed at 3.0.4+). Track upstream advisories at
+   https://github.com/robrichards/xmlseclibs/security/advisories and the
+   GHSA feed, and bump this vendored copy when a fixed release ships. Record
+   the new version here and in _docs/setup/SECURITY_SETUP.md.
+
+   Per the SAML IdP dormant-foundation plan (issue #100), ALL calls into this
+   library are made through EXACTLY ONE project-owned facade --
+   web/private_html/security/SamlXmlSignature.php -- which pins a
+   single-algorithm allowlist (exclusive C14N, RSA-SHA256, SHA-256 digest,
+   enveloped-signature transform) and exposes ONLY signAssertion() /
+   signResponse() / verifyEnvelopedSignature(). Nothing else in SIGNula
+   references `RobRichards\XMLSecLibs\*` directly. Verification of
+   attacker-supplied XML (C3, POST-binding signed requests) additionally
+   requires a dedicated XSW-hardening red-team pass (see PRE_LAUNCH_REVIEW.md)
+   before `wantAuthnRequestsSigned=1` is ever honoured over the POST binding
+   -- this is independent of the library itself being sound.
+
+How it is loaded (no Composer autoload in prod):
+  web/private_html/security/SamlXmlLibLoader.php require_once's these files
+  explicitly (with file_exists() guards) in dependency order -- mirrors
+  web/private_html/security/JwtLibLoader.php for firebase/php-jwt. The
+  project-owned facade web/private_html/security/SamlXmlSignature.php is the
+  ONLY class the rest of the codebase calls.
