@@ -6,9 +6,9 @@
 > `.dev-team/` ledger (internal autopilot backlog: `FEATURES.md`, `PROJECT.md`,
 > `autopilot.json`).
 
-_Last updated: 2026-07-22 · `main` @ `14c5581` · all work merged (tree clean)_
+_Last updated: 2026-08-04 · `main` @ `2732ae6` · all work merged (tree clean)_
 
-**Session progress — FOUR PRs merged to `main`:** #91 (branch consolidation), #105 (dormant pricing catalog + docs truth-pass), #106 (HIBP breached-password, disabled), #107 (CAP-API security pass — Bucket A). `alpha`/`beta` are fast-forwarded to `main` (all three at `14c5581`). Issues #95 & #96 closed. Remaining roadmap items are tracked as GitHub issues (see below).
+**Session progress — EIGHT PRs merged to `main`:** #91 (consolidation), #105 (pricing catalog + docs truth-pass), #106 (HIBP built, disabled), #107 (CAP-API Bucket A), #109 (gitignore worktrees), #114 (four-tier security-backport + `release-candidate` branch), #119 (HIBP **enabled** + pricing catalog **activated**/shadow), #120 (CAP-API Bucket B + critical latent-fatal fixes). **Four tiers** (`alpha ▸ beta ▸ release-candidate ▸ main`) all at `2732ae6`. Closed: #35, #80, #86, #95, #96, #104. **CAP-API (#86) DONE. HIBP live (fail-open). Pricing catalog active — enforcement staged in shadow mode, pending ONE human ops-toggle** (`tblFeatureToggles.entitlement_enforcement`). Security fixes now auto-backport main→all tiers.
 
 ---
 
@@ -46,29 +46,32 @@ prep) autonomously.
 8. **`alpha` + `beta` branches created** off updated `main` and pushed.
 9. Auto-unsubscribed from PR #91 (merged — do not reopen/re-PR).
 
-## ✅ Merged to `main` this session (4 PRs)
+## ✅ Merged to `main` this session (8 PRs)
 
 | PR | Commit | What landed |
 |----|--------|-------------|
 | #91 | `9fe4309` | Consolidated autopilot + universal-login: G-001 OIDC IdP, G-003 JWT, G-002 billing (TEST-MODE), G-004 compliance, ~30 security fixes, migration 045, conflict→G-003 TokenService |
 | #105 | `c8bfeaf` | Dormant flexible pricing/entitlement catalog (mig 046 + fail-open `Entitlements`) + `Pricing_Strategy.md` + docs truth-pass to 2.8.0 |
-| #106 | `579c460` | HIBP breached-password (mig 047, k-anonymity, fail-open, **DISABLED by default**) |
-| #107 | `14c5581` | CAP-API Bucket A: fixed broken `notification-actions` endpoint, API password-policy gate, login/forgot throttling, CORS precedence, Validator PK, OpenAPI sync |
+| #106 | `579c460` | HIBP breached-password (mig 047, k-anonymity, fail-open, built disabled) |
+| #107 | `14c5581` | CAP-API Bucket A: fixed broken `notification-actions`, API password gate, login/forgot throttling, CORS, Validator PK, OpenAPI sync |
+| #109 | `bd10441` | Gitignore transient agent worktrees |
+| #114 | `23b3376` | **Four-tier security backport**: `release-candidate` branch; auto-label Dependabot security PRs; `backport.yml` fans `security`/`backport` merges from main → rc/beta/alpha |
+| #119 | `ad6b115` | **Enable** HIBP (fail-open) + **activate** pricing catalog (mig 048); entitlement enforcement staged in shadow, ops-toggle deliberately left off |
+| #120 | `2732ae6` | **CAP-API Bucket B**: non-breaking envelope superset (#35), `UsageController` cross-tenant authz, standalone throttling + MFA counter, staged REST CSRF; **fixed critical fatals** (`/api/v1` rate-limit `$db`, `oauth/disconnect`) |
 
-Plus: CI + Dependabot + `composer audit` security across **main/alpha/beta**; issue-tracker reconciliation (21 closed, 3 re-scoped, 12 filed #94–104).
+Plus: CI + Dependabot + `composer audit` across **all four tiers**; issue-tracker reconciliation (21 closed, 3 re-scoped, 12 filed #94–104); #35/#80/#86/#95/#96/#104 closed.
 
 ## ⏭️ Next (ordered) — all tracked as GitHub issues
 
-- [ ] **#86 CAP-API Bucket B** (needs decisions): error-envelope convergence (#35), `UsageController` partner↔user entitlement/IDOR, standalone-endpoint throttling + MFA attempt counter, REST-layer CSRF. Detail in the #86 comment + `scratchpad/cap_api_audit.md`.
-- [ ] **#9 cross-project integration** (BLOCKED — needs repo access; `add_repo` for iHymns/CueRCode/etc. was declined). File "Sign in with SIGNula.id" issues + code in those repos.
-- [ ] Feature build-out: #99 generic OIDC + LastPass · #98 email template designer · #100 SAML 2.0 IdP · #94 regen install v2.8.0 · #101 track self-hosted frontend libs.
-- [ ] Enable the built-but-disabled features before launch: pricing (#103/#97, after P-1…P-5) + HIBP (#96, `security.breached_password_check.enabled=true`). See `PRE_LAUNCH_REVIEW.md`.
-- [ ] Ops/QA/legal (human): #70 billing go-live, #71 staging + suite, #73 pen-test, #76 WCAG, #77–79, #81 legal, #83–85 prod creds/cron, #102 enable Dependency graph.
+- [ ] **ONE human ops action**: flip `tblFeatureToggles.entitlement_enforcement` on (Settings ▸ Feature Toggles) to start the pricing entitlement **shadow-logging** week; later set `entitlements.log_only='false'` to enforce. Confirm pricing P-1…P-5 in `PRE_LAUNCH_REVIEW.md` first.
+- [ ] **#9 cross-project integration** (BLOCKED — `add_repo` for iHymns/CueRCode/etc. is rejected at the tool-permission prompt despite verbal approval; needs the prompt approved or an env-policy change). File "Sign in with SIGNula.id" issues + code in those repos.
+- [ ] Feature build-out: #99 generic OIDC + LastPass · #98 email template designer · #100 SAML 2.0 IdP · #94 regen install v2.8.0 (best validated in staging) · #101 track self-hosted frontend libs (CDN-only today — nothing to manifest yet).
+- [ ] Ops/QA/legal (human): #70 billing go-live, #71 staging + suite, #73 pen-test, #76 WCAG, #77–79, #81 legal, #83–85 prod creds/cron, #102 enable Dependency graph (Q-4), optional `BACKPORT_PAT` (Q-5).
 
 ## 🧭 How to resume
 
 1. Read this file + `PRE_LAUNCH_REVIEW.md` + `scratchpad/roadmap_analysis.md` + `scratchpad/cap_api_audit.md`.
-2. `git fetch origin main` (currently `14c5581`); new code work → branch off latest `main`.
+2. `git fetch origin main` (currently `2732ae6`); new code work → branch off latest `main`; then sync `alpha`/`beta`/`release-candidate` to `main` after each merge.
 3. Pick the next item above (or a GitHub issue); for each: ensure an issue exists, implement, PR → green CI → merge, then sync `alpha`/`beta` to `main` and update this HANDOFF.
 4. Model routing: Fable `deep-architect` for analysis (sequential), Sonnet/Haiku `quick-edits` for implementation.
 

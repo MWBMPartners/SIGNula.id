@@ -85,8 +85,8 @@ These are complete and safe (fail-open / dormant) but intentionally OFF so they 
 
 | Feature | How to enable | Notes |
 |---------|---------------|-------|
-| **Flexible pricing/entitlement catalog** (#103, #97) | Seed live catalog rows `isActive=1`, then set `entitlements.enforcement_enabled=true` (after a `entitlements.log_only` shadow period) | Confirm pricing decisions P-1…P-5 first. Billing go-live also needs #70. |
-| **HIBP breached-password check** (#96) | Set `security.breached_password_check.enabled=true` | k-anonymity range API, fail-open. Recommended ON for launch (NIST guidance). Off by default so it breaks no existing tests/flows. |
+| **HIBP breached-password check** (#96) | ✅ **ENABLED** (PR #119) — `security.breached_password_check.enabled=true`. | Live + fail-open across web **and** API password-set flows. |
+| **Flexible pricing/entitlement catalog** (#103, #97) | ⚙️ **Activated, staged** (PR #119) — catalog rows live (5 tiers/108 features/8 prices); `entitlements.enforcement_enabled=true` + `log_only=true`. **Remaining human step:** flip `tblFeatureToggles.entitlement_enforcement` ON (Settings ▸ Feature Toggles) to begin the shadow-logging week, then later set `entitlements.log_only='false'` to actually enforce. | The resolver **still fails open** until that one ops-toggle is flipped — zero behaviour change so far. Confirm pricing P-1…P-5 + billing go-live (#70) before enforcing. |
 
 ---
 
