@@ -136,22 +136,38 @@ try {
     $provider = $storedState['provider'];
     unset($_SESSION['oauth_state']); // Clear state after verification
 
-    // 🔌 Load provider class
+    // 🔌 Provider class resolution
+    // Convention: provider key 'foo' -> class 'FooOAuth' in
+    // providers/FooOAuth.php (GoogleOAuth, MicrosoftOAuth, YahooOAuth, …).
+    // FG-008: when NO dedicated class file exists for the requested key,
+    // fall back to the config-driven generic OpenID Connect connector
+    // (GenericOidcProvider), constructed with the provider key itself so it
+    // reads its settings from oauth.{provider}.* — this is what lets an
+    // admin register additional named generic-OIDC identity providers
+    // (the single 'oidc' slot, a 'lastpass' template, or any other key)
+    // purely via settings, with no matching PHP class required. See
+    // GenericOidcProvider.php's file-level "MULTIPLE NAMED INSTANCES"
+    // docblock section, and the matching fallback in oauth/authorize.php.
+    $providersDir = dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR .
+                   'auth' . DIRECTORY_SEPARATOR . 'providers' . DIRECTORY_SEPARATOR;
     $providerClass = ucfirst($provider) . 'OAuth';
-    $providerFile = dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR .
-                   'auth' . DIRECTORY_SEPARATOR . 'providers' . DIRECTORY_SEPARATOR . $providerClass . '.php';
+    $providerFile = $providersDir . $providerClass . '.php';
 
-    if (!file_exists($providerFile)) {
+    if (file_exists($providerFile)) {
+        require_once $providerFile;
+
+        if (!class_exists($providerClass)) {
+            throw new RuntimeException("Provider class not found: {$providerClass}");
+        }
+
+        $oauth = new $providerClass();
+    } elseif (file_exists($providersDir . 'GenericOidcProvider.php')) {
+        require_once $providersDir . 'GenericOidcProvider.php';
+
+        $oauth = new GenericOidcProvider($provider);
+    } else {
         throw new RuntimeException("Provider not found: {$provider}");
     }
-
-    require_once $providerFile;
-
-    if (!class_exists($providerClass)) {
-        throw new RuntimeException("Provider class not found: {$providerClass}");
-    }
-
-    $oauth = new $providerClass();
 
     // 🔄 Exchange authorization code for access token
     $tokenData = $oauth->exchangeCodeForToken($authorizationCode);

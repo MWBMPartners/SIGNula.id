@@ -202,6 +202,27 @@ $availableProviders = [
         'color' => '#181717',
         'description' => 'Connect your GitHub account',
         'enabled' => getSetting('oauth.github.enabled', '0') == '1'
+    ],
+    // 🔌 FG-008 (issue #99) — generic, config-driven OpenID Connect
+    // connector (any standards-compliant IdP: Okta, Keycloak, Auth0, a
+    // corporate SSO tenant, ...). @see web/private_html/auth/providers/GenericOidcProvider.php
+    'oidc' => [
+        'name' => 'OpenID Connect',
+        'icon' => 'fab fa-openid',
+        'color' => '#F78C40',
+        'description' => 'Connect any standards-compliant OpenID Connect identity provider',
+        'enabled' => getSetting('oauth.oidc.enabled', '0') == '1'
+    ],
+    // 🗝️ DISABLED-by-default template (migration 049) — LastPass has no
+    // consumer OAuth/OIDC API (SAML-only, enterprise). Only becomes usable
+    // if an admin later configures oauth.lastpass.* against a real
+    // OIDC-compatible bridge — see GenericOidcProvider.php's docblock.
+    'lastpass' => [
+        'name' => 'LastPass',
+        'icon' => 'fab fa-lastpass',
+        'color' => '#D32D2D',
+        'description' => 'Connect your LastPass account (enterprise SSO bridge only — see admin docs)',
+        'enabled' => getSetting('oauth.lastpass.enabled', '0') == '1'
     ]
 ];
 
@@ -410,7 +431,22 @@ include SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATO
                                                             </small>
                                                         </div>
                                                     <?php elseif ($isEnabled): ?>
-                                                        <a href="/auth/oauth-authorize?provider=<?php echo urlencode($providerKey); ?>"
+                                                        <?php
+                                                        // 🐛 Pre-existing dead link fixed in passing while wiring up
+                                                        // FG-008 (generic OIDC): this used to point at
+                                                        // /auth/oauth-authorize, which resolves (via the .htaccess
+                                                        // "$1.php" catch-all rewrite) to a
+                                                        // web/public_html/auth/oauth-authorize.php file that does not
+                                                        // exist — a 404 for EVERY provider, not just the new one.
+                                                        // The real, working endpoint is
+                                                        // web/public_html/oauth/authorize.php, reached at
+                                                        // /oauth/authorize — the exact same URL login.php's OAuth
+                                                        // buttons already use successfully. `purpose=signin` is
+                                                        // required: authorize.php defaults an omitted `purpose` to
+                                                        // 'email' (its OTHER mode, email-delegation), not account
+                                                        // linking.
+                                                        ?>
+                                                        <a href="/oauth/authorize?provider=<?php echo urlencode($providerKey); ?>&amp;purpose=signin"
                                                            class="btn btn-sm btn-outline-primary">
                                                             <i class="fas fa-link"></i> Link Account
                                                         </a>
