@@ -211,6 +211,36 @@ class MFAController extends BaseController
 
             $userId = $mfaPending['user_id'];
 
+            // 🛡️ CAP-API Bucket B (#3) — TOTP/backup-code attempt counter.
+            // The global RateLimitMiddleware tier only throttles by IP/
+            // session/API-key volume, not by "how many times has THIS
+            // pending MFA challenge been guessed" — a 6-digit TOTP (±1
+            // window tolerance, see verifyTOTP()) is brute-forceable within
+            // that coarse budget. This counter is scoped to the single
+            // `mfa_pending` challenge itself (stored in the session, right
+            // alongside the token/expiry it already carries) so it locks
+            // ONLY this login attempt, not the user's account as a whole.
+            // Settings-driven so ops can tune it without a code change.
+            if ($this->isMfaChallengeLocked($mfaPending)) {
+                // 🧹 Burn the challenge — force the caller back through
+                // primary auth (email+password) to mint a fresh one, exactly
+                // like an expired token.
+                unset($_SESSION['mfa_pending']);
+
+                ActivityLogger::log(
+                    $userId,
+                    'mfa_locked',
+                    'failed',
+                    'MFA verification locked after too many failed attempts on one challenge'
+                );
+
+                $this->error(
+                    'Too many failed MFA attempts. Please log in again.',
+                    Response::HTTP_TOO_MANY_REQUESTS
+                );
+                return;
+            }
+
             // 🔍 Get MFA secret
             $query = "SELECT mfaSecret FROM tblUserMFA WHERE userID = ?";
             $result = Database::query($query, [$userId], 'i');
@@ -230,7 +260,18 @@ class MFAController extends BaseController
             }
 
             if (!$isValid) {
-                ActivityLogger::log($userId, 'mfa_failed', 'failed', 'Invalid MFA code');
+                // 📈 Record this failure against the pending challenge BEFORE
+                // responding, so the NEXT attempt (if any) sees the
+                // incremented count. Fails open — a counter malfunction must
+                // never block a legitimately correct code on a LATER retry.
+                $attemptsSoFar = $this->registerMfaChallengeFailure();
+
+                ActivityLogger::log(
+                    $userId,
+                    'mfa_failed',
+                    'failed',
+                    'Invalid MFA code (attempt ' . $attemptsSoFar . ')'
+                );
                 $this->error('Invalid MFA code', Response::HTTP_UNAUTHORIZED);
                 return;
             }
@@ -255,6 +296,77 @@ class MFAController extends BaseController
         } catch (Exception $e) {
             ErrorLogger::log($e);
             $this->error('MFA verification failed', Response::HTTP_INTERNAL_ERROR);
+        }
+    }
+
+    /**
+     * 🔒 Has this pending MFA challenge already hit the failed-attempt cap?
+     *
+     * Settings-driven via `mfa.verify.max_attempts` (tblSettings, default 5)
+     * — matches the pattern `security.login.max_attempts` already uses for
+     * primary-credential lockout (see Auth::login()). Fails OPEN (returns
+     * false = "not locked") on any error reading the setting or the session
+     * structure — a malfunction in the counter itself must never lock a
+     * legitimate user out of a login they would otherwise complete
+     * successfully.
+     *
+     * @param array $mfaPending The `$_SESSION['mfa_pending']` structure
+     * @return bool True only if attempts-so-far >= the configured cap
+     */
+    private function isMfaChallengeLocked(array $mfaPending): bool
+    {
+        try {
+            $maxAttempts = (int) getSetting('mfa.verify.max_attempts', 5);
+
+            // 🛡️ A non-positive configured max would lock EVERY attempt —
+            // treat that as "not configured" rather than a hard lockout.
+            if ($maxAttempts <= 0) {
+                return false;
+            }
+
+            $attemptsSoFar = (int) ($mfaPending['attempts'] ?? 0);
+
+            return $attemptsSoFar >= $maxAttempts;
+
+        } catch (\Throwable $e) {
+            // 🔓 Fail OPEN — never let the lockout check itself become a
+            // denial-of-service vector against a legitimate login.
+            if (class_exists('ErrorLogger')) {
+                ErrorLogger::log($e);
+            }
+            return false;
+        }
+    }
+
+    /**
+     * 📈 Increment (and persist) the failed-attempt counter for the current
+     * pending MFA challenge.
+     *
+     * Writes the incremented count back into `$_SESSION['mfa_pending']` so
+     * the NEXT call to verify() (and isMfaChallengeLocked() above) sees it.
+     * Fails open — if the session write somehow fails, we log it and still
+     * let the (already-failed) verification response proceed normally
+     * rather than raising a second, unrelated error.
+     *
+     * @return int The attempt count AFTER this increment (for logging)
+     */
+    private function registerMfaChallengeFailure(): int
+    {
+        try {
+            $attemptsSoFar = (int) ($_SESSION['mfa_pending']['attempts'] ?? 0);
+            $attemptsSoFar++;
+
+            $_SESSION['mfa_pending']['attempts'] = $attemptsSoFar;
+
+            return $attemptsSoFar;
+
+        } catch (\Throwable $e) {
+            // 🔓 Fail OPEN — a counter-persistence failure must not block
+            // the (already-in-flight) error response for this request.
+            if (class_exists('ErrorLogger')) {
+                ErrorLogger::log($e);
+            }
+            return 0;
         }
     }
 

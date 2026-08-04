@@ -55,6 +55,66 @@ require_once dirname(__DIR__, 4) . DIRECTORY_SEPARATOR . '_config' . DIRECTORY_S
 header('Content-Type: application/json; charset=utf-8');
 
 // ============================================================================
+// 🗄️ DATABASE HANDLE (CAP-API Bucket B prerequisite fix)
+// ============================================================================
+// 🐛 This file's own API-key branch below (`isset($db)` at the original line
+// 112) has ALWAYS been dead code: nothing in this file ever defined `$db`,
+// so the isset() guard silently skipped API-key validation entirely on
+// every request — an X-API-Key caller with no session would always fall
+// through to the generic 401 further down, even with a perfectly valid
+// key. Defining it here the SAME way dozens of other standalone/AJAX
+// handlers in this codebase do (`Database::getInstance()` — a
+// DatabaseConnection proxy with the same prepare()/query() surface as a
+// raw mysqli link) makes the existing APIKeyMiddleware call actually run,
+// AND supplies the DB handle RateLimitMiddleware needs below.
+// @see web/_config/database.php — Database::getInstance()/DatabaseConnection
+$db = Database::getInstance();
+
+// ============================================================================
+// 🛡️ RATE LIMITING (CAP-API Bucket B, item #3)
+// ============================================================================
+// Apply the SAME central rate limiter the /api/v1 router enforces to this
+// standalone endpoint (previously bypassed entirely). Fails OPEN on any
+// internal limiter error; a genuine over-limit request still gets HTTP 429
+// exactly like a router-handled endpoint.
+// @see web/private_html/api/RateLimitMiddleware.php::enforceStandalone()
+if (!class_exists('RateLimitMiddleware')) {
+    require_once ROOT_DIR . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'api'
+        . DIRECTORY_SEPARATOR . 'RateLimitMiddleware.php';
+}
+RateLimitMiddleware::enforceStandalone($db);
+
+/**
+ * 🔀 Emit a JSON error response in the canonical superset shape (CAP-API
+ * Bucket B, item #1) — keeps the pre-existing `error` string key AND adds
+ * `message`/`errors`/`meta`, then exits.
+ *
+ * @param int         $statusCode HTTP status code
+ * @param string      $message    Human-readable error message
+ * @param string|null $allowHeader Optional `Allow:` header value (405 responses)
+ * @return never
+ */
+function emitExportError(int $statusCode, string $message, ?string $allowHeader = null): never
+{
+    http_response_code($statusCode);
+    if ($allowHeader !== null) {
+        header('Allow: ' . $allowHeader);
+    }
+    echo json_encode([
+        'success' => false,
+        'error'   => $message,
+        'message' => $message,
+        'errors'  => [$message],
+        'meta'    => [
+            'timestamp'  => gmdate('c'),
+            'version'    => 'v1',
+            'request_id' => bin2hex(random_bytes(16)),
+        ],
+    ], JSON_UNESCAPED_SLASHES);
+    exit;
+}
+
+// ============================================================================
 // 🔒 CORS & METHOD VALIDATION
 // ============================================================================
 
@@ -63,13 +123,7 @@ try {
     // GET is not suitable because the request body contains potentially large JSON data
     // @see https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods/POST
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-        http_response_code(405);
-        header('Allow: POST');
-        echo json_encode([
-            'success' => false,
-            'error'   => 'Method not allowed. Use POST to submit export data.'
-        ], JSON_UNESCAPED_SLASHES);
-        exit;
+        emitExportError(405, 'Method not allowed. Use POST to submit export data.', 'POST');
     }
 
     // ============================================================================
@@ -121,12 +175,7 @@ try {
 
     // ❌ Neither session nor API key authentication succeeded
     if (!$isAuthenticated) {
-        http_response_code(401);
-        echo json_encode([
-            'success' => false,
-            'error'   => 'Authentication required. Please log in or provide a valid API key.'
-        ], JSON_UNESCAPED_SLASHES);
-        exit;
+        emitExportError(401, 'Authentication required. Please log in or provide a valid API key.');
     }
 
     // ============================================================================
@@ -141,12 +190,7 @@ try {
     // 🔍 Check for JSON parse errors
     // @see https://www.php.net/manual/en/function.json-last-error.php
     if (json_last_error() !== JSON_ERROR_NONE) {
-        http_response_code(400);
-        echo json_encode([
-            'success' => false,
-            'error'   => 'Invalid JSON in request body: ' . json_last_error_msg()
-        ], JSON_UNESCAPED_SLASHES);
-        exit;
+        emitExportError(400, 'Invalid JSON in request body: ' . json_last_error_msg());
     }
 
     // ============================================================================
@@ -162,12 +206,7 @@ try {
         $csrfToken = $requestData['csrf_token'] ?? '';
 
         if (!SecurityUtils::verifyCSRFToken($csrfToken)) {
-            http_response_code(403);
-            echo json_encode([
-                'success' => false,
-                'error'   => 'Invalid or expired CSRF token. Please refresh the page and try again.'
-            ], JSON_UNESCAPED_SLASHES);
-            exit;
+            emitExportError(403, 'Invalid or expired CSRF token. Please refresh the page and try again.');
         }
     }
 
@@ -182,12 +221,7 @@ try {
     $allowedFormats = ['excel', 'pdf'];
 
     if (empty($format) || !in_array($format, $allowedFormats, true)) {
-        http_response_code(400);
-        echo json_encode([
-            'success' => false,
-            'error'   => 'Invalid or missing "format" parameter. Allowed values: excel, pdf.'
-        ], JSON_UNESCAPED_SLASHES);
-        exit;
+        emitExportError(400, 'Invalid or missing "format" parameter. Allowed values: excel, pdf.');
     }
 
     // 🏷️ Type: export type label (e.g. "users", "activity-log")
@@ -208,36 +242,21 @@ try {
     $exportData = $requestData['data'] ?? null;
 
     if (!is_array($exportData)) {
-        http_response_code(400);
-        echo json_encode([
-            'success' => false,
-            'error'   => 'Missing or invalid "data" parameter. Expected object with "headers" and "rows".'
-        ], JSON_UNESCAPED_SLASHES);
-        exit;
+        emitExportError(400, 'Missing or invalid "data" parameter. Expected object with "headers" and "rows".');
     }
 
     // 🔍 Validate headers array
     $headers = $exportData['headers'] ?? [];
 
     if (!is_array($headers) || empty($headers)) {
-        http_response_code(400);
-        echo json_encode([
-            'success' => false,
-            'error'   => 'Missing or empty "data.headers" array.'
-        ], JSON_UNESCAPED_SLASHES);
-        exit;
+        emitExportError(400, 'Missing or empty "data.headers" array.');
     }
 
     // 🔍 Validate rows array
     $rows = $exportData['rows'] ?? [];
 
     if (!is_array($rows)) {
-        http_response_code(400);
-        echo json_encode([
-            'success' => false,
-            'error'   => '"data.rows" must be an array.'
-        ], JSON_UNESCAPED_SLASHES);
-        exit;
+        emitExportError(400, '"data.rows" must be an array.');
     }
 
     // 🧹 Sanitize all header values
@@ -305,12 +324,7 @@ try {
             . DIRECTORY_SEPARATOR . 'ExportService.php';
 
         if (!file_exists($exportServicePath)) {
-            http_response_code(500);
-            echo json_encode([
-                'success' => false,
-                'error'   => 'Export service is not available. Please contact the administrator.'
-            ], JSON_UNESCAPED_SLASHES);
-            exit;
+            emitExportError(500, 'Export service is not available. Please contact the administrator.');
         }
 
         require_once $exportServicePath;
@@ -338,12 +352,7 @@ try {
 
     // ⚠️ This point should not be reached because ExportService methods call exit()
     // If we somehow get here, return an error
-    http_response_code(500);
-    echo json_encode([
-        'success' => false,
-        'error'   => 'Export completed but no output was generated.'
-    ], JSON_UNESCAPED_SLASHES);
-    exit;
+    emitExportError(500, 'Export completed but no output was generated.');
 
 } catch (Exception $e) {
     // ============================================================================
@@ -361,14 +370,24 @@ try {
     }
 
     http_response_code(500);
+    $exportErrorMessage = 'An unexpected error occurred during export.';
     echo json_encode([
         'success' => false,
-        'error'   => 'An unexpected error occurred during export.',
+        'error'   => $exportErrorMessage,
         // 🐛 Include debug info only in development environment
         // @see web/_config/config.php — ENVIRONMENT constant
         'debug'   => (defined('ENVIRONMENT') && ENVIRONMENT === 'development')
             ? $e->getMessage()
-            : null
+            : null,
+        // 🛡️ CAP-API Bucket B (#1): canonical keys ADDED alongside the
+        // pre-existing `error`/`debug` keys.
+        'message' => $exportErrorMessage,
+        'errors'  => [$exportErrorMessage],
+        'meta'    => [
+            'timestamp'  => gmdate('c'),
+            'version'    => 'v1',
+            'request_id' => bin2hex(random_bytes(16)),
+        ],
     ], JSON_UNESCAPED_SLASHES);
     exit;
 }

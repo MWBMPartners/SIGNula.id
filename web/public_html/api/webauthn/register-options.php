@@ -21,13 +21,30 @@ require_once SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEP
 // 🔒 Set JSON header
 header('Content-Type: application/json');
 
+// 🛡️ CAP-API Bucket B (#3): apply the SAME central rate limiter the
+// /api/v1 router enforces to this standalone endpoint (previously bypassed
+// entirely). Fails OPEN on any internal limiter error; a genuine
+// over-limit request still gets HTTP 429 exactly like a router-handled
+// endpoint.
+require_once SIGNULA_ROOT . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'api' . DIRECTORY_SEPARATOR . 'RateLimitMiddleware.php';
+RateLimitMiddleware::enforceStandalone();
+
 try {
     // 🔐 Check if user is logged in
     if (!isLoggedIn()) {
         http_response_code(401);
+        // 🛡️ CAP-API Bucket B (#1): canonical `message`/`errors`/`meta` keys
+        // ADDED alongside the pre-existing `error` string.
         echo json_encode([
             'success' => false,
-            'error' => 'Authentication required'
+            'error' => 'Authentication required',
+            'message' => 'Authentication required',
+            'errors' => ['Authentication required'],
+            'meta' => [
+                'timestamp' => gmdate('c'),
+                'version' => 'v1',
+                'request_id' => bin2hex(random_bytes(16)),
+            ],
         ]);
         exit;
     }
@@ -46,8 +63,17 @@ try {
 } catch (Exception $e) {
     error_log("WebAuthn registration options error: " . $e->getMessage());
     http_response_code(500);
+    // 🛡️ CAP-API Bucket B (#1): canonical `message`/`errors`/`meta` keys
+    // ADDED alongside the pre-existing `error` string.
     echo json_encode([
         'success' => false,
-        'error' => 'Failed to generate registration options'
+        'error' => 'Failed to generate registration options',
+        'message' => 'Failed to generate registration options',
+        'errors' => ['Failed to generate registration options'],
+        'meta' => [
+            'timestamp' => gmdate('c'),
+            'version' => 'v1',
+            'request_id' => bin2hex(random_bytes(16)),
+        ],
     ]);
 }

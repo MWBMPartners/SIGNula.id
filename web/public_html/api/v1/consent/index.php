@@ -68,6 +68,20 @@ if (!class_exists('ConsentManager')) {
 }
 
 // ============================================================================
+// 🛡️ RATE LIMITING (CAP-API Bucket B, item #3)
+// ============================================================================
+// Apply the SAME central rate limiter the /api/v1 router enforces to this
+// standalone endpoint (previously bypassed entirely). Fails OPEN on any
+// internal limiter error; a genuine over-limit request still gets HTTP 429
+// exactly like a router-handled endpoint.
+// @see web/private_html/api/RateLimitMiddleware.php::enforceStandalone()
+if (!class_exists('RateLimitMiddleware')) {
+    require_once ROOT_DIR . DIRECTORY_SEPARATOR . 'private_html' . DIRECTORY_SEPARATOR . 'api'
+        . DIRECTORY_SEPARATOR . 'RateLimitMiddleware.php';
+}
+RateLimitMiddleware::enforceStandalone();
+
+// ============================================================================
 // 🔎 DETECT REQUEST SHAPE
 // ============================================================================
 $contentType = $_SERVER['CONTENT_TYPE'] ?? ($_SERVER['HTTP_CONTENT_TYPE'] ?? '');

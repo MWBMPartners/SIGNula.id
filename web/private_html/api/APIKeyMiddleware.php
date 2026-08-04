@@ -403,8 +403,18 @@ class APIKeyMiddleware {
         header('Content-Type: application/json');
 
         // Build error response
+        //
+        // 🛡️ CAP-API Bucket B (#1) — Error-envelope convergence (audit #35).
+        // Keep the pre-existing nested `error{code,message,documentation}`
+        // shape (existing clients already parse it) and ADD the canonical
+        // top-level `message`/`errors`/`meta.version` keys as a superset.
+        // @see web/private_html/api/Response.php — canonical envelope doc-block
         $response = [
             'success' => false,
+            // ✅ Canonical top-level keys (ADDITIVE).
+            'message' => $message,
+            'errors' => [$message],
+            // 🗄️ Legacy nested shape — UNCHANGED.
             'error' => [
                 'code' => 'UNAUTHORIZED',
                 'message' => $message,
@@ -412,6 +422,8 @@ class APIKeyMiddleware {
             ],
             'meta' => [
                 'timestamp' => date('c'),
+                // ✅ Canonical `meta.version` — matches Response::$version ('v1').
+                'version' => 'v1',
                 'request_id' => $this->generateRequestID()
             ]
         ];
@@ -442,8 +454,18 @@ class APIKeyMiddleware {
         header('Content-Type: application/json');
 
         // Build error response
+        //
+        // 🛡️ CAP-API Bucket B (#1) — Error-envelope convergence (audit #35).
+        // Keep the pre-existing nested `error{code,message,documentation}`
+        // shape (existing clients already parse it) and ADD the canonical
+        // top-level `message`/`errors`/`meta.version` keys as a superset.
+        // @see web/private_html/api/Response.php — canonical envelope doc-block
         $response = [
             'success' => false,
+            // ✅ Canonical top-level keys (ADDITIVE).
+            'message' => $message,
+            'errors' => [$message],
+            // 🗄️ Legacy nested shape — UNCHANGED.
             'error' => [
                 'code' => 'FORBIDDEN',
                 'message' => $message,
@@ -451,6 +473,8 @@ class APIKeyMiddleware {
             ],
             'meta' => [
                 'timestamp' => date('c'),
+                // ✅ Canonical `meta.version` — matches Response::$version ('v1').
+                'version' => 'v1',
                 'request_id' => $this->generateRequestID()
             ]
         ];

@@ -240,12 +240,32 @@ class RateLimitMiddleware {
         // Calculate retry after
         $retryAfter = max(0, ($result['reset'] ?? time()) - time());
 
+        // 📝 The human-readable summary, shared by BOTH the legacy nested
+        // `error.message` and the new canonical top-level `message`/`errors`.
+        $errorMessage = $result['error'] ?? 'Too many requests. Please try again later.';
+
         // Build error response
+        //
+        // 🛡️ CAP-API Bucket B (#1) — Error-envelope convergence (audit #35).
+        // This handler predates the canonical `Response` envelope
+        // (web/private_html/api/Response.php) and emits its own nested
+        // `error{}` / `rate_limit{}` shape. We do NOT remove or restructure
+        // any of that — existing clients/JS that already parse
+        // `error.code` / `error.message` / `rate_limit.*` keep working
+        // unchanged. We ONLY *add* the canonical top-level keys
+        // (`message`, `errors`, `meta.version`) as a superset, so a client
+        // written against the standard `Response` envelope can also parse
+        // this response uniformly.
+        // @see web/private_html/api/Response.php — canonical envelope doc-block
         $response = [
             'success' => false,
+            // ✅ Canonical top-level keys (ADDITIVE — see doc-block above).
+            'message' => $errorMessage,
+            'errors' => [$errorMessage],
+            // 🗄️ Legacy nested shape — UNCHANGED, kept for existing consumers.
             'error' => [
                 'code' => 'RATE_LIMIT_EXCEEDED',
-                'message' => $result['error'] ?? 'Too many requests. Please try again later.',
+                'message' => $errorMessage,
                 'retry_after' => $retryAfter,
                 'retry_after_human' => $this->formatDuration($retryAfter)
             ],
@@ -257,6 +277,8 @@ class RateLimitMiddleware {
             ],
             'meta' => [
                 'timestamp' => date('c'),
+                // ✅ Canonical `meta.version` — matches Response::$version ('v1').
+                'version' => 'v1',
                 'request_id' => $this->generateRequestID()
             ]
         ];
@@ -266,6 +288,60 @@ class RateLimitMiddleware {
 
         // Exit to prevent further processing
         exit;
+    }
+
+    // ========================================================================
+    // 🚪 STANDALONE ENTRY POINT (CAP-API Bucket B, item #3)
+    // ========================================================================
+
+    /**
+     * 🚪 Apply the SAME central rate limiting the `/api/v1` router enforces
+     * to a standalone (non-router) script — e.g. the WebAuthn endpoints,
+     * `oauth/disconnect.php`, `v1/consent/index.php`, `v1/export*` — which
+     * previously bootstrapped `config.php` directly and never touched this
+     * class at all.
+     *
+     * Fails OPEN on any internal error: a limiter malfunction (e.g. a DB
+     * hiccup while loading `tblRateLimitConfig`) must NEVER block a
+     * legitimate request to an authentication-adjacent endpoint. This
+     * mirrors RateLimiter::checkLimit()'s own fail-open behaviour when no
+     * configuration row exists — the difference here is guarding against
+     * an unexpected *exception/Error* (e.g. `Database` unavailable),
+     * which the caller would otherwise have to try/catch by hand in every
+     * single standalone file.
+     *
+     * A genuine "over limit" condition is NOT swallowed — `handle()` still
+     * calls {@see respondRateLimitExceeded()} (HTTP 429) exactly as it does
+     * for `/api/v1` routes; only unexpected internal Throwables are caught.
+     *
+     * @param mixed $db Optional DB handle (mysqli or DatabaseConnection).
+     *                  Falls back to `Database::getInstance()` when omitted
+     *                  — the same pattern already used by dozens of other
+     *                  standalone/AJAX handlers in this codebase.
+     * @return void May exit with HTTP 429 if the caller is over their limit.
+     *
+     * @see web/private_html/security/RateLimiter.php — fail-open config lookup
+     */
+    public static function enforceStandalone(mixed $db = null): void {
+        try {
+            // 🔌 Resolve a DB handle the same way the rest of the codebase
+            // does for standalone scripts (Database::getInstance() returns
+            // a DatabaseConnection proxy with the same prepare()/query()
+            // surface as a raw mysqli link).
+            if ($db === null && class_exists('Database')) {
+                $db = Database::getInstance();
+            }
+
+            (new self($db))->handle();
+        } catch (\Throwable $rateLimitError) {
+            // 🔓 Fail OPEN — never let a rate-limiter internal failure block
+            // a legitimate request end-to-end.
+            if (class_exists('ErrorLogger')) {
+                ErrorLogger::log($rateLimitError);
+            } else {
+                error_log('[RateLimitMiddleware] enforceStandalone() failed open: ' . $rateLimitError->getMessage());
+            }
+        }
     }
 
     /**

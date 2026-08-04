@@ -82,6 +82,23 @@ Response::setVersion('v1');
 // 🔒 SECURITY MIDDLEWARE
 // ============================================================================
 
+// 🗄️ CAP-API Bucket B prerequisite fix: `$db` was never defined anywhere in
+// this file before being passed to the two middlewares below. Both
+// constructors fall back to `global $db;` when their argument is null, but
+// nothing in the whole request lifecycle EVER set a global `$db` either
+// (confirmed — no `$GLOBALS['db']` assignment exists anywhere in this
+// codebase) — so `$this->db` ended up null in BOTH middlewares, and the
+// very first DB query inside RateLimiter::loadConfig()/isEnabled()
+// (`$this->db->prepare(...)`) fataled with "Call to a member function
+// prepare() on null" on literally EVERY /api/v1/* request, before the
+// router ever dispatched to a real handler. Defining it here the SAME way
+// dozens of other standalone/AJAX handlers in this codebase already do
+// (`Database::getInstance()` — a DatabaseConnection proxy with the same
+// prepare()/query() surface as a raw mysqli link) is what makes rate
+// limiting and API-key auth actually function for the REST API at all.
+// @see web/_config/database.php — Database::getInstance()/DatabaseConnection
+$db = Database::getInstance();
+
 // Initialize security middlewares
 $rateLimitMiddleware = new RateLimitMiddleware($db);
 $apiKeyMiddleware = new APIKeyMiddleware($db);
