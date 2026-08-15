@@ -52,6 +52,12 @@ $emailService = new EmailService();
 $emailService->sendTemplate('welcome', $userEmail, $templateVars);
 ```
 
+## CI/CD & GitHub Actions
+
+- **Runner convention — every workflow job MUST use `runs-on: ubuntu-latest`.** Do NOT use `macos-*`, `windows-*`, or self-hosted runners. Existing workflows (`ci.yml`, `security.yml`, `backport.yml`, `dependabot-auto-label.yml`) all comply.
+- **Branch model:** four tiers `alpha ▸ beta ▸ release-candidate ▸ main`. CI, Dependabot version-updates, and `composer audit` cover all four; security fixes on `main` auto-backport to the other tiers (`backport.yml`).
+- **Deployment:** currently done locally via the VS Code `ftp-sync` extension — **there is NO SFTP/rsync deploy GitHub Action yet.** When one is added (e.g. an SFTP or rsync-over-SSH deploy to Dreamhost), it **MUST use `runs-on: ubuntu-latest`** and pull the host/user/key from repo secrets.
+
 ## File Organization Conventions
 
 ### API Structure
