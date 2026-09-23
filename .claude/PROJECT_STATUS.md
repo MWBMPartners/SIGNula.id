@@ -4,7 +4,7 @@
 **Date:** 2026-07-01 · **Reality reconciled:** 2026-07-22 (post PR #91)
 **Overall Completion:** Foundation hardened; feature campaign (G-001..G-004) **BUILT + merged** — launch readiness (ops/QA/legal) next
 
-> 🔗 Live session handoff: `.claude/HANDOFF.md` · Standing rules: `.claude/STANDING_RULES.md`
+> 🔗 Live session handoff: `HANDOFF.md` (top of the project) · Standing rules: `.claude/STANDING_RULES.md`
 
 ---
 

@@ -7,7 +7,7 @@ You are helping on **SIGNula.id**, a universal single-sign-on account system
 source of truth):
 1. `.claude/STANDING_RULES.md` — how we work (plain English, GIRFT, review loop,
    no PR stacking, AI-tool fallback, after-each-task steps).
-2. `.claude/HANDOFF.md` — current position, next-steps queue, open questions.
+2. `HANDOFF.md` (top of the project) — current position, next-steps queue, open questions.
 3. `.claude/CLAUDE.md` — the full project brief (tech stack, coding style, security rules).
 4. `.OpenAI/MEMORY.md` — lasting facts.
 
@@ -15,8 +15,8 @@ source of truth):
 - **Reviewer**: review the changes on the working branch (currently `alpha`), report
   problems, have them fixed, and review again until nothing is found.
 - **Fallback builder**: if Claude Code is unavailable, pick up the queue in
-  `.claude/HANDOFF.md` and keep that file up to date as you go, so Claude can take over again.
+  `HANDOFF.md` (top of the project) and keep that file up to date as you go, so Claude can take over again.
 
 ## After each piece of work
 Commit + push to the working branch · update the GitHub issue · update `.claude/` and
-`.OpenAI/` memory/context · update `.claude/HANDOFF.md`.
+`.OpenAI/` memory/context · update `HANDOFF.md` (top of the project).

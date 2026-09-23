@@ -1,6 +1,6 @@
 # 📜 SIGNula.id — Standing Rules & Standing Tasks
 
-> **Read this first in every new session** (then `.claude/HANDOFF.md`).
+> **Read this first in every new session** (then `HANDOFF.md` at the top of the project).
 > These rules apply to every AI helper working on this repo (Claude Code, Codex, or any other).
 > Last revised: **2026-09-23** (owner instruction). Older rules that the owner has not
 > replaced are kept in section C below.
@@ -15,7 +15,7 @@ simple, everyday English, even for technical readers. If a technical term can't 
 avoided, explain it in a few plain words straight away.
 
 ### 2. 🤝 Keep the handoff up to date — all the time
-Update `.claude/HANDOFF.md` **as you go** (not just at the end), so work can be picked up
+Update `HANDOFF.md` (kept at the top of the project so any AI tool can find it) **as you go** (not just at the end), so work can be picked up
 at any moment if a session stops, runs out of credit, or is restarted. This matters even
 more because of rule 9 (switching between AI tools).
 
@@ -76,10 +76,10 @@ Re-order or bundle the tasks in section B however makes the work most efficient.
 ### After each piece of work
 1. **Commit and push** to the working branch (rule 6).
 2. **Update the matching GitHub issue(s)** — one update per task.
-3. **Update Claude's memory/context** in `.claude/` (`MEMORY.md`, `HANDOFF.md`, this file
+3. **Update Claude's memory/context** in `.claude/` (`MEMORY.md`, this file
    if rules change, `PROJECT_STATUS.md` when status changes).
 4. **Update Codex/OpenAI's memory/context** in `.OpenAI/` (`MEMORY.md`, `CONTEXT.md`).
-5. **Update the handoff** (`.claude/HANDOFF.md`) so we can pick up exactly where we left off.
+5. **Update the handoff** (`HANDOFF.md`, top of the project) so we can pick up exactly where we left off.
 
 ### Thorough documentation update (do regularly, and whenever features change)
 - Update **all `.md` documentation** in the repo (README, PROJECT_PROGRESS, CHANGELOG,

@@ -28,5 +28,7 @@
   billing (test mode only; live keys = owner, issue #70).
 
 ## Environment notes
-- Cloud sessions: Codex and dev-team plugins are **not installed** in the cloud container;
+- Cloud sessions: Codex and dev-team plugins are **not installed** in the cloud container (owner OK with this, 2026-09-23);
   Codex reviews run from the owner's Mac.
+- The live handoff is `HANDOFF.md` at the **top of the project** (owner decision 2026-09-23) so any
+  AI tool can find it. Old versions go in `.claude/archive/`.

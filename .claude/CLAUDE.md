@@ -1,4 +1,4 @@
-> 📌 **AI helpers: read `.claude/STANDING_RULES.md` and `.claude/HANDOFF.md` first.** The project brief follows below.
+> 📌 **AI helpers: read `.claude/STANDING_RULES.md` and `HANDOFF.md` (top of the project) first.** The project brief follows below.
 
 I would like to create a "Universal", all-in-one, single login user account system that will be used across a variety of services (both web based and mobile apps) to allow for "universal" access among other things. This "Universal" all-in-one single login/single sign-in system is to be developed in/using PHP, MySQL/MariaDB using MySQLI as the connection method from within PHP, and using MySQL PRepared statements to manage common queries.
 
