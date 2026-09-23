@@ -1,3 +1,5 @@
+> 📌 **AI helpers: read `.claude/STANDING_RULES.md` and `.claude/HANDOFF.md` first.** The project brief follows below.
+
 I would like to create a "Universal", all-in-one, single login user account system that will be used across a variety of services (both web based and mobile apps) to allow for "universal" access among other things. This "Universal" all-in-one single login/single sign-in system is to be developed in/using PHP, MySQL/MariaDB using MySQLI as the connection method from within PHP, and using MySQL PRepared statements to manage common queries.
 
 The idea behind the system (named "SIGNula", with the account being called a "SIGNula ID@) is that it will have a "local"/internal user account within the system to uniquely identify a user, but iti will also have support for the following features:
