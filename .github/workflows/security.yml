@@ -50,7 +50,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Dependency Review
         # 🟡 ADVISORY until the repository's Dependency graph is enabled in
@@ -59,7 +59,7 @@ jobs:
         #    do not let that block the PR. Enabling the graph ALSO activates
         #    Dependabot alerts + security updates — see PRE_LAUNCH_REVIEW.md.
         continue-on-error: true
-        uses: actions/dependency-review-action@v4
+        uses: actions/dependency-review-action@v5
         with:
           # ⚖️ Fail the PR if a dependency change carries a moderate-or-worse
           #    advisory. Tune as the project matures.
@@ -79,7 +79,7 @@ jobs:
         branch: [main, release-candidate, beta, alpha]
     steps:
       - name: Checkout ${{ matrix.branch }}
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           # 🌿 Explicitly pin the branch so the scheduled run (which starts on
           #    the default branch) still audits alpha and beta. Missing branches
