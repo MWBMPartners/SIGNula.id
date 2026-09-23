@@ -42,7 +42,7 @@ jobs:
         target: [release-candidate, beta, alpha]
     steps:
       - name: Checkout (full history)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           token: ${{ secrets.BACKPORT_PAT || secrets.GITHUB_TOKEN }}
