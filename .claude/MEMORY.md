@@ -16,6 +16,21 @@
 - Security fixes on `main` are auto-copied to the other tiers (`.github/workflows/backport.yml`).
 - All GitHub Actions jobs use `runs-on: ubuntu-latest` (PR #128).
 - From 2026-09-23: **no PR stacking** — one working branch, one PR into `alpha` later.
+- Cloud sessions can only push to their own `claude/...` branch. Current working branch:
+  `claude/review-merge-branches-main-ckh2sr` (built on `alpha`, 24 Sep). Q1 in the handoff is still open.
+- 23 Sep: Dependabot library updates were merged by the owner's account (Salem874) into
+  **all three** lower tiers (`alpha` #110/#116, `beta` #111/#126, `release-candidate` #117/#127).
+  `main`'s copies (#118/#93) are still open.
+
+## 🐕 Watchdog (owner rule 11, 2026-09-24 — issue #129)
+- Every background job (helper agent, PR checks/CI, merge, backport, long command) gets a
+  watchdog: log it in HANDOFF.md "⏱️ Jobs in flight", wait until it finishes, check the
+  **real** result, and only then continue the queue.
+- Start of every session: `.claude/hooks/session-watchdog.sh` runs automatically
+  (SessionStart hook in `.claude/settings.json`; offline, never fails, bash 3.2-safe).
+  Other AI tools run it by hand.
+- Use in-session background timers/loops. The owner declined scheduled "remind me later"
+  messages in an earlier session, so don't rely on them without approval.
 
 ## Model / tool routing (owner decision 2026-09-23)
 - Deep analysis + planning: **Opus, one agent at a time** (replaces the old "Fable" rule).

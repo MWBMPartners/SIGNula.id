@@ -2,8 +2,8 @@
 
 > **Read this first in every new session** (then `HANDOFF.md` at the top of the project).
 > These rules apply to every AI helper working on this repo (Claude Code, Codex, or any other).
-> Last revised: **2026-09-23** (owner instruction). Older rules that the owner has not
-> replaced are kept in section C below.
+> Last revised: **2026-09-24** (owner instruction — added rule 11 "Watchdog"). Older rules
+> that the owner has not replaced are kept in section C below.
 
 ---
 
@@ -69,17 +69,55 @@ use whatever is suitable and available.
 ### 10. ⚙️ Be efficient
 Re-order or bundle the tasks in section B however makes the work most efficient.
 
+### 11. 🐕 Watchdog — never lose track of a job that is still running *(added 2026-09-24)*
+Whenever work is handed to something that runs **in the background** — a helper agent,
+the automatic checks (CI) on a pull request, a merge, an automatic backport, or a long
+command — **set up a "watchdog" that waits for it to finish**, and **do not move on to the
+next step in the queue until its result has been confirmed** (passed / failed / done).
+Jobs that don't depend on each other may run side by side, but each one gets its own watchdog.
+
+How to do it:
+- **Log it when it starts:** add a row to the **"⏱️ Jobs in flight"** table in `HANDOFF.md`
+  (what it is, when it started, where to check the result).
+- **Watch it until it finishes:**
+  - *Helper agents and long commands* → run them in the background so the session is woken
+    automatically when they end.
+  - *Anything that does not wake the session by itself* (e.g. GitHub checks on a pull request)
+    → run a background timer or check-loop inside the session that re-checks until it is
+    finished (short gaps for quick jobs; about 10–15 minutes for CI).
+  - *Pull requests* → subscribe to the PR's activity **and** re-check its checks and whether it
+    can be merged yourself, because "all checks passed" is not always announced.
+  - Use timers that run inside the session. Don't rely on scheduled "remind me later"
+    messages unless the owner has approved them.
+- **When it finishes:** read the **actual** result (never assume it worked), act on it (fix a
+  failure, then watch the re-run the same way), and only then remove its row and continue.
+- **After a pause or restart:** background jobs may have died or finished unnoticed. The
+  first thing any new session does is the **watchdog check**: fetch the latest from GitHub,
+  compare branches and open PRs with the handoff, and confirm (or re-run) every row in the
+  Jobs-in-flight table. The **start-of-session hook** does this reminder automatically
+  (`.claude/hooks/session-watchdog.sh`, registered in `.claude/settings.json`); Codex and
+  other tools run the same script by hand: `bash .claude/hooks/session-watchdog.sh`.
+- **Record surprises:** anything found that the handoff didn't mention (e.g. merges done
+  outside the session) is written into the handoff straight away.
+
 ---
 
 ## B. Standing tasks
 
+### At the start of every session (and after any pause, restart or context compaction)
+0. **Watchdog check** (rule 11): read what the start-of-session hook printed (or run
+   `bash .claude/hooks/session-watchdog.sh`), fetch the latest from GitHub, and confirm every
+   row in the "⏱️ Jobs in flight" table in `HANDOFF.md` **before** starting anything new.
+
 ### After each piece of work
-1. **Commit and push** to the working branch (rule 6).
-2. **Update the matching GitHub issue(s)** — one update per task.
-3. **Update Claude's memory/context** in `.claude/` (`MEMORY.md`, this file
+1. **Confirm it really finished** (rule 11): every background job for this task has ended
+   and its result has been checked; its row is cleared from the Jobs-in-flight table.
+2. **Commit and push** to the working branch (rule 6).
+3. **Update the matching GitHub issue(s)** — one update per task.
+4. **Update Claude's memory/context** in `.claude/` (`MEMORY.md`, this file
    if rules change, `PROJECT_STATUS.md` when status changes).
-4. **Update Codex/OpenAI's memory/context** in `.OpenAI/` (`MEMORY.md`, `CONTEXT.md`).
-5. **Update the handoff** (`HANDOFF.md`, top of the project) so we can pick up exactly where we left off.
+5. **Update Codex/OpenAI's memory/context** in `.OpenAI/` (`MEMORY.md`, `CONTEXT.md`).
+6. **Update the handoff** (`HANDOFF.md`, top of the project) so we can pick up exactly where we left off.
 
 ### Thorough documentation update (do regularly, and whenever features change)
 - Update **all `.md` documentation** in the repo (README, PROJECT_PROGRESS, CHANGELOG,

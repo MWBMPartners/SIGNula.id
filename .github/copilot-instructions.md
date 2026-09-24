@@ -58,6 +58,11 @@ $emailService->sendTemplate('welcome', $userEmail, $templateVars);
 - **Branch model:** four tiers `alpha ▸ beta ▸ release-candidate ▸ main`. CI, Dependabot version-updates, and `composer audit` cover all four; security fixes on `main` auto-backport to the other tiers (`backport.yml`).
 - **Deployment:** currently done locally via the VS Code `ftp-sync` extension — **there is NO SFTP/rsync deploy GitHub Action yet.** When one is added (e.g. an SFTP or rsync-over-SSH deploy to Dreamhost), it **MUST use `runs-on: ubuntu-latest`** and pull the host/user/key from repo secrets.
 
+## Working Rules for AI Helpers
+
+- **Read first:** `.claude/STANDING_RULES.md`, then `HANDOFF.md` (top of the project).
+- **🐕 Watchdog (standing rule 11):** every background job (PR checks/CI, merges, backports, helper agents, long commands) is logged in `HANDOFF.md` → "⏱️ Jobs in flight" when it starts, watched until it finishes, and its real result confirmed **before** moving to the next step. Start each session with `bash .claude/hooks/session-watchdog.sh` (Claude Code runs it automatically via a SessionStart hook).
+
 ## File Organization Conventions
 
 ### API Structure
